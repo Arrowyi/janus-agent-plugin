@@ -21,9 +21,9 @@ import { splitModel, errorText, isRetryableModelError } from "./dispatch-helpers
 export { splitModel, errorText, isRetryableModelError }
 
 /**
- * The ten dispatch roles: the five research specialists, the two entry
- * delegates (consultant, coder), the economical leaf (lite), the mechanical
- * lane (coder-lite), and the optional host build target.
+ * The ten dispatch roles: the four research specialists and the writer, the
+ * two entry delegates (consultant, coder), the economical leaf (lite), the
+ * mechanical lane (coder-lite), and the optional host build target.
  */
 export { DISPATCH_ROLES }
 export type { DispatchRole }

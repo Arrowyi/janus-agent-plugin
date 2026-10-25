@@ -6,7 +6,7 @@ The living architecture specification for the janus-agent plugin, describing the
 
 Build an independent Janus agent plugin with a harness-neutral consultation core, a harness-neutral memory core, a local SQLite store, a local MCP interface, and a thin OpenCode adapter.
 
-The public experience is a small agent family with one default entry and three direct-entry shortcuts: `janus` (default general/routing), `consultant` (evidence-driven advice in six modes: `select`, `verify`, `plan`, `research`, `guide`, `author`), `coder` (coding with adaptive L0/L1/L2/L3 process weight), and `lite` (economical quick answers). The consultant leads the research team (`explorer`, `analyst`, `critic`, `verifier`, `writer`); the coder owns the coding lanes (`coder-lite`, optional host `build`). The consultant produces decision briefs, playbooks, research reports, and durable documents behind one outline-approval gate, and distinguishes verified facts from synthesis. The coder discusses design/architecture before editing for multi-file or correctness-critical work and gates that discussion on user approval.
+The public experience is a small agent family with one default entry and three direct-entry shortcuts: `janus` (default general/routing), `consultant` (evidence-driven advice in six modes: `select`, `verify`, `plan`, `research`, `guide`, `author`), `coder` (coding with adaptive L0/L1/L2/L3 process weight), and `lite` (economical quick answers). The consultant leads the research team (`explorer`, `analyst`, `critic`, `verifier`) and the scoped-write writer; the coder owns the coding lanes (`coder-lite`, optional host `build`). In author mode the consultant and writer are separated: the consultant owns intake, evidence, the outline approval, final review, the author brief, memory, and publishing and writes no reader-facing prose; the `writer` is the sole author of reader-facing prose and, in scoped-write mode, the sole writer of approved document files under `writer_docs_roots`. The consultant produces decision briefs, playbooks, research reports, and durable documents behind one outline-approval gate, and distinguishes verified facts from synthesis. The coder discusses design/architecture before editing for multi-file or correctness-critical work and gates that discussion on user approval.
 
 The memory system stores only user-approved experience packages. It does not automatically persist complete conversations. Canonical experience records remain independent of classification schemes, summarization models, embedding models, and storage indexes. Every derived view can be rebuilt.
 
@@ -97,8 +97,8 @@ The `consultant` primary agent owns the evidence workflow and final expression f
 - detects the mode from intent and chooses the tier;
 - identifies decision-changing missing information;
 - asks at most one to three initial questions when needed;
-- invokes search, memory, and the read-only team (explorer, analyst, critic, verifier, writer);
-- retains final editorial control over delegated research;
+- invokes search, memory, the research team (explorer, analyst, critic, verifier), and the writer (sole author of reader-facing prose);
+- retains final editorial control over delegated research and author-mode artifacts (review, verification, bounded writer fix requests) without writing prose itself;
 - returns a mode-specific decision brief, a readable research report, or an authored document delivery;
 - recognizes natural-language memory intents.
 
@@ -171,7 +171,8 @@ The local stdio MCP server exposes a stable cross-harness memory boundary. It re
 The first adapter:
 
 - registers the `janus` default entry, the `consultant` evidence entry, the `coder` coding entry, and the `lite` economical leaf;
-- registers the five research subagents (explorer, analyst, critic, verifier, writer — all read-only, shell-denied, and dispatch-denied; the writer is optional via `writer_enabled`);
+- registers the research subagents — `explorer`, `analyst`, `critic`, and `verifier` (read-only, shell-denied, and dispatch-denied) and the `writer` scoped-write author executor (edit allowed only under the configured `writer_docs_roots`, default `userdoc`; an empty roots array selects the read-only fallback; shell and dispatch denied; step-capped at 80; the writer is optional via `writer_enabled`);
+- creates the fixed author state directory (`$XDG_DATA_HOME/janus-agent/author`) where the consultant writes per-document briefs;
 - registers the `coder-lite` mechanical coding lane (leaf, step-capped) and accepts the optional host `build` delegation target;
 - makes the consultation skill available;
 - registers or launches the bundled local memory MCP;
@@ -207,17 +208,18 @@ flowchart TD
     O --> SAVE[Auto-Save Consultation Record + Register Outcome]
 ```
 
-`author` consultations run a dedicated state machine behind one outline-approval gate:
+`author` consultations run a dedicated state machine behind one outline-approval gate, with a strict author separation — the `writer` is the sole author of reader-facing prose and the consultant writes none:
 
 ```text
 route -> intake (audience/delivery/scope) -> explore load-bearing claims
--> writer blueprint -> outline + file manifest -> one approval
--> writer produces bounded approved chapter drafts
--> consultant checks and authors final files -> proportionate verification -> cross-file check
--> final AuthorBrief -> memory summary
+-> writer blueprint -> outline + file manifest -> one approval -> create the brief
+-> writer produces bounded approved chapter drafts (and writes the approved
+   files itself in scoped-write mode; returns prose or patches in read-only
+   fallback) -> consultant reviews and verifies -> bounded writer fixes -> publish
+-> proportionate verification -> cross-file check -> final AuthorBrief -> memory summary
 ```
 
-In this mode adversarial roles are proportionate, never a fixed roster: the critic runs for `strict` verification, conflicting evidence, high-risk material, failed execution, or material uncertainty it could resolve; the verifier audits user-generated, promotional, or purportedly independent evidence when influence or provenance is relevant or uncertain. After outline approval the writer may produce complete section/chapter prose from a bounded evidence packet. The consultant checks facts, integrates drafts, writes all artifact files and runs executable verification; plugin-owned subagents stay read-only. A delegated writer's host permissions are separate and are not enforced by this plugin.
+The brief is the document's external state file at `<authorStateDir>/<projectId>/<docId>/brief.md` (fixed author state dir, stable project id): the consultant creates it at the outline gate, updates it at structural changes, and appends a change log; the writer reads it and never writes it. In this mode adversarial roles are proportionate, never a fixed roster: the critic runs for `strict` verification, conflicting evidence, high-risk material, failed execution, or material uncertainty it could resolve; the verifier audits user-generated, promotional, or purportedly independent evidence when influence or provenance is relevant or uncertain. After outline approval the writer may produce complete section/chapter prose from a bounded evidence packet and do targeted web lookups within a search budget, logging a source ledger; broad or contested research stays with the consultant, which routes it to `explorer` (the writer never dispatches explorer). The consultant verifies load-bearing claims against the writer's source ledger, checks cross-file consistency, and requests bounded writer fixes — in scoped-write mode (`writer_docs_roots` non-empty, default `["userdoc"]`) it does not edit files under the writer roots; in read-only fallback (`writer_docs_roots: []`) it applies and publishes the writer's returned text and discloses the mode. A delegated writer's host permissions are separate and are not enforced by this plugin.
 
 ### 6.1 Consultation Tiers
 
@@ -263,7 +265,7 @@ The router evaluates:
 
 ### 6.3 Team Roles and Tier Caps
 
-The consultant leads five research/writing subagent roles through `janus_dispatch`. Its skill is the authoritative task-fit policy: assign bounded work when a role could materially change the result and the consultant can name the decision it could change and the specific failure it would catch; skip only with that reason. Independent gathering may fan out; analysis follows evidence, critique follows a draft conclusion, and substantive authoring follows outline approval. The consultant retains final synthesis and delivery.
+The consultant leads four research subagent roles and the writer through `janus_dispatch`. Its skill is the authoritative task-fit policy: assign bounded work when a role could materially change the result and the consultant can name the decision it could change and the specific failure it would catch; skip only with that reason. Independent gathering may fan out; analysis follows evidence, critique follows a draft conclusion, and substantive authoring follows outline approval. The consultant retains final synthesis and delivery.
 
 Entry roles and execution delegates are separate from this research roster: `janus` (default general entry), `consultant` (evidence entry), `coder` (coding entry), and `lite` (economical leaf) are user-selectable; `coder` owns the `coder-lite` mechanical lane and the optional host `build` escalation. The tier caps below apply only to the research team.
 
@@ -273,7 +275,7 @@ Entry roles and execution delegates are separate from this research roster: `jan
 | `analyst` | independent cross-model reasoning over evidence |
 | `critic` | adversarial counter-evidence pass; hard gate over research hypotheses |
 | `verifier` | bounded audit of manipulation or opaque independence in user/third-party/promotional evidence; missing observations produce `unknown` |
-| `writer` | blueprint before approval, usable section/chapter prose after approval, or editorial review for `author` (plugin-owned: edit, shell, and dispatch denied) |
+| `writer` | sole author of reader-facing prose for `author` — blueprint before approval, section/chapter prose and maintenance after approval, coherence passes; targeted web lookups with a source ledger. Plugin-owned: shell and dispatch denied; edit allowed only under `writer_docs_roots` (read-only fallback when empty) |
 
 Per-tier **maximum** instance counts (`TIER_ROLE_CAPS`, mirrored by the adapter's validated `tier_role_caps` config), never minimums or a required team roster:
 
@@ -283,7 +285,7 @@ Per-tier **maximum** instance counts (`TIER_ROLE_CAPS`, mirrored by the adapter'
 | standard | 5 | 1 | 1 | 1 | 1 |
 | deep | 5 | 3 | 2 | 2 | 2 |
 
-`author` never runs at fast tier. The writer is optional (`writer_enabled`, default true); when it is disabled or unavailable, the consultant discloses which writing check is missing and may work inline without implying an independent writer review. The caps are passed to the consultant as configuration, not enforced by a per-turn runtime scheduler; zero means the role is unavailable at that tier and the consultant must disclose a material gap.
+`author` never runs at fast tier. The writer is optional (`writer_enabled`, default true); when it is disabled or unavailable, author mode is unavailable — the consultant discloses which writer work is missing and offers to enable the writer, configure a delegate, or an explicit consultant-prose fallback the user accepts; it does not silently write reader-facing prose. The caps are passed to the consultant as configuration, not enforced by a per-turn runtime scheduler; zero means the role is unavailable at that tier and the consultant must disclose a material gap.
 
 ### 6.4 Recoverable Dispatch API
 
@@ -291,7 +293,7 @@ All roles share the same recoverable dispatch lifecycle; every agent resolves to
 
 | Tool | Arguments | Contract |
 |---|---|---|
-| `janus_dispatch` | `{role, prompt}`; role is a configured dispatch role (`consultant`, `coder`, `lite`, the five research roles, `coder-lite`, or optional `build`) | Launch a durable host-session job and observe within a soft wait window |
+| `janus_dispatch` | `{role, prompt}`; role is a configured dispatch role (`consultant`, `coder`, `lite`, the four research roles and the writer, `coder-lite`, or optional `build`) | Launch a durable host-session job and observe within a soft wait window |
 | `janus_dispatch_wait` | `{job_id, wait_ms?}` | Recover/observe the same job; optional integer `wait_ms` is 0..300000, default 300000; zero performs a snapshot |
 | `janus_dispatch_cancel` | `{job_id}` | Request explicit cancellation and reconcile durable completion/abort evidence |
 
@@ -723,7 +725,7 @@ The first version includes:
 
 - independent plugin packaging;
 - the `janus` default entry, `consultant` evidence entry, `coder` coding entry, and `lite` economical leaf;
-- the five research subagents and the `coder-lite` mechanical lane;
+- the four read-only research subagents, the scoped-write writer, and the `coder-lite` mechanical lane;
 - the reusable consultation skill;
 - consultation and memory core packages;
 - SQLite persistence with FTS;

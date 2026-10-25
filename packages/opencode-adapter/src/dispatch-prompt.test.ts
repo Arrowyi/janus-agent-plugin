@@ -1,9 +1,14 @@
 import { describe, expect, it } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
 import { readFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { z } from "zod"
 import {
+  buildWriterRuntimeBindings,
   injectCommonPrinciples,
   injectModelPrompt,
+  injectRuntimeBindings,
   loadCommonPrinciples,
   registerAnalyst,
   registerConsultantAgent,
@@ -12,6 +17,7 @@ import {
   registerLite,
   registerVerifier,
   registerWriter,
+  resolveAuthorStateDir,
 } from "./agent-registration.ts"
 import { resolveAsset } from "./asset-paths.ts"
 import type { JanusPluginConfig } from "./plugin-config.ts"
@@ -28,6 +34,7 @@ const pluginConfig = {
   verifier_enabled: true,
   writer_agent: "consultation-writer",
   writer_enabled: true,
+  writer_docs_roots: ["userdoc"],
   coder_agent: "coder",
   coder_enabled: true,
   lite_agent: "lite",
@@ -42,6 +49,7 @@ const pluginConfig = {
 
 // Each read-only role runs a default model that resolves a shipped
 // model-prompt block, keyed by the normalized model key (provider-agnostic).
+// The writer is separate: it also gets runtime bindings injected.
 const roles = [
   {
     asset: "explorer.md",
@@ -66,12 +74,6 @@ const roles = [
     name: "consultation-verifier",
     block: "gemini38flash.md",
     register: registerVerifier,
-  },
-  {
-    asset: "writer.md",
-    name: "consultation-writer",
-    block: "claudesonnet55.md",
-    register: registerWriter,
   },
 ] as const
 
@@ -141,6 +143,40 @@ describe("dispatch prompt routing contract", () => {
       )
     })
   }
+
+  it("exposes nonterminal status identifiers when loading writer.md", async () => {
+    // given
+    const path = resolveAsset("agents/writer.md")
+    // when
+    const source = await readFile(path, "utf8")
+    // then
+    expect(source).toContain("`pending`")
+    expect(source).toContain("`unknown`")
+  })
+
+  it("passes the complete writer asset through with its shipped model block and runtime bindings", async () => {
+    // given — temp HOME keeps the writer's author state dir off the real HOME
+    const parent = mkdtempSync(join(tmpdir(), "writer-author-prompt-"))
+    const env = { HOME: parent } as NodeJS.ProcessEnv
+    const config: { agent?: Record<string, unknown> } = {}
+    const source = await readFile(resolveAsset("agents/writer.md"), "utf8")
+    const block = await readFile(resolveAsset("model-prompts/claudesonnet55.md"), "utf8")
+    const common = await loadCommonPrinciples()
+
+    try {
+      // when
+      await registerWriter(config, pluginConfig, env)
+
+      // then
+      const expected = injectRuntimeBindings(
+        injectCommonPrinciples(injectModelPrompt(source, block), common),
+        buildWriterRuntimeBindings(pluginConfig, resolveAuthorStateDir(env)),
+      )
+      expect(promptSchema.parse(config.agent?.["consultation-writer"]).prompt).toBe(expected)
+    } finally {
+      rmSync(parent, { recursive: true, force: true })
+    }
+  })
 
   it("keeps lite as a leaf with escalation lines instead of dispatch discipline", async () => {
     // given

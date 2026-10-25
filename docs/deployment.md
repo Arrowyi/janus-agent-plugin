@@ -80,7 +80,7 @@ Installed layout:
 
 Re-running `bun run install:local` rebuilds and replaces the installed bundle. Restart OpenCode afterwards to load it.
 
-The installed plugin ships every prompt it needs, including `assets/agents/writer.md`, and does not require OMO, an external janus agent, global agent files under `~/.config/opencode/agents/`, external skills, or the source checkout at runtime. Missing writer capability degrades to disclosed inline work: the consultant must not claim an independent blueprint or chapter draft was produced.
+The installed plugin ships every prompt it needs, including `assets/agents/writer.md`, and does not require OMO, an external janus agent, global agent files under `~/.config/opencode/agents/`, external skills, or the source checkout at runtime. A missing writer makes author mode unavailable: the consultant discloses it and offers to enable the writer, configure a `writer_delegate_agent`, or an explicit consultant-prose fallback — it never silently writes reader-facing prose itself.
 
 ### Development only: source mode
 
@@ -92,7 +92,7 @@ Restart OpenCode so it picks up the new plugin entry. On startup the plugin's `c
 1. registers the `consultant` primary agent;
 2. registers the `coder` coding entry (mode `all`: selectable and dispatchable), the `lite` economical leaf (mode `all`, dispatch denied), and the `coder-lite` mechanical lane (mode `subagent`, steps 50, workspace edits allowed without asking, further dispatch denied);
 3. registers the `lite` workspace directory (`$XDG_DATA_HOME/janus-agent/lite`) writable without asking; every other write asks;
-4. registers the five research subagents `consultation-explorer`, `consultation-analyst`, `consultation-critic`, `consultation-verifier`, `consultation-writer` (each read-only, each on its configured model, each with shell and dispatch denied; the verifier reuses the critic's model by default);
+4. registers the research subagents `consultation-explorer`, `consultation-analyst`, `consultation-critic`, `consultation-verifier` (each read-only, each on its configured model, each with shell and dispatch denied; the verifier reuses the critic's model by default) and the scoped-write author executor `consultation-writer` (edit allowed only under `writer_docs_roots`, default `userdoc/**`; shell and dispatch denied; targeted web lookups allowed; step-capped at 80; an empty `writer_docs_roots` makes it read-only and the consultant publishes its returned prose). It also creates the author state dir `$XDG_DATA_HOME/janus-agent/author` where the consultant writes per-document briefs;
 5. registers the `janus-memory` local MCP server (when memory is enabled, the default);
 6. registers `janus_dispatch{role,prompt}`, `janus_dispatch_wait{job_id,wait_ms?}` and `janus_dispatch_cancel{job_id}` for the ten dispatch roles (these do not interfere with the built-in `task` tool or other plugins);
 7. installs the `consultation` skill and the `janus-memory` browse command into your OpenCode config directory.
@@ -137,6 +137,13 @@ A missing file is fine; all fields have defaults. Create the file to override de
   // agent and only pins a model when writer_delegate_model is also set.
   // "writer_delegate_agent": "host-writer",
   // "writer_delegate_model": "provider/model",
+
+  // Where the bundled writer may write approved document files:
+  // project-relative paths only (nested paths like "docs/guides" allowed;
+  // absolute, "~", "..", and whole-project roots are rejected). Default
+  // shown. An empty array [] switches the writer to read-only fallback:
+  // it returns prose or patches and the consultant publishes them.
+  "writer_docs_roots": ["userdoc"],
 
   // coder — the coding entry (mode: all). Selects L0/L1/L2/L3 process weight
   // by task complexity; owns the quality gate and the coding lanes.
@@ -237,11 +244,12 @@ A missing file is fine; all fields have defaults. Create the file to override de
 | `verifier_agent` | string | `"consultation-verifier"` | Name of the bounded source-influence and independence-audit subagent |
 | `verifier_model` | string (optional) | `opencode/gemini-3.8-flash` | Model for the verifier subagent |
 | `verifier_enabled` | boolean | `true` | Whether to register the verifier subagent |
-| `writer_agent` | string | `"consultation-writer"` | Name of the blueprint/review and approved-section-drafting subagent (`author` mode) |
+| `writer_agent` | string | `"consultation-writer"` | Name of the blueprint/drafting/maintenance author executor subagent (`author` mode) |
 | `writer_model` | string (optional) | `opencode/claude-sonnet-5-5` | Model for the writer subagent |
 | `writer_delegate_agent` | string (optional) | (none) | Host-provided writing agent preferred over the bundled writer; the bundled writer is not registered when set, and its permissions are controlled by the host |
 | `writer_delegate_model` | string (optional) | (none) | Model pinned on the delegate agent; when unset the delegate uses its own model |
 | `writer_enabled` | boolean | `true` | Whether to register the writer subagent |
+| `writer_docs_roots` | string[] | `["userdoc"]` | Project-relative directories the bundled writer may write approved document files into (nested paths like `docs/guides` allowed; absolute paths, `~`, `..`, and whole-project roots are rejected). `[]` selects the read-only fallback: the writer returns prose or patches and the consultant publishes them |
 | `coder_agent` | string | `"coder"` | Name of the coding entry (mode `all`) |
 | `coder_model` | string (optional) | `opencode-go/glm-5.3` | Model for the coder agent |
 | `coder_enabled` | boolean | `true` | Whether to register the coder agent |
@@ -276,7 +284,9 @@ The `embedding` block is all-or-nothing: set all four sub-fields or omit the blo
 
 Every role has one configured attempt and every agent resolves to a single model, with no plugin fallback advance. A delegate without `writer_delegate_model` uses host model selection (`null` in the durable job spec); it keeps host permissions and host-internal retry behavior. Neither wait expiry nor unknown observation authorizes a backup model.
 
-The consultant routes bounded tasks to its research team: `explorer` gathers missing evidence, `analyst` interprets material disputes, `critic` independently challenges consequential conclusions, `verifier` audits unclear influence or independence of user/third-party/promotional sources, and `writer` produces a blueprint before outline approval or usable section/chapter prose afterward. A check is delegated when it could materially affect the answer and the consultant can name the decision it could change and the specific failure it would catch; a role is skipped only with that reason. These roles are not a tier-dependent required roster. Plugin-owned research subagents have `permission.edit = "deny"`, `permission.bash = "deny"`, and `permission.task = "deny"`; an external `writer_delegate_agent` keeps its host-defined permissions and does not inherit these restrictions. Analyst follows evidence, critic follows a draft conclusion, writer's substantive prose follows approved scope and evidence, and the consultant verifies, integrates and writes final files. The default consultant, analyst and critic use different model families; verifier reuses critic's configured model, without a performance guarantee from that choice. Role caps are advisory ceilings rather than a runtime-enforced scheduler.
+The consultant routes bounded tasks to its research team: `explorer` gathers missing evidence, `analyst` interprets material disputes, `critic` independently challenges consequential conclusions, `verifier` audits unclear influence or independence of user/third-party/promotional sources, and `writer` is the sole author of author-mode prose — it produces the blueprint before outline approval and drafts, maintains, and writes approved document files afterward (scoped write) or returns prose for the consultant to publish (read-only fallback). A check is delegated when it could materially affect the answer and the consultant can name the decision it could change and the specific failure it would catch; a role is skipped only with that reason. These roles are not a tier-dependent required roster. The plugin-owned research subagents (`explorer`, `analyst`, `critic`, `verifier`) have `permission.edit = "deny"`, `permission.bash = "deny"`, and `permission.task = "deny"`; the plugin-owned `writer` is a scoped-write leaf — `edit` is denied everywhere except `<writer_docs_roots>/**`, `bash` and `task` are denied, and `webfetch`/`websearch` are allowed for targeted lookups with a source ledger. An external `writer_delegate_agent` keeps its host-defined permissions and does not inherit these restrictions. Analyst follows evidence, critic follows a draft conclusion, writer's substantive prose follows approved scope and evidence, and the consultant reviews and verifies: the writer writes the final files in scoped mode, or the consultant publishes the writer's returned text in read-only fallback. The default consultant, analyst and critic use different model families; verifier reuses critic's configured model, without a performance guarantee from that choice. Role caps are advisory ceilings rather than a runtime-enforced scheduler.
+
+The author brief lives at `$XDG_DATA_HOME/janus-agent/author/<projectId>/<docId>/brief.md` (fixed location; `<projectId>` derives from the project directory). The consultant creates and updates it; the writer reads it and never writes it. In scoped-write mode the consultant does not edit files under the writer roots — it reviews the writer's diff and requests bounded writer fixes.
 
 The consultant may route a bounded quick-answer subtask to `lite` and a bounded code example to `coder`; it does not implement production code itself. Coding is owned by `coder`: fully specified mechanical work goes to `coder-lite` (workspace edits allowed, external edits ask, further dispatch denied — its stop-and-report is a legitimate partial outcome the dispatcher integrates); judgment-heavy work stays with `coder` or goes to the optional `build` host escalation. `coder` selects L0/L1/L2/L3 process weight by task complexity and gates L2/L3 on user approval before editing.
 
@@ -355,13 +365,15 @@ The database file defaults to `<dataDir>/memory.sqlite3`. Override with the `JAN
 
 Canonical experience records (user-approved items, claims, evidence, decisions, preferences, revisions) live in the data directory. Derived artifacts (summaries, embeddings, FTS indexes, tags) are rebuildable and live alongside canonical data but can be deleted and rebuilt without losing accepted experience.
 
+The author state directory lives at `$XDG_DATA_HOME/janus-agent/author` (default `~/.local/share/janus-agent/author`). It holds one consultant-written brief per document at `author/<projectId>/<docId>/brief.md`; the writer has read access to it and never writes it. Removing it discards author-mode state; the consultant can rebuild a brief from a legacy document via the three-option prompt.
+
 ## Step 5: Verify the Install
 
 1. **Entries selectable**: start OpenCode and confirm `janus`, `consultant`, `coder`, and `lite` appear in the agent list.
 2. **lite workspace**: `~/.local/share/janus-agent/lite` exists and is the only pre-approved write location.
 3. **coder-lite lane registered**: the `coder-lite` agent appears as a subagent (steps 50, workspace-allow edits, task denied).
 4. **Memory MCP starts**: the `janus-memory` MCP server is registered. Its five tools (`memory_recall`, `memory_expand`, `memory_prepare`, `memory_commit`, `memory_manage`) are available to the consultant agent.
-5. **Research subagents registered**: `consultation-explorer`, `consultation-analyst`, `consultation-critic`, `consultation-verifier`, and `consultation-writer` appear as subagents (mode `subagent`), dispatched by the consultant via the `janus_dispatch` tool.
+5. **Research subagents registered**: `consultation-explorer`, `consultation-analyst`, `consultation-critic`, `consultation-verifier` (read-only), and `consultation-writer` (scoped-write: edits allowed only under `userdoc/**` unless `writer_docs_roots` is changed) appear as subagents (mode `subagent`), dispatched by the consultant via the `janus_dispatch` tool.
 6. **Skill present**: the skill file exists at `~/.config/opencode/skills/consultation/SKILL.md` (or your `$OPENCODE_CONFIG_DIR/skills/consultation/SKILL.md`).
 
 You can also run the automated integration proof:

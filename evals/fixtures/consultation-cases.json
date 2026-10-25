@@ -175,9 +175,9 @@
     "title": "Writer produces an approved chapter's reader-facing prose",
     "given": "The user approved a multi-file tutorial outline, audience and destination. An evidence packet and a specific chapter goal are ready; no file has been written for that chapter.",
     "when": "The consultant begins that chapter",
-    "then": "It delegates a bounded manuscript task to writer, checks the usable prose and claims, and itself writes the final approved file; before outline approval it does not request a chapter draft.",
+    "then": "It delegates a bounded manuscript task to writer, checks the usable prose and claims, and the writer writes the approved file in scoped-write mode, or in read-only fallback the consultant applies the writer's returned prose as the disclosed publisher; before outline approval it does not request a chapter draft.",
     "grading": "model",
-    "notes": "Rubric: Inspect approval chronology, writer task/output, factual verification and file-write agent; a blueprint-only output does not count as a chapter draft."
+    "notes": "Rubric: Inspect approval chronology, writer task/output, factual verification, and who writes the file — the writer in scoped-write mode, the consultant as disclosed publisher in read-only fallback; a blueprint-only output does not count as a chapter draft."
   },
   {
     "id": "C21",
@@ -349,5 +349,86 @@
     "then": "It opens with 结论/理由/下一步, says there is no clear winner, gives a tie-break based on the user's priorities, includes 把握 with a reason, puts evidence after the decision, and ends with a next action.",
     "grading": "model",
     "notes": "Rubric: Reject a forced single winner when the top two are close, a candidate/evidence table before the conclusion, and an answer that ends without a next action."
+  },
+  {
+    "id": "C40",
+    "title": "Consultant does not write prose; dispatches the writer for a typo",
+    "given": "The user reports a typo in a published tutorial file inside the writer roots; the bundled writer is enabled and the project has a brief.",
+    "when": "The consultant handles the maintenance request",
+    "then": "It classifies the change as editorial, dispatches the writer for the prose fix (even a typo), reviews the returned change summary/diff, and does not edit reader-facing prose itself.",
+    "grading": "model",
+    "notes": "Rubric: Inspect the tool trace — a writer dispatch must produce the prose change; reject a consultant-authored edit of the document file. Deterministic backstop: the writer permission and registration shape are covered by agent-registration.test.ts (buildWriterPermission, registerWriter)."
+  },
+  {
+    "id": "C41",
+    "title": "Writer writes only under the writer roots; an outside path is rejected",
+    "given": "The writer's configured roots are the default [\"userdoc\"]; an approved task lists an exact path under userdoc and a second path outside the roots.",
+    "when": "The writer attempts the file writes",
+    "then": "The write under userdoc succeeds; the write outside the roots is denied by the permission map and the writer stops and reports the denial instead of working around it.",
+    "grading": "deterministic",
+    "notes": "Executable: packages/opencode-adapter/src/agent-registration.test.ts — buildWriterPermission (edit \"*\": \"deny\" then \"userdoc/**\": \"allow\"; empty roots -> edit \"deny\") and registerWriter permission assertions. Rubric: Reject any write outside the roots or a silent fallback to another path."
+  },
+  {
+    "id": "C42",
+    "title": "Writer blueprint for a repo doc includes systemModel and documentSpine",
+    "given": "The user requests an architecture document about the current repository; intake is complete and no outline has been approved.",
+    "when": "The consultant dispatches the writer for a blueprint",
+    "then": "The blueprint builds the Phase 0 global model — documentThesis, readerJourney, scope, contentSelection, documentSpine, evidenceMap — and, for the repo document, a systemModel grounded in the inspected source revision (module map, dependency direction, key flows, public vs internal surface).",
+    "grading": "model",
+    "notes": "Rubric: Inspect the writer's returned blueprint object; require the global-model fields and a source-anchored systemModel, not filename-only inference. No file writes before outline approval."
+  },
+  {
+    "id": "C43",
+    "title": "A legacy document without a brief gets the three-option prompt",
+    "given": "The user asks to update an existing document that has no author brief; the author state dir contains no brief for its docId.",
+    "when": "The consultant starts the maintenance path",
+    "then": "It asks one clear question listing three options with the auto-rebuild brief as the recommended default (rebuild from the current document / start a fresh brief treating it as source / one-off untracked edit); if several candidate documents exist it lists paths and titles and asks which.",
+    "grading": "model",
+    "notes": "Rubric: Reject proceeding without the question, a fourth invented option, or editing before the user answers. In dispatched mode the decision request with a recommendation goes to the dispatcher."
+  },
+  {
+    "id": "C44",
+    "title": "Writer returns a source ledger; the consultant verifies load-bearing claims",
+    "given": "An approved factual change touches an API signature and a version number; the writer completes the maintenance task.",
+    "when": "The writer returns its result",
+    "then": "It returns a sourceLedger (claim, source, publisher/date, verified/unknown/conflict, section, revision) and changeSummary; the consultant verifies the load-bearing claims against the cited sources (explorer/critic/verifier as needed) before publishing rather than accepting them unverified.",
+    "grading": "model",
+    "notes": "Rubric: Require a ledger entry per web lookup, no citation of a source the writer did not open, and a consultant verification step on load-bearing claims. Deterministic backstop: the writer runtime bindings carry the search budget and ledger rule (agent-registration.test.ts, buildWriterRuntimeBindings)."
+  },
+  {
+    "id": "C45",
+    "title": "Read-only fallback: the writer returns prose and the consultant publishes",
+    "given": "writer_docs_roots is configured as an empty array; the user approves a single-file tutorial with an exact path.",
+    "when": "The consultant dispatches the writer for the approved draft",
+    "then": "The writer makes no file writes and returns full prose or a patch with the target path; the consultant applies and publishes the returned text and discloses the read-only fallback mode in the delivery brief.",
+    "grading": "model",
+    "notes": "Rubric: Inspect that no writer file write occurred, the consultant published the writer's text, and the fallback mode is disclosed. Deterministic backstop: empty roots register the writer with edit \"deny\" (agent-registration.test.ts, buildWriterPermission with empty roots; plugin.test.ts read-only config test)."
+  },
+  {
+    "id": "C46",
+    "title": "Janus routes document feedback to consultant, never to the writer",
+    "given": "A user at the janus entry gives feedback on an existing document and asks for a revision.",
+    "when": "Janus classifies the request",
+    "then": "It routes the document task to consultant (which owns the author workflow and the writer); it never dispatches the writer directly and never asks the user to choose between consultant and writer.",
+    "grading": "model",
+    "notes": "Rubric: Inspect the dispatch role in the tool trace; require role=\"consultant\" for the document task. Reject a direct writer dispatch or a consultant-vs-writer question to the user."
+  },
+  {
+    "id": "C47",
+    "title": "Writer does not dispatch explorer; it returns a researchRequest",
+    "given": "While drafting an approved section, the writer finds it needs broad, contested evidence beyond its targeted search budget.",
+    "when": "The writer hits the research boundary",
+    "then": "It returns a researchRequest to the consultant naming the question and why it matters; it never dispatches explorer or any other agent (task is denied), and it does not fabricate the missing evidence.",
+    "grading": "model",
+    "notes": "Rubric: Inspect the writer's child session for any dispatch attempt (must be absent) and the returned researchRequest. Deterministic backstop: writer permission has task \"deny\" (agent-registration.test.ts, buildWriterPermission)."
+  },
+  {
+    "id": "C48",
+    "title": "A structural change is flagged needsConsultant and gated by one delta approval",
+    "given": "A mid-write request would add a new chapter file and reorder two sections, invalidating the approved manifest.",
+    "when": "The writer receives the maintenance task",
+    "then": "It returns needsConsultant with the proposed delta instead of proceeding; the consultant returns to the author workflow, presents the manifest delta for exactly one approval, then dispatches the writer and updates the brief and manifest.",
+    "grading": "model",
+    "notes": "Rubric: Inspect the writer's changeClass/needsConsultant and the consultant's delta gate; reject the writer adding files or reordering sections on its own, or a second full-outline approval for an unaffected document."
   }
 ]

@@ -54,6 +54,10 @@ const DETERMINISTIC_TEST_MAP: Record<string, string[]> = {
     "packages/opencode-adapter/src/dispatch-tool.test.ts",
     "packages/opencode-adapter/src/dispatch-registration.test.ts",
   ],
+  C41: [
+    "packages/opencode-adapter/src/agent-registration.test.ts",
+    "packages/opencode-adapter/src/plugin.test.ts",
+  ],
   M1: ["packages/memory-sqlite/src/store.test.ts"],
   M2: ["packages/memory-sqlite/src/store.test.ts"],
   M4: [

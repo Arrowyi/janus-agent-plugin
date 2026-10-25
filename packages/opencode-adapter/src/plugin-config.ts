@@ -36,6 +36,10 @@ export const JanusPluginConfigSchema = z.object({
   writer_agent: z.string().default("consultation-writer"),
   writer_model: z.string().optional(),
   writer_enabled: z.boolean().default(true),
+  // Project-relative directories the bundled writer may write approved
+  // document files into. `[]` disables writer file writes (read-only
+  // fallback: the writer returns prose and the consultant publishes).
+  writer_docs_roots: z.array(z.string().min(1)).default(["userdoc"]),
   writer_delegate_agent: z.string().optional(),
   writer_delegate_model: z.string().optional(),
   coder_agent: z.string().default("coder"),
@@ -212,6 +216,49 @@ export function resolveCostGuardUsd(config: JanusPluginConfig): number {
 }
 
 /**
+ * Normalize `writer_docs_roots` entries into clean project-relative paths.
+ *
+ * Per root: trim whitespace, strip leading `./`, strip trailing `/`. Reject
+ * empty strings, absolute paths (POSIX or Windows-style), `~` shortcuts, any
+ * `..` segment, and a root that normalizes to `.` or empty (the whole
+ * project is never a writer root). Nested relative paths such as
+ * `docs/guides` are allowed. Throws an Error naming the invalid root.
+ */
+export function normalizeWriterDocsRoots(roots: string[]): string[] {
+  const normalized: string[] = []
+  for (const root of roots) {
+    let candidate = root.trim()
+    if (candidate.length === 0) {
+      throw new Error(`invalid writer_docs_roots root "${root}": an empty string is not a valid root`)
+    }
+    while (candidate.startsWith("./")) candidate = candidate.slice(2)
+    candidate = candidate.replace(/\/+$/, "")
+    if (candidate.startsWith("/") || candidate.startsWith("\\\\") || /^[a-zA-Z]:[\\/]/.test(candidate)) {
+      throw new Error(
+        `invalid writer_docs_roots root "${root}": absolute paths are not allowed; use a project-relative path`,
+      )
+    }
+    if (candidate === "~" || candidate.startsWith("~/") || candidate.startsWith("~\\")) {
+      throw new Error(
+        `invalid writer_docs_roots root "${root}": "~" shortcuts are not allowed; use a project-relative path`,
+      )
+    }
+    if (candidate === ".." || candidate.split(/[\\/]/).includes("..")) {
+      throw new Error(
+        `invalid writer_docs_roots root "${root}": ".." segments are not allowed; a root must stay inside the project`,
+      )
+    }
+    if (candidate.length === 0 || candidate === ".") {
+      throw new Error(
+        `invalid writer_docs_roots root "${root}": the whole project is not a valid writer root`,
+      )
+    }
+    normalized.push(candidate)
+  }
+  return normalized
+}
+
+/**
  * Resolve the plugin config file path from environment variables.
  *
  * Priority: `$JANUS_CONFIG` >
@@ -274,6 +321,15 @@ export async function loadPluginConfig(env: NodeJS.ProcessEnv): Promise<JanusPlu
     throw new Error(
       `janus-agent config: invalid configuration in ${configPath}:\n${formatZodError(result.error)}`,
     )
+  }
+
+  // Root-level semantic validation beyond the schema shape, so an invalid
+  // writer root fails config load with a message that names the file.
+  try {
+    normalizeWriterDocsRoots(result.data.writer_docs_roots)
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e)
+    throw new Error(`janus-agent config: ${detail} (in ${configPath})`)
   }
 
   return result.data

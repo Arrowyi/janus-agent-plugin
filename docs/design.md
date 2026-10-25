@@ -20,14 +20,14 @@ A user who already knows the task type can start at `consultant`, `coder`, or `l
 | Role | Layer | Mode | Owns | Does not own |
 |---|---|---|---|---|
 | `janus` | entry | all | general questions, light tasks, routing | deep evidence, heavy coding, memory records |
-| `consultant` | entry | primary | evidence grading, decisions, research, plans, durable documents | code implementation, daily coding |
+| `consultant` | entry | primary | evidence grading, decisions, research, plans, author-mode documents (intake, outline approval, verification, the author brief, publishing) | code implementation, daily coding, reader-facing prose authoring (writer-owned) |
 | `coder` | entry | all | coding, debugging, refactoring, tests, repo work, quality gate | consulting/selection, source grading, research reports |
 | `lite` | entry | all | quick facts, concepts, simple how-to | multi-source evidence, coding, complex planning |
 | `explorer` | research | subagent | source gathering, metadata, initial grade | interpretation, final recommendation |
 | `analyst` | research | subagent | independent interpretation, cross-model review | gathering, final answer |
 | `critic` | research | subagent | counter-evidence, alternatives, conclusion challenge | source-intent audit, final answer |
 | `verifier` | research | subagent | source intent and independence audit | fact-checking, final answer |
-| `writer` | research | subagent | author-mode drafting and editorial review | research, final files, fact-checking |
+| `writer` | authoring | subagent | all reader-facing prose: blueprints, drafts, maintenance, coherence; writes approved document files under `writer_docs_roots` (scoped) | evidence gathering, outline approval, the brief, memory, publishing (consultant-owned); broad research |
 | `coder-lite` | coding | subagent | fully specified mechanical coding/file tasks | judgment, debugging, cross-module, security-sensitive work |
 | `build` | delegation | host | optional stronger-model coding escalation | plugin policy, final answer |
 
@@ -47,7 +47,7 @@ coder-lite  -> none (leaf)
 build       -> none (host agent)
 ```
 
-`coder` never dispatches `consultant`; that would create a cycle. Evidence flows to the consultant, code flows to the coder. `lite` is a leaf and never dispatches. `janus` is the only entry that can reach both hubs.
+`coder` never dispatches `consultant`; that would create a cycle. Evidence flows to the consultant, code flows to the coder. `lite` is a leaf and never dispatches. `janus` is the only entry that can reach both hubs. Document tasks (new documents, edits, feedback, maintenance) route to `consultant` from `janus`; `janus` never dispatches `writer` directly and never asks the user to choose between consultant and writer.
 
 ## 4. Coder process weight
 
@@ -97,19 +97,24 @@ Defaults:
 | `coder-lite` | `opencode-go/glm-5.3-flash` |
 | `build` | host default (optional `build_model`) |
 
-Every role resolves to a single configured model. There is no plugin fallback chain. A user can override any role with `<role>_model` in `~/.config/janus-agent/config.jsonc`.
+Every role resolves to a single configured model. There is no plugin fallback chain. A user can override any role with `<role>_model` in `~/.config/janus-agent/config.jsonc`. The writer's writable document roots are configured with `writer_docs_roots` (default `["userdoc"]`, project-relative paths such as `docs/guides` allowed; an empty array selects the read-only fallback where the writer returns prose and the consultant publishes).
 
 The intended cross-family audit is consultant (GLM) ≠ analyst (Qwen) ≠ critic (Gemini). If a user overrides those roles onto one model family, the independence of the audit is reduced; the plugin does not enforce model diversity.
 
 ## 7. Permissions and dispatch
 
 - `janus` and `coder` are full execution seats with host-default permissions.
-- `consultant` is a primary evidence seat; it may write approved author-mode files but does not implement production code.
+- `consultant` is a primary evidence seat; it owns the author brief and publishing but does not implement production code, and in author mode it does not write reader-facing prose (the writer does).
 - `lite` can read/search, write only inside its workspace, and cannot dispatch (`task: deny`).
-- The five research subagents are read-only and leaf nodes: `edit: deny`, `bash: deny`, `task: deny`.
+- Four research subagents (`explorer`, `analyst`, `critic`, `verifier`) are read-only leaf nodes: `edit: deny`, `bash: deny`, `task: deny`.
+- The `writer` is a scoped-write leaf node: `edit` is denied everywhere except `<writer_docs_roots>/**` (default `userdoc/**`; `"*": "deny"` first, root allow rules after — emitted both project-relative and anchored to the project directory in absolute form, because the host matches edit patterns literally against the submitted file path and the writer's tools submit realpath'd absolute paths), `bash: "deny"`, `task: "deny"`, `webfetch`/`websearch` allowed, plus read access to the fixed author state dir via `external_directory`. Setting `writer_docs_roots: []` makes the writer read-only (`edit: "deny"`) — the writer then returns prose or patches and the consultant publishes them. The writer is step-capped at 80.
 - `coder-lite` can edit the workspace, asks for external edits, and cannot dispatch (`task: deny`); it is step-capped at 50.
 
 All dispatch roles use the recoverable lifecycle: `janus_dispatch`, `janus_dispatch_wait`, `janus_dispatch_cancel`. Pending/unknown is not failure; wait on the same job. There is no automatic fallback model.
+
+### 7.1 Author state and the brief
+
+Author-mode state lives in one file per document: the brief at `$XDG_DATA_HOME/janus-agent/author/<projectId>/<docId>/brief.md` (fixed location; `projectId` is the sanitized project basename plus a short stable hash of the absolute project directory). The consultant creates and updates the brief; the writer reads it and never writes it. The brief never lives in `userdoc/` or the published document tree. In scoped-write mode the consultant does not edit the writer roots — it reviews the writer's diff and requests bounded writer fixes; in read-only fallback the consultant applies and publishes the writer's returned text and discloses the fallback.
 
 ## 8. Memory
 

@@ -6,6 +6,7 @@ import { createHash } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import type { Plugin, PluginInput, Config } from "@opencode-ai/plugin"
 import { JanusAgentPlugin, createJanusConfigHook } from "./plugin.ts"
+import { computeProjectId } from "./agent-registration.ts"
 import { resolveAsset } from "./asset-paths.ts"
 import { computeNamespace } from "./namespace.ts"
 
@@ -110,12 +111,13 @@ describe("createJanusConfigHook", () => {
     }
   })
 
-  it("registers the writer subagent by default", async () => {
+  it("registers the writer subagent by default with scoped-write permission over userdoc", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
     delete process.env.JANUS_CONFIG
     delete process.env.XDG_CONFIG_HOME
+    delete process.env.XDG_DATA_HOME
     process.env.OPENCODE_CONFIG_DIR = tmpHome
     const config: Config = {}
     const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
@@ -125,10 +127,157 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      const writer = config.agent?.["consultation-writer"] as { mode: string; permission: Record<string, unknown> }
+      const writer = config.agent?.["consultation-writer"] as {
+        mode: string
+        description: string
+        steps: number
+        permission: Record<string, unknown>
+        prompt: string
+      }
       expect(writer.mode).toBe("subagent")
-      expect(writer.permission).toEqual({ edit: "deny", bash: "deny", task: "deny" })
+      expect(writer.steps).toBe(80)
+      expect(writer.description).toContain("sole author of reader-facing prose")
+      expect(writer.permission.bash).toBe("deny")
+      expect(writer.permission.task).toBe("deny")
+      expect(writer.permission.webfetch).toBe("allow")
+      expect(writer.permission.websearch).toBe("allow")
+      const edit = writer.permission.edit as Record<string, string>
+      expect(edit["*"]).toBe("deny")
+      expect(edit["userdoc/**"]).toBe("allow")
+      const authorDir = join(tmpHome, ".local", "share", "janus-agent", "author")
+      const external = writer.permission.external_directory as Record<string, string>
+      expect(external[`${authorDir}/**`]).toBe("allow")
+      expect(writer.prompt).toContain("Write mode: `scoped`")
+      // the author state dir is created at registration
+      expect(existsSync(authorDir)).toBe(true)
     } finally {
+      delete process.env.XDG_DATA_HOME
+      rmSync(tmpHome, { recursive: true, force: true })
+    }
+  })
+
+  it("scopes the writer permission to writer_docs_roots from the plugin config", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-writerroots-"))
+    const configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, '{\n  "writer_docs_roots": ["./docs/guides/", "userdoc"]\n}')
+    process.env.HOME = tmpHome
+    process.env.JANUS_CONFIG = configPath
+    delete process.env.XDG_CONFIG_HOME
+    delete process.env.XDG_DATA_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
+
+    try {
+      // when
+      await hook(config)
+
+      // then
+      const writer = config.agent?.["consultation-writer"] as { permission: Record<string, unknown> }
+      const edit = writer.permission.edit as Record<string, string>
+      expect(edit["docs/guides/**"]).toBe("allow")
+      expect(edit["userdoc/**"]).toBe("allow")
+      // Root allow rules are also anchored to the hook's project directory in
+      // absolute form (as supplied and without the leading slash) so the
+      // writer's absolute-path tool calls match an allow rule.
+      expect(edit["/tmp/project/docs/guides/**"]).toBe("allow")
+      expect(edit["/tmp/project/userdoc/**"]).toBe("allow")
+      expect(edit["tmp/project/userdoc/**"]).toBe("allow")
+    } finally {
+      delete process.env.XDG_DATA_HOME
+      rmSync(tmpHome, { recursive: true, force: true })
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it("registers a read-only writer when writer_docs_roots is empty", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-writerempty-"))
+    const configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, '{\n  "writer_docs_roots": []\n}')
+    process.env.HOME = tmpHome
+    process.env.JANUS_CONFIG = configPath
+    delete process.env.XDG_CONFIG_HOME
+    delete process.env.XDG_DATA_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
+
+    try {
+      // when
+      await hook(config)
+
+      // then
+      const writer = config.agent?.["consultation-writer"] as {
+        permission: Record<string, unknown>
+        prompt: string
+      }
+      expect(writer.permission).toEqual({
+        edit: "deny",
+        bash: "deny",
+        task: "deny",
+        webfetch: "allow",
+        websearch: "allow",
+      })
+      expect(writer.prompt).toContain("Write mode: `read-only`")
+    } finally {
+      delete process.env.XDG_DATA_HOME
+      rmSync(tmpHome, { recursive: true, force: true })
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it("rejects invalid writer_docs_roots with an error naming the config file", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-writerinvalid-"))
+    const configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, '{\n  "writer_docs_roots": ["/abs/docs"]\n}')
+    process.env.HOME = tmpHome
+    process.env.JANUS_CONFIG = configPath
+    delete process.env.XDG_CONFIG_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
+
+    try {
+      // when / then
+      await expect(hook(config)).rejects.toThrow('invalid writer_docs_roots root "/abs/docs"')
+      await expect(hook(config)).rejects.toThrow(configPath)
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true })
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it("includes the author brief path in the consultant prompt", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    process.env.HOME = tmpHome
+    delete process.env.JANUS_CONFIG
+    delete process.env.XDG_CONFIG_HOME
+    delete process.env.XDG_DATA_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const config: Config = {}
+    const projectDirectory = "/tmp/project"
+    const hook = createJanusConfigHook({ id: "proj-123" }, projectDirectory)
+
+    try {
+      // when
+      await hook(config)
+
+      // then
+      const consultant = config.agent?.["consultant"] as { prompt: string }
+      const authorDir = join(tmpHome, ".local", "share", "janus-agent", "author")
+      const projectId = computeProjectId(projectDirectory)
+      expect(consultant.prompt).toContain(`Author state dir: \`${authorDir}\``)
+      expect(consultant.prompt).toContain(`project id: \`${projectId}\``)
+      expect(consultant.prompt).toContain(`${authorDir}/${projectId}/<docId>/brief.md`)
+    } finally {
+      delete process.env.XDG_DATA_HOME
       rmSync(tmpHome, { recursive: true, force: true })
     }
   })

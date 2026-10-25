@@ -22,6 +22,7 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     verifier_enabled: true,
     writer_agent: "consultation-writer",
     writer_enabled: true,
+    writer_docs_roots: ["userdoc"],
     coder_agent: "coder",
     coder_enabled: true,
     lite_agent: "lite",

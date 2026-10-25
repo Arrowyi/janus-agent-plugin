@@ -7,14 +7,14 @@ Janus is a daily-driver agent family for [OpenCode](https://opencode.ai) — `ja
 | Agent | Default model | What it does |
 |-------|---------------|--------------|
 | `janus` (primary/all) | `opencode-go/glm-5.3` | Default daily entry. Handles general questions, light tasks, and routing: consulting → `consultant`, coding → `coder`, quick answers → `lite`. Does not do deep research or heavy coding itself |
-| `consultant` (primary) | `opencode-go/glm-5.3` | Evidence-driven consultations in six modes: `select`, `verify`, `plan`, `guide`, `research`, `author`. Leads the five research specialists |
+| `consultant` (primary) | `opencode-go/glm-5.3` | Evidence-driven consultations in six modes: `select`, `verify`, `plan`, `guide`, `research`, `author`. Leads the four read-only research specialists and the scoped-write writer |
 | `coder` (primary/all) | `opencode-go/glm-5.3` | Coding entry and execution specialist. Selects L0/L1/L2/L3 process weight by task complexity, gates design on user approval for L2/L3, and runs the correctness-critical quality gate |
 | `lite` (primary/all) | `opencode-go/deepseek-v4.1-flash` | Economical quick-answer leaf: facts, concepts, simple how-to. Never dispatches; escalates complex/contested questions to `consultant`, coding to `coder` |
 | `consultation-explorer` | `opencode-go/deepseek-v4.1-flash` | Read-only search specialist returning graded, structured evidence reports |
 | `consultation-analyst` | `opencode-go/qwen3.8-max` | Read-only cross-model reasoning over gathered evidence |
 | `consultation-critic` | `opencode/gemini-3.8-flash` | Read-only adversarial reviewer hunting counter-evidence |
 | `consultation-verifier` | `opencode/gemini-3.8-flash` | Read-only source-influence auditor (shilling, smear campaigns, undisclosed sponsorship) |
-| `consultation-writer` | `opencode/claude-sonnet-5-5` | Read-only writing specialist for `author`-mode documents |
+| `consultation-writer` | `opencode/claude-sonnet-5-5` | Scoped-write author executor and the sole author of reader-facing prose for `author`-mode documents: blueprints, section/chapter drafts, maintenance, coherence passes. Writes only approved files under the configured `writer_docs_roots` (default `userdoc`; `[]` = read-only fallback where the consultant publishes its returned prose); targeted web lookups with a source ledger, no shell, no dispatch |
 | `coder-lite` (subagent) | `opencode-go/glm-5.3-flash` | Mechanical coding lane: fully specified bulk edits, formatting/lint fixes, boilerplate from templates. Workspace edits allowed, everything else asks; stops and reports up on anything ambiguous |
 | `build` (dispatch role) | host's build agent | Optional stronger-model escalation for judgment-heavy coding; normally dispatched by `coder`. If unavailable, the coder codes itself or reports the gap |
 | `janus-memory` (MCP) | — | Local SQLite memory shared across the agents: auto-saved consultation records, recall, edit, delete, outcome feedback |
@@ -80,7 +80,9 @@ Answers are terminal-first: a full answer opens with `结论 / 理由 / 下一�
 
 **Memory.** Consultations auto-save (question + conclusion summaries — never transcripts). Browse and manage them with the `/janus-memory` command or the `janus-memory` CLI. Prior experience and preferences surface in later consultations, with an outcome-feedback loop.
 
-**Configuration.** Optional JSONC config at `~/.config/janus-agent/config.jsonc` (or `$JANUS_CONFIG` / XDG): per-agent models and model-prompt blocks, agent names, enable flags, team caps, memory and embedding settings. The full field reference lives in [docs/deployment.md](docs/deployment.md).
+**Documents.** Author-mode documents are produced by a consultant + writer pair: the consultant owns intake, evidence, the outline approval, the author brief, verification, and publishing; the writer is the sole author of reader-facing prose and (unless `writer_docs_roots` is empty) the sole writer of approved document files under the configured roots (default `userdoc`). With `writer_docs_roots: []` the writer returns prose and the consultant publishes it.
+
+**Configuration.** Optional JSONC config at `~/.config/janus-agent/config.jsonc` (or `$JANUS_CONFIG` / XDG): per-agent models and model-prompt blocks, agent names, enable flags, `writer_docs_roots`, team caps, memory and embedding settings. The full field reference lives in [docs/deployment.md](docs/deployment.md).
 
 **Verify your install:**
 

@@ -19,7 +19,7 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 14 cases from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, and C31-C39 Role Family B routing/process plus terminal-output usability cases.
+- `fixtures/consultation-cases.json` - 14 cases from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, and C40-C48 author-separation (writer/consultant) cases.
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
@@ -79,6 +79,7 @@ id encodes the scenario, and the test file encodes the function under test.
 | C28 | packages/opencode-adapter/src/dispatch-lifecycle.test.ts |
 | C29 | packages/opencode-adapter/src/dispatch-cancel.test.ts |
 | C30 | packages/opencode-adapter/src/dispatch-lifecycle.test.ts; packages/opencode-adapter/src/dispatch-tool.test.ts; packages/opencode-adapter/src/dispatch-registration.test.ts |
+| C41 | packages/opencode-adapter/src/agent-registration.test.ts; packages/opencode-adapter/src/plugin.test.ts |
 | M1 | packages/memory-sqlite/src/store.test.ts |
 | M2 | packages/memory-sqlite/src/store.test.ts |
 | M4 | packages/memory-sqlite/src/store.test.ts |
@@ -90,8 +91,8 @@ id encodes the scenario, and the test file encodes the function under test.
 | M11 | packages/memory-sqlite/src/store.test.ts |
 | M12 | packages/memory-sqlite/src/multi-instance.test.ts |
 
-Model-graded cases (C3, C4, C5, C6, C7, C8, C10, C11, C12, C13, C14, C15-C25, C31-C39, M3, M5) have no test-file
-mapping by design.
+Model-graded cases (C3, C4, C5, C6, C7, C8, C10, C11, C12, C13, C14, C15-C25, C31-C40, C42-C48, M3, M5) have no test-file
+mapping by design (C41, C44, C45, and C47 carry deterministic backstops named in their notes).
 
 ## Recoverable lifecycle evaluation (C26-C30)
 
@@ -136,7 +137,7 @@ and its host permissions are retained, not replaced by bundled restrictions.
 | analyst | Same launch/wait/cancel | One | Integrate returned analysis; inline reasoning is not an independent check |
 | critic | Same launch/wait/cancel | One | Await challenge before dependent synthesis; no false review credit |
 | verifier | Same launch/wait/cancel | One | Separate execution status from evidence-quality uncertainty |
-| bundled writer | Same launch/wait/cancel | One (single-model chain) | No fallback advance — a confirmed terminal retryable failure ends the job after one attempt; preserve outline gate |
+| bundled writer | Same launch/wait/cancel | One (single-model chain) | No fallback advance — a confirmed terminal retryable failure ends the job after one attempt; preserve outline gate and scoped-write roots (edit only under `writer_docs_roots`; `[]` = read-only fallback) |
 | delegate writer | Same launch/wait/cancel | One, pinned model or host selection | No plugin fallback advance; retain external host permissions |
 
 Exercise pending/unknown/recovery/cancel for each role and both delegate model
@@ -156,6 +157,25 @@ quality. Run them with a live model and record the observed tool trace:
 
 Reject a run that uses the same process weight for every task. The expected
 failure modes are process theater on L0 and skipped design on L2/L3.
+
+## Author separation evaluation (C40-C48)
+
+These cases check the consultant/writer author split in `author` mode and
+maintenance. Run them with a live model and record the observed tool trace
+plus the writer's child-session trace:
+
+- **C40/C41** — all reader-facing prose (even a typo) is dispatched to `writer`; the writer writes only under `writer_docs_roots` and reports a denied outside path instead of working around it.
+- **C42** — a repo-document blueprint returns the Phase 0 global model (`documentSpine`, `evidenceMap`, `systemModel` grounded in the inspected source revision).
+- **C43** — a legacy document without a brief triggers the three-option question with the auto-rebuild default; multiple candidates are listed with paths and titles.
+- **C44** — the writer returns a `sourceLedger` for every web lookup and the consultant verifies load-bearing claims before publishing.
+- **C45** — with `writer_docs_roots: []` the writer returns prose, the consultant publishes it, and the fallback mode is disclosed.
+- **C46** — `janus` routes document tasks to `consultant`, never to `writer` directly, and never asks the user to choose consultant vs writer.
+- **C47** — the writer never dispatches explorer; broad research returns to the consultant as a `researchRequest`.
+- **C48** — a structural change returns `needsConsultant`; the consultant presents the manifest delta for exactly one approval, then dispatches the writer and updates the brief.
+
+Reject a run where the consultant edits prose itself in author mode, where
+the writer writes outside its roots, or where author state silently drifts
+from the brief and manifest.
 
 ## Task-fit routing evaluation (C15-C25)
 

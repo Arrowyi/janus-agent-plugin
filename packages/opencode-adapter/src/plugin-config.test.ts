@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { z } from "zod"
 
 import {
@@ -6,6 +9,8 @@ import {
   JanusPluginConfigSchema,
   TEAM_CAPS_DEFAULTS,
   TIER_ROLE_CAPS_DEFAULTS,
+  loadPluginConfig,
+  normalizeWriterDocsRoots,
   resolveCostGuardUsd,
   resolveRoleModel,
   resolveRoleModelChain,
@@ -130,6 +135,26 @@ describe("writer role configuration", () => {
     expect(cfg.writer_delegate_model).toBe("p/m")
   })
 
+  it("defaults writer_docs_roots to [\"userdoc\"] and accepts custom roots and an empty array", () => {
+    // given // when
+    const defaults = config()
+    const custom = config({ writer_docs_roots: ["docs/guides", "userdoc"] })
+    const empty = config({ writer_docs_roots: [] })
+
+    // then
+    expect(defaults.writer_docs_roots).toEqual(["userdoc"])
+    expect(custom.writer_docs_roots).toEqual(["docs/guides", "userdoc"])
+    expect(empty.writer_docs_roots).toEqual([])
+  })
+
+  it("rejects an empty root string at the schema level; whitespace-only is the normalizer's job", () => {
+    // given // when // then
+    expect(() => config({ writer_docs_roots: [""] })).toThrow()
+    // min(1) counts characters, so "  " passes the schema and is rejected
+    // by normalizeWriterDocsRoots (trim -> empty) at config load instead.
+    expect(() => normalizeWriterDocsRoots(["userdoc", "  "])).toThrow('invalid writer_docs_roots root "  "')
+  })
+
   it("defaults writer to 0 when a tier matrix omits it", () => {
     // given
     const cfg = config({
@@ -144,6 +169,79 @@ describe("writer role configuration", () => {
     expect(resolveTierRoleCaps(cfg).standard.writer).toBe(0)
     expect(resolveTierRoleCaps(cfg).fast.writer).toBe(0)
     expect(resolveTierRoleCaps(cfg).deep.writer).toBe(0)
+  })
+})
+
+describe("normalizeWriterDocsRoots", () => {
+  it("normalizes leading ./ and trailing / and keeps nested relative paths", () => {
+    // given // when // then
+    expect(normalizeWriterDocsRoots(["./userdoc/"])).toEqual(["userdoc"])
+    expect(normalizeWriterDocsRoots(["  ./docs/guides///  "])).toEqual(["docs/guides"])
+    expect(normalizeWriterDocsRoots(["docs/guides"])).toEqual(["docs/guides"])
+    expect(normalizeWriterDocsRoots([])).toEqual([])
+  })
+
+  it("rejects absolute POSIX and Windows-style paths", () => {
+    // given // when // then
+    expect(() => normalizeWriterDocsRoots(["/abs/root"])).toThrow('invalid writer_docs_roots root "/abs/root"')
+    expect(() => normalizeWriterDocsRoots(["C:\\Users\\doc"])).toThrow('invalid writer_docs_roots root "C:\\Users\\doc"')
+    expect(() => normalizeWriterDocsRoots(["C:/Users/doc"])).toThrow('invalid writer_docs_roots root "C:/Users/doc"')
+  })
+
+  it("rejects ~ shortcuts and any .. segment", () => {
+    // given // when // then
+    expect(() => normalizeWriterDocsRoots(["~"])).toThrow('invalid writer_docs_roots root "~"')
+    expect(() => normalizeWriterDocsRoots(["~/docs"])).toThrow('invalid writer_docs_roots root "~/docs"')
+    expect(() => normalizeWriterDocsRoots([".."])).toThrow('invalid writer_docs_roots root ".."')
+    expect(() => normalizeWriterDocsRoots(["docs/../userdoc"])).toThrow('invalid writer_docs_roots root "docs/../userdoc"')
+  })
+
+  it("rejects roots that normalize to . or empty (the whole project)", () => {
+    // given // when // then
+    expect(() => normalizeWriterDocsRoots(["."])).toThrow('invalid writer_docs_roots root "."')
+    expect(() => normalizeWriterDocsRoots(["./"])).toThrow('invalid writer_docs_roots root "./"')
+    expect(() => normalizeWriterDocsRoots([""])).toThrow('invalid writer_docs_roots root ""')
+  })
+
+  it("names the invalid root when one of several roots is bad", () => {
+    // given // when // then
+    expect(() => normalizeWriterDocsRoots(["userdoc", "/etc"])).toThrow('invalid writer_docs_roots root "/etc"')
+  })
+})
+
+describe("loadPluginConfig validates writer_docs_roots", () => {
+  it("rejects an invalid root with an Error that names the config file", async () => {
+    // given
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "writer-roots-invalid-"))
+    const configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, '{\n  "writer_docs_roots": ["/abs/docs"]\n}')
+
+    try {
+      // when // then
+      await expect(loadPluginConfig({ JANUS_CONFIG: configPath })).rejects.toThrow(
+        `janus-agent config: invalid writer_docs_roots root "/abs/docs"`,
+      )
+      await expect(loadPluginConfig({ JANUS_CONFIG: configPath })).rejects.toThrow(configPath)
+    } finally {
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it("accepts an empty writer_docs_roots array (read-only fallback)", async () => {
+    // given
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "writer-roots-empty-"))
+    const configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, '{\n  "writer_docs_roots": []\n}')
+
+    try {
+      // when
+      const cfg = await loadPluginConfig({ JANUS_CONFIG: configPath })
+
+      // then
+      expect(cfg.writer_docs_roots).toEqual([])
+    } finally {
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
   })
 })
 

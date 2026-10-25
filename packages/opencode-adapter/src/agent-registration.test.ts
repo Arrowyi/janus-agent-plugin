@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -19,6 +19,10 @@ import {
   buildJanusRuntimeBindings,
   buildLitePermission,
   buildCoderLitePermission,
+  buildWriterPermission,
+  buildWriterRuntimeBindings,
+  computeProjectId,
+  resolveAuthorStateDir,
   resolveLiteWorkspaceDir as resolveLiteWorkspaceDirLocal,
   injectRuntimeBindings,
   injectModelPrompt,
@@ -43,6 +47,7 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     verifier_enabled: true,
     writer_agent: "consultation-writer",
     writer_enabled: true,
+    writer_docs_roots: ["userdoc"],
     coder_agent: "coder",
     coder_enabled: true,
     lite_agent: "lite",
@@ -244,6 +249,62 @@ describe("buildRuntimeBindings", () => {
     // then
     expect(disabledBlock).toContain("Economical leaf: lite DISABLED by configuration")
     expect(disabledBlock).toContain("Coding delegate: coder DISABLED by configuration")
+  })
+
+  it("reports the scoped writer write mode with the effective roots", () => {
+    // given
+    const config = makeConfig({ writer_docs_roots: ["./docs/guides/", "userdoc"] })
+
+    // when
+    const block = buildRuntimeBindings(config, "oc-ns")
+
+    // then
+    expect(block).toContain("Writer write mode: `scoped`")
+    expect(block).toContain("`docs/guides`")
+    expect(block).toContain("`userdoc`")
+    expect(block).toContain("sole author of reader-facing prose")
+    expect(block).toContain("you do not edit those roots in scoped mode")
+  })
+
+  it("reports the read-only writer fallback when writer_docs_roots is empty", () => {
+    // given
+    const config = makeConfig({ writer_docs_roots: [] })
+
+    // when
+    const block = buildRuntimeBindings(config, "oc-ns")
+
+    // then
+    expect(block).toContain("Writer write mode: `read-only`")
+    expect(block).toContain("you apply and publish the returned text as the disclosed publisher")
+  })
+
+  it("includes the author state dir, project id, and brief path when an author binding is supplied", () => {
+    // given
+    const config = makeConfig()
+
+    // when
+    const block = buildRuntimeBindings(config, "oc-ns", {
+      authorStateDir: "/xdg/data/janus-agent/author",
+      projectId: "my-project-a1b2c3d4",
+    })
+
+    // then
+    expect(block).toContain("Author state dir: `/xdg/data/janus-agent/author`")
+    expect(block).toContain("project id: `my-project-a1b2c3d4`")
+    expect(block).toContain("/xdg/data/janus-agent/author/my-project-a1b2c3d4/<docId>/brief.md")
+    expect(block).toContain("the writer reads it and never writes it")
+  })
+
+  it("omits the author lines when no author binding is supplied", () => {
+    // given
+    const config = makeConfig()
+
+    // when
+    const block = buildRuntimeBindings(config, "oc-ns")
+
+    // then
+    expect(block).not.toContain("Author state dir")
+    expect(block.endsWith("Memory namespace: `oc-ns`")).toBe(true)
   })
 })
 
@@ -520,6 +581,40 @@ describe("registerConsultantAgent", () => {
     expect(consultant.prompt).not.toContain("<!-- RUNTIME-BINDINGS")
     expect(consultant.prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
   })
+
+  it("includes the author state dir, project id, and brief path when the project directory is supplied", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+    const env = { HOME: "/home/test-user" } as NodeJS.ProcessEnv
+    const authorDir = "/home/test-user/.local/share/janus-agent/author"
+    const projectId = computeProjectId("/tmp/my-project")
+
+    // when
+    await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", env)
+
+    // then
+    const consultant = config.agent?.["consultant"] as { prompt: string }
+    expect(consultant.prompt).toContain(`Author state dir: \`${authorDir}\``)
+    expect(consultant.prompt).toContain(`project id: \`${projectId}\``)
+    expect(consultant.prompt).toContain(`${authorDir}/${projectId}/<docId>/brief.md`)
+    expect(consultant.prompt).toContain("the writer reads it and never writes it")
+    expect(consultant.prompt).toContain("Writer write mode: `scoped`")
+  })
+
+  it("omits the author lines when no project directory is supplied", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+
+    // when
+    await registerConsultantAgent(config, pluginConfig, "oc-ns")
+
+    // then
+    const consultant = config.agent?.["consultant"] as { prompt: string }
+    expect(consultant.prompt).not.toContain("Author state dir")
+    expect(consultant.prompt).toContain("Writer write mode: `scoped`")
+  })
 })
 
 describe("registerConsultationCritic", () => {
@@ -687,33 +782,258 @@ describe("registerVerifier", () => {
   })
 })
 
-describe("registerWriter", () => {
-  it("installs a shell-free read-only writer", async () => {
+describe("buildWriterPermission", () => {
+  it("denies edit everywhere except the roots, denies bash and task, allows web lookups", () => {
     // given
+    const authorDir = "/xdg/data/janus-agent/author"
+
+    // when
+    const permission = buildWriterPermission(["userdoc", "docs/guides"], authorDir)
+
+    // then
+    expect(permission.bash).toBe("deny")
+    expect(permission.task).toBe("deny")
+    expect(permission.webfetch).toBe("allow")
+    expect(permission.websearch).toBe("allow")
+    const edit = permission.edit as Record<string, string>
+    expect(edit["*"]).toBe("deny")
+    expect(edit["userdoc/**"]).toBe("allow")
+    expect(edit["docs/guides/**"]).toBe("allow")
+    // The catch-all must be first so later specific rules win.
+    expect(Object.keys(edit)[0]).toBe("*")
+    const external = permission.external_directory as Record<string, string>
+    expect(external[`${authorDir}/**`]).toBe("allow")
+  })
+
+  it("falls back to a flat edit deny when the roots array is empty", () => {
+    // given // when
+    const permission = buildWriterPermission([], "/xdg/data/janus-agent/author")
+
+    // then
+    expect(permission).toEqual({
+      edit: "deny",
+      bash: "deny",
+      task: "deny",
+      webfetch: "allow",
+      websearch: "allow",
+    })
+  })
+
+  it("anchors root allow rules to the supplied project directory in absolute form", () => {
+    // given
+    const authorDir = "/xdg/data/janus-agent/author"
+
+    // when
+    const permission = buildWriterPermission(["userdoc"], authorDir, "/tmp/project")
+
+    // then
+    const edit = permission.edit as Record<string, string>
+    expect(edit["*"]).toBe("deny")
+    expect(edit["userdoc/**"]).toBe("allow")
+    expect(edit["/tmp/project/userdoc/**"]).toBe("allow")
+    expect(edit["tmp/project/userdoc/**"]).toBe("allow")
+    // The catch-all must stay first so later specific rules win.
+    expect(Object.keys(edit)[0]).toBe("*")
+  })
+
+  it("anchors root allow rules to the realpath of the project directory when it exists", () => {
+    // given
+    const authorDir = "/xdg/data/janus-agent/author"
+    const dir = mkdtempSync(join(tmpdir(), "writer-anchor-"))
+    const real = realpathSync(dir)
+
+    try {
+      // when
+      const permission = buildWriterPermission(["userdoc"], authorDir, dir)
+
+      // then
+      const edit = permission.edit as Record<string, string>
+      expect(edit[`${dir}/userdoc/**`]).toBe("allow")
+      expect(edit[`${real}/userdoc/**`]).toBe("allow")
+      expect(edit[`${real.replace(/^\//, "")}/userdoc/**`]).toBe("allow")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("buildWriterRuntimeBindings", () => {
+  it("reports the model, scoped mode, roots, author dir, search budget, and leaf rule", () => {
+    // given
+    const config = makeConfig({ writer_docs_roots: ["./docs/guides/"] })
+    const authorDir = "/xdg/data/janus-agent/author"
+
+    // when
+    const block = buildWriterRuntimeBindings(config, authorDir)
+
+    // then
+    expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
+    expect(block).toContain("Writer model: `opencode/claude-sonnet-5-5`")
+    expect(block).toContain("Write mode: `scoped`")
+    expect(block).toContain("`docs/guides`")
+    expect(block).toContain(`Author state dir: \`${authorDir}\``)
+    expect(block).toContain("never write the brief")
+    expect(block).toContain("Search budget")
+    expect(block).toContain("researchRequest")
+    expect(block).toContain("You are a leaf")
+    expect(block).toContain("no bash, no dispatch (`task: deny`), no memory tools")
+    expect(block).toContain("never dispatch explorer")
+  })
+
+  it("reports the read-only mode when writer_docs_roots is empty", () => {
+    // given
+    const config = makeConfig({ writer_docs_roots: [] })
+
+    // when
+    const block = buildWriterRuntimeBindings(config, "/xdg/data/janus-agent/author")
+
+    // then
+    expect(block).toContain("Write mode: `read-only`")
+    expect(block).toContain("no file writes")
+    expect(block).toContain("the consultant publishes it")
+    expect(block).toContain("the roots array is empty")
+  })
+})
+
+describe("registerWriter", () => {
+  // registerWriter always mkdirs the resolved author state dir — every test
+  // in this describe points it at a temp HOME so nothing lands under the
+  // real HOME.
+  function tempAuthorEnv(): { env: NodeJS.ProcessEnv; authorDir: string; cleanup: () => void } {
+    const parent = mkdtempSync(join(tmpdir(), "writer-author-"))
+    return {
+      env: { HOME: parent } as NodeJS.ProcessEnv,
+      authorDir: join(parent, ".local", "share", "janus-agent", "author"),
+      cleanup: () => rmSync(parent, { recursive: true, force: true }),
+    }
+  }
+
+  it("registers the scoped-write author executor with steps 80 and root-scoped edit permission", async () => {
+    // given
+    const { env, authorDir, cleanup } = tempAuthorEnv()
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
 
-    // when
-    await registerWriter(config, pluginConfig)
+    try {
+      // when
+      await registerWriter(config, pluginConfig, env)
 
-    // then
-    expect(config.agent?.["consultation-writer"]).toMatchObject({
-      mode: "subagent",
-      model: "opencode/claude-sonnet-5-5",
-      permission: { edit: "deny", bash: "deny", task: "deny" },
-    })
+      // then
+      const writer = config.agent?.["consultation-writer"] as {
+        mode: string
+        description: string
+        prompt: string
+        model: string
+        steps: number
+        permission: Record<string, unknown>
+      }
+      expect(writer.mode).toBe("subagent")
+      expect(writer.model).toBe("opencode/claude-sonnet-5-5")
+      expect(writer.steps).toBe(80)
+      expect(writer.description).toContain("sole author of reader-facing prose")
+      expect(writer.description).toContain("Scoped-write author executor")
+      expect(writer.permission.bash).toBe("deny")
+      expect(writer.permission.task).toBe("deny")
+      expect(writer.permission.webfetch).toBe("allow")
+      expect(writer.permission.websearch).toBe("allow")
+      const edit = writer.permission.edit as Record<string, string>
+      expect(edit["*"]).toBe("deny")
+      expect(edit["userdoc/**"]).toBe("allow")
+      const external = writer.permission.external_directory as Record<string, string>
+      expect(external[`${authorDir}/**`]).toBe("allow")
+      expect(writer.prompt).toContain("# Writer")
+      expect(writer.prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
+      expect(writer.prompt).not.toContain("<!-- RUNTIME-BINDINGS")
+      expect(existsSync(authorDir)).toBe(true)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("normalizes configured roots into the edit permission", async () => {
+    // given
+    const { env, cleanup } = tempAuthorEnv()
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig({ writer_docs_roots: ["./docs/guides/"] })
+
+    try {
+      // when
+      await registerWriter(config, pluginConfig, env)
+
+      // then
+      const writer = config.agent?.["consultation-writer"] as { permission: Record<string, unknown> }
+      const edit = writer.permission.edit as Record<string, string>
+      expect(edit["docs/guides/**"]).toBe("allow")
+      expect(edit["userdoc/**"]).toBeUndefined()
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("registers a read-only writer when writer_docs_roots is empty", async () => {
+    // given
+    const { env, cleanup } = tempAuthorEnv()
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig({ writer_docs_roots: [] })
+
+    try {
+      // when
+      await registerWriter(config, pluginConfig, env)
+
+      // then
+      const writer = config.agent?.["consultation-writer"] as {
+        prompt: string
+        permission: Record<string, unknown>
+      }
+      expect(writer.permission).toEqual({
+        edit: "deny",
+        bash: "deny",
+        task: "deny",
+        webfetch: "allow",
+        websearch: "allow",
+      })
+      expect(writer.prompt).toContain("Write mode: `read-only`")
+    } finally {
+      cleanup()
+    }
   })
 
   it("does not register the bundled writer when a delegate agent is configured", async () => {
     // given
+    const { env, cleanup } = tempAuthorEnv()
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig({ writer_delegate_agent: "host-writer" })
 
-    // when
-    await registerWriter(config, pluginConfig)
+    try {
+      // when
+      await registerWriter(config, pluginConfig, env)
 
-    // then
-    expect(config.agent?.["consultation-writer"]).toBeUndefined()
+      // then
+      expect(config.agent?.["consultation-writer"]).toBeUndefined()
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("does NOT clobber a pre-existing user-defined writer agent entry", async () => {
+    // given
+    const { env, cleanup } = tempAuthorEnv()
+    const userPrompt = "user-defined writer prompt"
+    const config: { agent?: Record<string, unknown> } = {
+      agent: { "consultation-writer": { mode: "subagent", prompt: userPrompt } },
+    }
+    const pluginConfig = makeConfig()
+
+    try {
+      // when
+      await registerWriter(config, pluginConfig, env)
+
+      // then
+      const writer = config.agent?.["consultation-writer"] as { prompt: string }
+      expect(writer.prompt).toBe(userPrompt)
+    } finally {
+      cleanup()
+    }
   })
 
   it("reports the delegate in runtime bindings when configured", () => {
@@ -773,6 +1093,53 @@ describe("resolveLiteWorkspaceDir", () => {
 
     // then
     expect(dir).toBe("/custom/lite-ws")
+  })
+})
+
+describe("resolveAuthorStateDir", () => {
+  it("defaults under XDG data home with the janus-agent/author suffix", () => {
+    // given
+    const env = { HOME: "/home/test-user", XDG_DATA_HOME: "/xdg/data" } as NodeJS.ProcessEnv
+
+    // when
+    const dir = resolveAuthorStateDir(env)
+
+    // then
+    expect(dir).toBe("/xdg/data/janus-agent/author")
+  })
+
+  it("falls back to HOME/.local/share when XDG_DATA_HOME is unset", () => {
+    // given
+    const env = { HOME: "/home/test-user" } as NodeJS.ProcessEnv
+
+    // when
+    const dir = resolveAuthorStateDir(env)
+
+    // then
+    expect(dir).toBe("/home/test-user/.local/share/janus-agent/author")
+  })
+})
+
+describe("computeProjectId", () => {
+  it("is stable for the same directory and shaped as basename-<8 hex>", () => {
+    // given // when
+    const first = computeProjectId("/tmp/project")
+    const second = computeProjectId("/tmp/project")
+
+    // then
+    expect(first).toBe(second)
+    expect(first).toMatch(/^[a-z0-9-]+-[0-9a-f]{8}$/)
+    expect(first.startsWith("project-")).toBe(true)
+  })
+
+  it("sanitizes the basename and distinguishes same-named projects by hash", () => {
+    // given // when
+    const a = computeProjectId("/work/My Project")
+    const b = computeProjectId("/elsewhere/My Project")
+
+    // then
+    expect(a.startsWith("my-project-")).toBe(true)
+    expect(a).not.toBe(b)
   })
 })
 
@@ -1285,7 +1652,8 @@ describe("common operating principles injection", () => {
       await registerAnalyst(config, pluginConfig)
       await registerConsultationCritic(config, pluginConfig)
       await registerVerifier(config, pluginConfig)
-      await registerWriter(config, pluginConfig)
+      // Temp HOME keeps the writer's author state dir off the real HOME.
+      await registerWriter(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
 
       // then
       expect(Object.keys(config.agent ?? {}).sort()).toEqual([
@@ -1476,6 +1844,9 @@ describe("model-prompt blocks are model-property only", () => {
     expect(janus).toContain("## Routing")
     expect(janus).toContain("`coder`")
     expect(janus).toContain("A 1-2 tool-call task you can do yourself")
+    // The inline small-edit carve-out must never swallow the document lane.
+    expect(janus).toContain("except document tasks")
+    expect(janus).toContain("never an edit to a document file")
   })
 
   it("consultant prompt has a dispatched-mode guard and does not implement code", async () => {

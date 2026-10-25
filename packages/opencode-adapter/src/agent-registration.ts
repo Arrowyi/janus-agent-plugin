@@ -1,9 +1,11 @@
-import { mkdirSync } from "node:fs"
+import { mkdirSync, realpathSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { basename, join, resolve } from "node:path"
+import { createHash } from "node:crypto"
 import { resolveAsset } from "./asset-paths.ts"
 import {
+  normalizeWriterDocsRoots,
   resolveCostGuardUsd,
   resolveRoleModel,
   resolveTeamCaps,
@@ -48,7 +50,7 @@ const VERIFIER_DESCRIPTION =
   "Source intent and influence specialist. Audits user reviews, promotional claims, and purportedly independent third-party material when sponsorship, coordination, or provenance is relevant or uncertain; reports observable signals and missing evidence rather than assuming clean."
 
 const WRITER_DESCRIPTION =
-  "Read-only writing specialist for author consultations. Produces a blueprint before outline approval, or a substantive section/chapter draft from the approved map and evidence packet after approval; never researches missing facts, executes commands, or writes files."
+  "Scoped-write author executor for `author` consultations and the sole author of reader-facing prose. Produces the pre-approval writing blueprint, drafts and maintains approved document files under the configured writer roots, and runs coherence and editorial passes; targeted web lookups with a source ledger only — no shell, no dispatch, no memory."
 
 const LITE_DESCRIPTION =
   "Economical quick-answer entry (DeepSeek V4.1-Flash by default) for low-risk facts, concepts, and simple how-to. A leaf: never dispatches; escalates multi-source/contested questions to the consultant, coding to the coder, and general questions to janus."
@@ -127,6 +129,38 @@ export function resolveLiteWorkspaceDir(
       ? env.XDG_DATA_HOME
       : join(home, ".local", "share")
   return join(dataHome, "janus-agent", "lite")
+}
+
+/**
+ * Resolve the fixed author state directory:
+ * `$XDG_DATA_HOME/janus-agent/author` > `$HOME/.local/share/janus-agent/author`.
+ * The consultant writes author briefs there; the writer only reads them.
+ */
+export function resolveAuthorStateDir(env: NodeJS.ProcessEnv = process.env): string {
+  const home = env.HOME !== undefined && env.HOME.length > 0 ? env.HOME : homedir()
+  const dataHome =
+    env.XDG_DATA_HOME !== undefined && env.XDG_DATA_HOME.length > 0
+      ? env.XDG_DATA_HOME
+      : join(home, ".local", "share")
+  return join(dataHome, "janus-agent", "author")
+}
+
+/**
+ * Compute the stable per-project id used in author brief paths:
+ * sanitized project basename + first 8 hex of a sha256 over the resolved
+ * absolute directory, e.g. `my-project-a1b2c3d4`. Same directory always
+ * yields the same id; two projects sharing a basename differ in the hash.
+ */
+export function computeProjectId(directory: string): string {
+  const absolute = resolve(directory)
+  const sanitized = basename(absolute)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "")
+  const base = sanitized.length > 0 ? sanitized : "project"
+  const hash = createHash("sha256").update(absolute).digest("hex").slice(0, 8)
+  return `${base}-${hash}`
 }
 
 /**
@@ -368,15 +402,27 @@ export async function registerJanus(
 }
 
 /**
+ * Author binding lines for the consultant runtime bindings: where the author
+ * brief lives and which write mode the bundled writer runs in. Supplied by
+ * the adapter when the project directory is known; omitted otherwise.
+ */
+export interface AuthorBinding {
+  authorStateDir: string
+  projectId: string
+}
+
+/**
  * Build the runtime bindings block that the adapter injects into the
  * consultant agent prompt.
  *
  * Reports: the memory MCP server (or DISABLED), the consultant model, the
- * team subagents with their models, and the memory namespace.
+ * team subagents with their models, the writer write mode and author brief
+ * location, and the memory namespace.
  */
 export function buildRuntimeBindings(
   pluginConfig: JanusPluginConfig,
   namespace: string,
+  author?: AuthorBinding,
 ): string {
   const memoryLine = pluginConfig.memory_enabled
     ? "- Memory MCP server name: `janus-memory` (tools: memory_recall, memory_expand, memory_prepare, memory_commit, memory_manage)"
@@ -425,7 +471,33 @@ export function buildRuntimeBindings(
   const namespaceLine = `- Memory namespace: \`${namespace}\``
   const dispatchLine = "- Job tools: `janus_dispatch` (role, prompt) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation."
 
-  return `## Runtime Bindings (injected by opencode-adapter)\n${memoryLine}\n${consultantModelLine}\n${teamLine}\n${liteLine}\n${coderLine}\n${dispatchLine}\n${capsLine}\n${tierMatrixLine}\n${costLine}\n${namespaceLine}`
+  const writerRoots = normalizeWriterDocsRoots(pluginConfig.writer_docs_roots)
+  const writerModeLine =
+    writerRoots.length > 0
+      ? `- Writer write mode: \`scoped\` — the writer is the sole author of reader-facing prose and the sole writer of approved document files under ${writerRoots.map((root) => `\`${root}\``).join(", ")} (\`writer_docs_roots\`); you do not edit those roots in scoped mode`
+      : "- Writer write mode: `read-only` (`writer_docs_roots` is empty) — the writer returns prose or patches; you apply and publish the returned text as the disclosed publisher"
+
+  const authorLine =
+    author !== undefined
+      ? `- Author state dir: \`${author.authorStateDir}\`; project id: \`${author.projectId}\` — create and update the author brief at \`${author.authorStateDir}/${author.projectId}/<docId>/brief.md\`; the writer reads it and never writes it`
+      : undefined
+
+  const lines = [
+    "## Runtime Bindings (injected by opencode-adapter)",
+    memoryLine,
+    consultantModelLine,
+    teamLine,
+    liteLine,
+    coderLine,
+    dispatchLine,
+    capsLine,
+    tierMatrixLine,
+    costLine,
+    writerModeLine,
+    ...(authorLine !== undefined ? [authorLine] : []),
+    namespaceLine,
+  ]
+  return lines.join("\n")
 }
 
 /**
@@ -516,15 +588,18 @@ export function injectCommonPrinciples(body: string, block: string): string {
 /**
  * Register the `consultant` primary agent into the OpenCode config.
  *
- * Reads `assets/agents/consultant.md`, injects the runtime bindings block,
- * and sets `config.agent["consultant"]` with `mode: "primary"` and the
- * resolved consultant model. A pre-existing user-defined `consultant` agent
- * entry is left untouched (never clobbered).
+ * Reads `assets/agents/consultant.md`, injects the runtime bindings block
+ * (including the author state dir, project id, and writer write mode when
+ * the project `directory` is supplied), and sets `config.agent["consultant"]`
+ * with `mode: "primary"` and the resolved consultant model. A pre-existing
+ * user-defined `consultant` agent entry is left untouched (never clobbered).
  */
 export async function registerConsultantAgent(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
   namespace: string,
+  directory?: string,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   if (config.agent?.["consultant"]) return
 
@@ -535,7 +610,11 @@ export async function registerConsultantAgent(
   const withModelPrompt = injectModelPrompt(consultantBody, modelBlock)
   const commonPrinciples = await loadCommonPrinciples()
   const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
-  const runtimeBlock = buildRuntimeBindings(pluginConfig, namespace)
+  const author: AuthorBinding | undefined =
+    directory !== undefined
+      ? { authorStateDir: resolveAuthorStateDir(env), projectId: computeProjectId(directory) }
+      : undefined
+  const runtimeBlock = buildRuntimeBindings(pluginConfig, namespace, author)
   const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
 
   const entry: ConsultantAgentEntry = {
@@ -638,16 +717,158 @@ export async function registerVerifier(
   })
 }
 
+/**
+ * writer's permissions. With roots: edit is denied everywhere except the
+ * configured writer roots (`"*": "deny"` first, allow rules after — last
+ * matching rule wins), bash and dispatch are denied, web lookups are
+ * allowed, and `external_directory` grants access to the fixed author state
+ * dir so the writer can read the brief (writes there still hit
+ * `edit: "*" -> deny`). With `roots: []` (read-only fallback) edit is denied
+ * outright and the writer returns prose for the consultant to publish.
+ *
+ * Root allow rules are emitted both project-relative (`userdoc/**`) and, when
+ * the project `directory` is known, anchored to it in absolute form (the
+ * directory as supplied plus its realpath, each with and without the leading
+ * slash). The host matches edit permission patterns literally against the
+ * file path the writer's tools submit, and glob/read hand the writer
+ * realpath'd absolute paths, so a relative-only allow rule never matches
+ * those calls and the write falls through to the catch-all deny.
+ */
+export function buildWriterPermission(
+  roots: string[],
+  authorStateDir: string,
+  directory?: string,
+): Record<string, unknown> {
+  if (roots.length === 0) {
+    return {
+      edit: "deny",
+      bash: "deny",
+      task: "deny",
+      webfetch: "allow",
+      websearch: "allow",
+    }
+  }
+  const edit: Record<string, string> = { "*": "deny" }
+  const anchors = writerRootAnchors(directory)
+  for (const root of roots) {
+    edit[`${root}/**`] = "allow"
+    for (const anchor of anchors) {
+      edit[`${anchor}/${root}/**`] = "allow"
+    }
+  }
+  return {
+    edit,
+    bash: "deny",
+    task: "deny",
+    webfetch: "allow",
+    websearch: "allow",
+    external_directory: { [`${authorStateDir}/**`]: "allow" },
+  }
+}
+
+/**
+ * Absolute anchors for writer root allow rules: the resolved project
+ * directory as supplied and its realpath, each with and without the leading
+ * slash (the host's edit-permission evaluation normalizes submitted paths
+ * differently per permission type, so both forms are covered).
+ */
+function writerRootAnchors(directory: string | undefined): string[] {
+  if (directory === undefined || directory.length === 0) return []
+  const anchors = new Set<string>()
+  const base = resolve(directory)
+  anchors.add(base)
+  anchors.add(base.replace(/^\//, ""))
+  try {
+    const real = realpathSync(base)
+    anchors.add(real)
+    anchors.add(real.replace(/^\//, ""))
+  } catch {
+    // The directory may not exist yet (unit tests); the as-supplied anchor
+    // still covers paths the host resolves the same way.
+  }
+  return [...anchors]
+}
+
+/**
+ * Build the runtime bindings block injected into the writer agent prompt:
+ * its model, write mode (`scoped` with roots, `read-only` without), the
+ * writable roots, the author state dir to read briefs from, the targeted
+ * search budget, and the leaf rule (no bash, no dispatch, no memory).
+ */
+export function buildWriterRuntimeBindings(
+  pluginConfig: JanusPluginConfig,
+  authorStateDir: string,
+): string {
+  const roots = normalizeWriterDocsRoots(pluginConfig.writer_docs_roots)
+
+  const modelLine = `- Writer model: \`${resolveRoleModel(pluginConfig, "writer")}\``
+
+  const modeLine =
+    roots.length > 0
+      ? "- Write mode: `scoped` — write only exact approved document files under the writable roots; every other path is denied"
+      : "- Write mode: `read-only` — no file writes; return the full prose or a patch; the consultant publishes it"
+
+  const rootsLine =
+    roots.length > 0
+      ? `- Writable roots (\`writer_docs_roots\`): ${roots.map((root) => `\`${root}\``).join(", ")} — only approved document files under these roots; never source, config, README, or AGENTS files`
+      : "- Writable roots (`writer_docs_roots`): none — the roots array is empty, so the writer is read-only and the consultant publishes"
+
+  const authorLine = `- Author state dir: \`${authorStateDir}\` — read the brief at the supplied path; never write the brief, the manifest, or memory`
+
+  const searchLine =
+    "- Search budget: about 10 targeted web lookups per section — log every lookup in the source ledger; broad or contested research goes back to the consultant as a researchRequest"
+
+  const leafLine =
+    "- You are a leaf: no bash, no dispatch (`task: deny`), no memory tools; never dispatch explorer"
+
+  return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${modeLine}\n${rootsLine}\n${authorLine}\n${searchLine}\n${leafLine}`
+}
+
+/**
+ * Register the `writer` author executor: mode "subagent", a step cap of 80,
+ * the layered prompt (role asset + model block + common principles + writer
+ * runtime bindings), scoped-write permissions over the configured writer
+ * roots (anchored to the project `directory` when supplied), and the fixed
+ * author state dir created (non-fatal) so briefs are readable. A
+ * `writer_delegate_agent` short-circuits registration; a pre-existing
+ * user-defined entry under the same name is left untouched.
+ */
 export async function registerWriter(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
+  env: NodeJS.ProcessEnv = process.env,
+  directory?: string,
 ): Promise<void> {
   if (pluginConfig.writer_delegate_agent !== undefined) return
-  await registerReadOnlySubagent(config, {
-    name: pluginConfig.writer_agent,
+  const agentName = pluginConfig.writer_agent
+  if (config.agent?.[agentName]) return
+
+  const roots = normalizeWriterDocsRoots(pluginConfig.writer_docs_roots)
+  const authorStateDir = resolveAuthorStateDir(env)
+  try {
+    mkdirSync(authorStateDir, { recursive: true })
+  } catch {
+    // Non-fatal: the consultant passes the brief content in the dispatch;
+    // reads of the brief path may fail until the directory exists.
+  }
+
+  const body = await readFile(resolveAsset("agents/writer.md"), "utf8")
+  const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "writer"))
+  const withModelPrompt = injectModelPrompt(body, modelBlock)
+  const commonPrinciples = await loadCommonPrinciples()
+  const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
+  const runtimeBlock = buildWriterRuntimeBindings(pluginConfig, authorStateDir)
+  const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
+
+  const entry: CodingLaneEntry = {
+    mode: "subagent",
     description: WRITER_DESCRIPTION,
-    assetFile: "agents/writer.md",
+    prompt: assembledPrompt,
     model: resolveRoleModel(pluginConfig, "writer"),
-    pluginConfig,
-  })
+    steps: 80,
+    permission: buildWriterPermission(roots, authorStateDir, directory),
+  }
+
+  if (!config.agent) config.agent = {}
+  config.agent[agentName] = entry
 }

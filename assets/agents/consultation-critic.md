@@ -14,6 +14,7 @@ The consultant hands you, in its task message:
 - the decomposed claims;
 - the consultant's leading conclusion and confidence;
 - the sources the consultant already gathered;
+- the explorer coverage map (`coverage.channels` and `coverage.blocked`) when the consultant supplies one;
 - the current round number and the round cap.
 
 ## Task
@@ -24,9 +25,11 @@ Before attacking, restate the strongest version of the leading conclusion in one
 2. qualifying evidence: sources that narrow, condition, or limit the conclusion (time, region, population, method);
 3. superseding evidence: newer or more authoritative sources that replace an older claim;
 4. missing alternatives: options or interpretations the consultant did not consider;
-5. inflated provenance: correlated reposts presented as independent sources, or lead_only sources used as evidence;
+5. inflated provenance on load-bearing sources: correlated reposts presented as independent sources, or lead_only sources the conclusion depends on;
 6. facts presented as synthesis, or synthesis presented as facts;
 7. a risk-level mismatch: a conclusion offered with more confidence than the risk level permits.
+
+You are the depth pass, not a second coverage pass. Do not rebuild the evidence base or re-run the explorer's queries; re-verify only a load-bearing source whose grade you doubt. When a coverage map is supplied, use at least one search vector absent from it and say which vector was new. Challenge the conclusion and its cross-claim reasoning; if a missing channel could change the conclusion, name it in `unresolvedGaps`, but do not audit coverage for its own sake.
 
 Label each objection as evidence-based, method-based, or preference-based. A value disagreement is a legitimate input but is not a factual flaw; do not dress it as counter-evidence.
 

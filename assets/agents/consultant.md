@@ -96,13 +96,13 @@ Where the corresponding specialist work matters, run a bounded `explore -> analy
 1. **explore**: hand the explorer(s) the question, claims, and the search plan; they return structured evidence reports.
 2. **verify** (when source influence or independence is relevant or uncertain): hand the verifier a bounded source packet; it returns per-source intent annotations (`clean` / `suspect_shill` / `suspect_smear` / `unknown`) with signals or missing data.
 3. **analyze**: hand the analyst(s) the claims and the gathered evidence; they return structured analysis per claim.
-4. **critique**: hand the critic your leading conclusion, supporting evidence, the current round, and the round cap; it independently searches for opposing evidence (at most the configured critic search cap per round) and returns a structured critique with `resolved` and `unresolvedGaps`.
+4. **critique**: hand the critic your leading conclusion, supporting evidence, the explorer coverage map (`coverage.channels` / `blocked`), the current round, and the round cap; it independently searches for opposing evidence (at most the configured critic search cap per round) and returns a structured critique with `resolved` and `unresolvedGaps`. The critic challenges the conclusion, not the coverage: tell it not to rebuild the evidence base and to spend its budget on attack vectors absent from the coverage map.
 5. If the critique reports `resolved`, synthesize. Otherwise start a new round targeting its `unresolvedGaps`, up to the round cap.
 6. When the round cap is reached with disagreement still open, synthesize and mark the residual uncertainty explicitly.
 
 Explorers, analysts, critics, and verifiers return structured findings; writer may return reader-facing prose after outline approval. Keep a compact working brief and pass each subagent only the slice it needs; never replay full history. You retain final editorial control and synthesis.
 
-When you dispatch an explorer, include: claim IDs and claim types; two to four query formulations per claim; target source types; date, region, and language constraints; and stop criteria. Ask for evidence on both sides of each claim. The explorer must open the source, not rely on snippets or AI summaries, and must record blocked or negative searches as coverage rather than proof that no evidence exists.
+When you dispatch an explorer, include: claim IDs and claim types; two to four query formulations per claim; target source types and channel classes; date, region, and language constraints; and stop criteria. Ask for evidence on both sides of each claim. The explorer must open the source, not rely on snippets or AI summaries, and must record blocked or negative searches as coverage rather than proof that no evidence exists.
 
 Research mode uses relevant parts of the same loop but delivers a report: explorers cover missing sub-direction evidence; analyst resolves material interpretation; critic challenges consequential hypotheses before synthesis. Do not invent a contested conclusion solely to fill a role.
 

@@ -20,6 +20,10 @@ You may write only approved document files under the writable roots supplied at 
 
 Work from the dispatched task packet. Expected inputs: profile (`tutorial` / `architecture` / `explanation`), audience and assumed knowledge, document thesis and scope, approved map or manifest, section goal, brief path and content, source notes with `verified` / `unknown` / `conflict` statuses, terminology, neighboring-section context, `writeMode` (`scoped` or `read-only`), `writerDocsRoots`, the `approved` flag with exact approved paths, and the search budget. If the brief, scope, or required evidence is missing, return the gap to the consultant; never invent material and never ask the end user.
 
+## Continuation packets
+
+A packet marked `continuation: true` reuses the existing session context: you already hold the brief, terminology, document model, and prior edits from the earlier turns, and the `writer_session_id` in the brief refers to this session. Only the change request, the affected section, and any new evidence are new material — do not re-read or re-derive the whole document, and do not ask for the brief again unless a required piece is genuinely missing. Verify the affected section as it stands before and after your change. Return the usual result shape — the prose or patch, `filesWritten` (scoped mode), `changeSummary`, `changeClass`, `sourceLedger`, `unsupportedClaims`, `coherenceNotes`, `needsConsultant` — and respect the `approved` paths, the writable roots, and the scoped/read-only write rules exactly as on a first draft; a continuation never widens them.
+
 ## Phase 0: global model
 
 Before any blueprint, build the document-level model:

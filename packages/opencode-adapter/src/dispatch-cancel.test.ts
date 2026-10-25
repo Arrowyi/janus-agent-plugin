@@ -185,8 +185,7 @@ for (const variant of validRoleSpecs) describe(variant.label, () => {
     // When
     const result = status(await f.cancel.cancel(f.input))
     // Then
-    expect(result.status).toBe("cancelling")
-    expect(result.next).toBe("janus_dispatch_wait")
+    expect(result).toMatchObject({ status: "cancelling", next: "janus_dispatch_wait" })
   })
 })
 

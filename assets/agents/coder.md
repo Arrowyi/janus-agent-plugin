@@ -129,6 +129,7 @@ Ask at most 1-3 decision-changing questions. Do not interview for completeness. 
 - `build`: optional stronger-model escalation. Use it only when your model is a confirmed weak spot or the host build agent is known stronger. It is not a default lane. Pass the confirmed path list (or the no-further-confirmation instruction) and instruct it to return its own file list before editing if confirmation is absent; if it cannot honor this gate, do not delegate persistent file changes to it.
 - Do not dispatch `consultant` (that creates a cycle). If you need evidence, do a quick official-docs lookup or hand the task back to `janus`/`consultant`.
 - Do not chain more than one level of dispatch. Spot-check returned work; never trust a subagent's success report without the diff and verification output.
+- `janus_dispatch_continue` (session_id, prompt) continues an existing dispatch session you own instead of re-sending its context; do not re-dispatch a pending job — use `janus_dispatch_wait` on its job_id.
 
 ## Verification
 

@@ -5,6 +5,7 @@ import {
   type CancelIntent,
   type Clock,
   type DispatchCancelledEnvelope,
+  type DispatchCompletedEnvelope,
   type DispatchEnvelope,
   type DispatchRole,
   type DispatchSdk,
@@ -35,6 +36,8 @@ export function makeJobSpec(
     parent_id: overrides.parent_id ?? FAKE_PARENT_ID,
     directory: overrides.directory ?? FAKE_DIRECTORY,
     created_at: overrides.created_at ?? 1_000_000,
+    ...(overrides.session_id !== undefined ? { session_id: overrides.session_id } : {}),
+    ...(overrides.continued_from !== undefined ? { continued_from: overrides.continued_from } : {}),
   }
 }
 
@@ -115,6 +118,19 @@ export function makeCancelledEnvelope(overrides: Partial<DispatchCancelledEnvelo
     waited_ms: overrides.waited_ms ?? 0,
     reason: overrides.reason ?? "cancelled by user",
     next: overrides.next ?? "janus_dispatch_wait",
+  }
+}
+
+export function makeCompletedEnvelope(overrides: Partial<DispatchCompletedEnvelope> = {}): DispatchCompletedEnvelope {
+  return {
+    v: 1,
+    status: "completed",
+    job_id: overrides.job_id ?? FAKE_JOB_ID,
+    role: overrides.role ?? "analyst",
+    attempt: overrides.attempt ?? { index: 0, model: "opencode/claude-sonnet-5-5" },
+    session_id: overrides.session_id ?? FAKE_SESSION_ID,
+    waited_ms: overrides.waited_ms ?? 0,
+    text: overrides.text ?? "the final report",
   }
 }
 

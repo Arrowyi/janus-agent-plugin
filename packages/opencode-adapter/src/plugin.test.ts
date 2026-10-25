@@ -896,7 +896,7 @@ describe("JanusAgentPlugin", () => {
     expect(typeof hooks.config).toBe("function")
   })
 
-  it("registers exactly the three consultation dispatch tools", async () => {
+  it("registers exactly the four consultation dispatch tools", async () => {
     // given
     const input: PluginInput = {
       project: { id: "wiring-test", worktree: "/wt", time: { created: 0 } },
@@ -917,8 +917,10 @@ describe("JanusAgentPlugin", () => {
       "janus_dispatch",
       "janus_dispatch_wait",
       "janus_dispatch_cancel",
+      "janus_dispatch_continue",
     ])
     expect(hooks.tool?.["janus_dispatch"]).toBeDefined()
+    expect(hooks.tool?.["janus_dispatch_continue"]).toBeDefined()
   })
 
   it("is typed as Plugin", () => {

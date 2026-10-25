@@ -242,6 +242,41 @@ describe("createJob", () => {
       expect(spec.model_chain).toEqual(record.model_chain)
     }
   })
+
+  it("persists session_id and continued_from on a continuation job and omits them on a normal job", async () => {
+    const sdk = createJournalFakeSdk()
+    const clock = createFakeClock(1_000_000)
+    const normal = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID,
+      directory: FAKE_DIRECTORY,
+      role: "writer",
+      agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"],
+      prompt: "draft chapter one",
+      clock,
+    }))
+    const normalSpec = getJobSpec(sdk, normal.jobID)
+    expect(normalSpec.session_id).toBeUndefined()
+    expect(normalSpec.continued_from).toBeUndefined()
+
+    const continuation = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID,
+      directory: FAKE_DIRECTORY,
+      role: "writer",
+      agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"],
+      prompt: "apply the review fix",
+      clock,
+      sessionID: normal.jobID,
+      continuedFrom: normal.jobID,
+    }))
+    const continuationSpec = getJobSpec(sdk, continuation.jobID)
+    expect(continuationSpec.session_id).toBe(normal.jobID)
+    expect(continuationSpec.continued_from).toBe(normal.jobID)
+    const loaded = assertOk(await loadJob(sdk, { jobID: continuation.jobID, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID }))
+    expect(loaded.spec.session_id).toBe(normal.jobID)
+    expect(loaded.spec.continued_from).toBe(normal.jobID)
+  })
 })
 
 describe("appendRecord", () => {
@@ -463,7 +498,6 @@ describe("loadJob", () => {
     expect(loaded.children[0]!.id).toBe(attemptSessionID)
     expect(loaded.records).toHaveLength(4)
   })
-
   it("accepts an attempt-0 receipt bound to the job root session", async () => {
     const sdk = createJournalFakeSdk()
     const clock = createFakeClock(1_000_000)
@@ -497,6 +531,93 @@ describe("loadJob", () => {
     expect(loaded.receipts).toHaveLength(1)
     expect(loaded.receipts[0]!.session_id).toBe(jobID)
     expect(loaded.children).toHaveLength(0)
+  })
+
+  it("binds a continuation receipt whose target session is not a child of the continuation root", async () => {
+    // Given a completed writer job root and a continuation job reusing it.
+    const sdk = createJournalFakeSdk()
+    const clock = createFakeClock(1_000_000)
+    const original = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID,
+      directory: FAKE_DIRECTORY,
+      role: "writer",
+      agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"],
+      prompt: "draft chapter one",
+      clock,
+    }))
+    const continuation = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID,
+      directory: FAKE_DIRECTORY,
+      role: "writer",
+      agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"],
+      prompt: "apply the review fix",
+      clock,
+      sessionID: original.jobID,
+      continuedFrom: original.jobID,
+    }))
+    const messageID = "msg-continue-attempt-0"
+    assertOk(await appendRecord(sdk, {
+      jobID: continuation.jobID,
+      directory: FAKE_DIRECTORY,
+      record: makeAttemptReservation({ job_id: continuation.jobID, attempt_index: 0, message_id: messageID, model: "opencode/claude-sonnet-5-5" }),
+      messageID,
+    }))
+    assertOk(await appendRecord(sdk, {
+      jobID: continuation.jobID,
+      directory: FAKE_DIRECTORY,
+      record: makeAttemptReceipt({ job_id: continuation.jobID, attempt_index: 0, session_id: original.jobID, message_id: messageID }),
+    }))
+
+    // When binding the continuation journal: the target session equals
+    // spec.session_id and is not a child of the continuation root.
+    const loaded = assertOk(await loadJob(sdk, { jobID: continuation.jobID, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID }))
+    expect(loaded.receipts[0]!.session_id).toBe(original.jobID)
+    expect(loaded.children).toHaveLength(0)
+  })
+
+  it("rejects a continuation receipt referencing a session other than the spec target, root, or a child", async () => {
+    const sdk = createJournalFakeSdk()
+    const clock = createFakeClock(1_000_000)
+    const original = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID,
+      directory: FAKE_DIRECTORY,
+      role: "writer",
+      agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"],
+      prompt: "draft chapter one",
+      clock,
+    }))
+    const target = assertOk(await createAttemptSession(sdk, { jobID: original.jobID, directory: FAKE_DIRECTORY, role: "writer" }))
+    const continuation = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID,
+      directory: FAKE_DIRECTORY,
+      role: "writer",
+      agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"],
+      prompt: "apply the review fix",
+      clock,
+      sessionID: target.sessionID,
+      continuedFrom: original.jobID,
+    }))
+    const messageID = "msg-continue-arbitrary"
+    assertOk(await appendRecord(sdk, {
+      jobID: continuation.jobID,
+      directory: FAKE_DIRECTORY,
+      record: makeAttemptReservation({ job_id: continuation.jobID, attempt_index: 0, message_id: messageID, model: "opencode/claude-sonnet-5-5" }),
+      messageID,
+    }))
+    // An arbitrary foreign session that is neither the spec target, the
+    // continuation root, nor one of its children.
+    assertOk(await appendRecord(sdk, {
+      jobID: continuation.jobID,
+      directory: FAKE_DIRECTORY,
+      record: makeAttemptReceipt({ job_id: continuation.jobID, attempt_index: 0, session_id: original.jobID, message_id: messageID }),
+    }))
+
+    const error = assertError(await loadJob(sdk, { jobID: continuation.jobID, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID }))
+    expect(error.reason).toBe("invalid-job")
   })
 
   it("reload exposes a newly appended cancel-intent (journal re-read is source of truth)", async () => {

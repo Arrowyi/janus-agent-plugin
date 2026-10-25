@@ -6,7 +6,7 @@ import { setImmediate } from "node:timers/promises"
 import type { ToolDefinition } from "@opencode-ai/plugin"
 import * as dispatchTools from "./dispatch-tool.ts"
 import { JanusAgentPlugin } from "./plugin.ts"
-import { buildRuntimeBindings } from "./agent-registration.ts"
+import { buildRuntimeBindings, buildCoderRuntimeBindings, buildJanusRuntimeBindings } from "./agent-registration.ts"
 import { JanusPluginConfigSchema } from "./plugin-config.ts"
 import { createFakeClock } from "./dispatch-test-fixtures.ts"
 import { context, envelope, fixture, pluginInput } from "./dispatch-registration-fixtures.ts"
@@ -156,10 +156,83 @@ describe("unified dispatch registration", () => {
     const config = JanusPluginConfigSchema.parse({})
     // When building runtime bindings consumed by the consultant.
     const bindings = buildRuntimeBindings(config, "oc-test")
-    // Then routing-bearing structural tool names are available (no prose pin).
-    expect(bindings.match(/`janus_dispatch(?:_wait|_cancel)?`/g)).toEqual([
-      "`janus_dispatch`", "`janus_dispatch_wait`", "`janus_dispatch_cancel`",
+    // Then routing-bearing structural tool names are available (no prose pin);
+    // the consultant line names `janus_dispatch_continue` twice — once in the
+    // job-tools list and once in the author-mode writer-session policy.
+    expect(bindings.match(/`janus_dispatch(?:_wait|_cancel|_continue)?`/g)).toEqual([
+      "`janus_dispatch`", "`janus_dispatch_wait`", "`janus_dispatch_cancel`", "`janus_dispatch_continue`", "`janus_dispatch_continue`",
     ])
+    expect(bindings).toContain("`return_handle: true`")
+    expect(bindings).toContain("`writer_session_id`")
+    const coderBindings = buildCoderRuntimeBindings(config)
+    expect(coderBindings).toContain("`janus_dispatch_continue`")
+    expect(coderBindings).toContain("`return_handle: true`")
+    const janusBindings = buildJanusRuntimeBindings(config)
+    expect(janusBindings).toContain("`janus_dispatch_continue`")
+    expect(janusBindings).toContain("`return_handle: true`")
+  })
+
+  it("registers the continue tool with a session_id/prompt/role arg surface", () => {
+    // Given the shared factory.
+    const f = fixture()
+    const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
+    // Then the fourth job tool is present with exactly the contract args.
+    expect(Object.keys(tools)).toEqual(["janus_dispatch", "janus_dispatch_wait", "janus_dispatch_cancel", "janus_dispatch_continue"])
+    expect(Object.keys(tools.janus_dispatch.args)).toEqual(["role", "prompt", "return_handle"])
+    expect(Object.keys(tools.janus_dispatch_continue.args)).toEqual(["session_id", "prompt", "role"])
+    expect(tools.janus_dispatch_continue.description).toContain("session_id")
+  })
+
+  it("continues an owned writer session through the shared factory", async () => {
+    // Given a completed writer dispatch captured through return_handle.
+    const f = fixture()
+    const submit = f.sdk.session.promptAsync
+    f.sdk.session.promptAsync = async (input) => {
+      const result = await submit(input)
+      f.finish()
+      return result
+    }
+    const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
+    const dispatchResult = await tools.janus_dispatch.execute(
+      { role: "writer", prompt: "draft chapter one", return_handle: true },
+      context(),
+    )
+    const parsed = envelope(dispatchResult)
+    if (parsed.status !== "completed") throw new Error(`expected completed envelope: ${JSON.stringify(parsed)}`)
+    // When continuing the writer's session with a maintenance prompt.
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: parsed.session_id, prompt: "apply the review fix", role: "writer" },
+      context(),
+    )
+    // Then the same session is prompted again and the result is plain text.
+    expect(result).toBe("final report")
+    expect(f.submissions.map((s) => s.sessionID)).toEqual([parsed.session_id, parsed.session_id])
+  })
+
+  it("rejects a continue from a foreign caller with zero extra prompts", async () => {
+    // Given a completed writer job owned by ses_parent.
+    const f = fixture()
+    const submit = f.sdk.session.promptAsync
+    f.sdk.session.promptAsync = async (input) => {
+      const result = await submit(input)
+      f.finish()
+      return result
+    }
+    const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
+    const dispatchResult = await tools.janus_dispatch.execute(
+      { role: "writer", prompt: "draft chapter one", return_handle: true },
+      context(),
+    )
+    const parsed = envelope(dispatchResult)
+    if (parsed.status !== "completed") throw new Error("expected completed envelope")
+    // When a different caller session tries to reuse it.
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: parsed.session_id, prompt: "apply the review fix" },
+      { ...context(), sessionID: "ses_attacker" },
+    )
+    // Then ownership prevails and no prompt is issued.
+    expect(result).toMatch(/^Error: target dispatch session is not owned by this caller/)
+    expect(f.submissions).toHaveLength(1)
   })
 
   for (const scenario of [

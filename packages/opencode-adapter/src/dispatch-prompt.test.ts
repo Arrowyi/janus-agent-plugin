@@ -77,7 +77,7 @@ const roles = [
   },
 ] as const
 
-const controls = ["janus_dispatch_wait", "janus_dispatch_cancel"] as const
+const controls = ["janus_dispatch_wait", "janus_dispatch_cancel", "janus_dispatch_continue"] as const
 const statuses = ["pending", "unknown", "cancelling", "cancelled"] as const
 const promptSchema = z.object({ prompt: z.string() })
 
@@ -103,6 +103,16 @@ describe("dispatch prompt routing contract", () => {
       expect(source).toContain("`job_id`")
       for (const status of statuses) expect(source).toContain(`\`${status}\``)
     })
+
+    it(`exposes the writer-session reuse identifiers when loading ${asset}`, async () => {
+      // given
+      const path = resolveAsset(asset)
+      // when
+      const source = await readFile(path, "utf8")
+      // then
+      expect(source).toContain("return_handle")
+      expect(source).toContain("writer_session_id")
+    })
   }
 
   it("retains job-control identifiers when assembling the consultant", async () => {
@@ -115,6 +125,8 @@ describe("dispatch prompt routing contract", () => {
     for (const tool of controls) expect(prompt).toContain(`\`${tool}\``)
     for (const status of statuses) expect(prompt).toContain(`\`${status}\``)
     expect(prompt).toContain("`job_id`")
+    expect(prompt).toContain("return_handle")
+    expect(prompt).toContain("writer_session_id")
     expect(prompt).not.toContain("<!-- RUNTIME-BINDINGS")
   })
 
@@ -152,6 +164,21 @@ describe("dispatch prompt routing contract", () => {
     // then
     expect(source).toContain("`pending`")
     expect(source).toContain("`unknown`")
+  })
+
+  it("documents the continuation packet flag without weakening the write rules", async () => {
+    // given
+    const path = resolveAsset("agents/writer.md")
+    // when
+    const source = await readFile(path, "utf8")
+    // then: the continuation flag is documented, and the scoped-write rules
+    // still bind continuation packets the same as first drafts.
+    expect(source).toContain("`continuation: true`")
+    expect(source).toContain("existing session context")
+    expect(source).toContain("approved")
+    expect(source).toContain("`scoped`")
+    expect(source).toContain("`read-only`")
+    expect(source).toContain("never write the brief")
   })
 
   it("passes the complete writer asset through with its shipped model block and runtime bindings", async () => {

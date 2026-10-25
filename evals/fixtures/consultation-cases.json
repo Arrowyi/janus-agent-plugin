@@ -430,5 +430,59 @@
     "then": "It returns needsConsultant with the proposed delta instead of proceeding; the consultant returns to the author workflow, presents the manifest delta for exactly one approval, then dispatches the writer and updates the brief and manifest.",
     "grading": "model",
     "notes": "Rubric: Inspect the writer's changeClass/needsConsultant and the consultant's delta gate; reject the writer adding files or reordering sections on its own, or a second full-outline approval for an unaffected document."
+  },
+  {
+    "id": "C49",
+    "title": "The first writer dispatch captures a reusable session handle",
+    "given": "An approved document outline with a bounded first writer task; the consultant begins drafting and no writer_session_id exists yet in the brief.",
+    "when": "The consultant dispatches the first writer task",
+    "then": "It passes return_handle: true, uses the completed envelope's text as the writer result (never showing the raw envelope to the user), and stores the envelope's session_id in the brief as writer_session_id; if the dispatch is pending, it stores the pending envelope's session_id, waits with janus_dispatch_wait, and uses the eventual text.",
+    "grading": "model",
+    "notes": "Rubric: Inspect the janus_dispatch call arguments and the brief update; reject losing the session id, surfacing raw envelope JSON to the user, or omitting the stored id after a completed dispatch. Deterministic backstop: the completed-envelope shape and default plain-text behavior are covered by dispatch-tool.test.ts and dispatch-lifecycle.test.ts (return_handle)."
+  },
+  {
+    "id": "C50",
+    "title": "A maintenance edit continues the stored writer session instead of re-dispatching",
+    "given": "The same consultant session holds a document whose brief stores writer_session_id, and the user requests a bounded editorial fix to that document.",
+    "when": "The consultant routes the maintenance edit",
+    "then": "It calls janus_dispatch_continue with that session_id and role writer, sending only the change request, the affected section, and any new evidence — no fresh janus_dispatch writer job and no replayed full brief — and it does not continue while the previous writer job is still pending.",
+    "grading": "model",
+    "notes": "Rubric: Inspect the tool trace: exactly one janus_dispatch_continue on the stored session, no new writer job root for that turn, and a delta-sized prompt. Deterministic backstop: the continue tool's same-session prompting and continuation-journal behavior are covered by dispatch-tool.test.ts and dispatch-lifecycle.test.ts (continuation lifecycle)."
+  },
+  {
+    "id": "C51",
+    "title": "A pending first dispatch stores the session id, waits, then continues",
+    "given": "The first writer dispatch returns a pending envelope while the writer is still working.",
+    "when": "The consultant handles the pending dispatch and the follow-up edit",
+    "then": "It stores the pending envelope's session_id as writer_session_id, recovers the result with janus_dispatch_wait on the same job_id, and only after the job is terminal continues that session for the follow-up — never re-dispatching the same task and never continuing a pending job.",
+    "grading": "model",
+    "notes": "Rubric: Inspect the trace order: pending envelope -> wait on the same job -> terminal result -> later janus_dispatch_continue on the stored session. Deterministic backstop: pending-envelope session identity and same-job wait recovery are covered by dispatch-lifecycle.test.ts (soft wait expiry and continuation lifecycle)."
+  },
+  {
+    "id": "C52",
+    "title": "A lost, foreign, or busy writer session waits or falls back to a fresh dispatch",
+    "given": "The stored writer_session_id is busy on an active job, was not created by this caller, or no longer exists.",
+    "when": "The consultant attempts the maintenance edit",
+    "then": "A busy target makes it wait for the active job rather than continue; a lost or foreign session makes it fall back to a fresh janus_dispatch writer task with the full brief and update the stored id, disclosing the fresh session only if it changes cost or behavior; a clear Error is never treated as a completed writer result.",
+    "grading": "model",
+    "notes": "Rubric: Inspect the continue result handling — wait on busy, fresh dispatch with the brief on lost/foreign, updated writer_session_id, and an honest disclosure. Deterministic backstop: the busy/foreign/continuation-job rejections are covered by dispatch-tool.test.ts (janus_dispatch_continue)."
+  },
+  {
+    "id": "C53",
+    "title": "A different document gets a fresh writer session",
+    "given": "The consultant is authoring two documents in one session; document A's brief stores writer_session_id and document B has none.",
+    "when": "The consultant dispatches B's first writer task",
+    "then": "Document B gets a fresh writer dispatch (with its own brief and return_handle capture), not a janus_dispatch_continue on document A's writer session; each brief ends with only its own document's session id.",
+    "grading": "model",
+    "notes": "Rubric: Inspect both briefs' writer_session_id fields and the tool trace; reject any cross-document session reuse. Deterministic backstop: session identity and continuation-journal isolation are covered by dispatch-lifecycle.test.ts (continuation lifecycle)."
+  },
+  {
+    "id": "C54",
+    "title": "Session continuation is generic: an analyst session continues too",
+    "given": "A consultant holds a completed analyst dispatch session captured via return_handle and needs a follow-up interpretation of new evidence.",
+    "when": "The consultant continues that analyst session with the new evidence",
+    "then": "janus_dispatch_continue sends the new prompt to the same analyst session (same caller, same workspace, idle target), the response returns as plain text or a recoverable pending envelope, and the mechanism is role-agnostic — no writer-specific path is involved.",
+    "grading": "deterministic",
+    "notes": "Executable: packages/opencode-adapter/src/dispatch-tool.test.ts — 'infers the role from the target job and rejects a mismatched role argument' and the janus_dispatch_continue suite (writer job-root, attempt-child, pending, busy, continuation-job rejection); packages/opencode-adapter/src/dispatch-lifecycle.test.ts — continuation lifecycle (prompt targets the reused session; continuation root records session_id/continued_from; wait/cancel on a continuation job). The live-consultant attribution remains a model review."
   }
 ]

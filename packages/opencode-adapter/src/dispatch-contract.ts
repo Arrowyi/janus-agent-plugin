@@ -58,6 +58,12 @@ export const JobSpecSchema = journalRecord("job-spec", {
   parent_id: sessionIdSchema,
   directory: z.string().min(1),
   created_at: z.number().int(),
+  // Continuation fields (Phase 2). `session_id` is the existing dispatch
+  // session a continuation job reuses as its attempt-0 target; it is not a
+  // child of the continuation job root. `continued_from` is the original job
+  // root that owned the target session. Both are absent on a normal launch.
+  session_id: sessionIdSchema.optional(),
+  continued_from: sessionIdSchema.optional(),
 })
 
 export type JobSpec = z.infer<typeof JobSpecSchema>
@@ -136,6 +142,26 @@ export const DispatchCancelledEnvelopeSchema = envelopeBaseSchema.extend({
 
 export type DispatchCancelledEnvelope = z.infer<typeof DispatchCancelledEnvelopeSchema>
 
+/**
+ * Completed-envelope handle for `janus_dispatch` with `return_handle: true`.
+ * Carries the base identity fields plus the success `text`; no `next`
+ * action is needed because the job is terminal.
+ */
+export const DispatchCompletedEnvelopeSchema = z
+  .object({
+    v: z.literal(1),
+    status: z.literal("completed"),
+    job_id: sessionIdSchema,
+    role: roleSchema,
+    attempt: attemptSchema,
+    session_id: sessionIdSchema,
+    waited_ms: z.number().int().nonnegative(),
+    text: z.string(),
+  })
+  .strict()
+
+export type DispatchCompletedEnvelope = z.infer<typeof DispatchCompletedEnvelopeSchema>
+
 export type DispatchOutcome =
   | { readonly kind: "success"; readonly text: string }
   | { readonly kind: "nonterminal"; readonly envelope: DispatchEnvelope }
@@ -145,9 +171,12 @@ export type DispatchOutcome =
 const AnyEnvelopeSchema = z.discriminatedUnion("status", [
   DispatchEnvelopeSchema,
   DispatchCancelledEnvelopeSchema,
+  DispatchCompletedEnvelopeSchema,
 ])
 
-export function parseOutcomeEnvelope(json: string): DispatchResult<DispatchEnvelope | DispatchCancelledEnvelope> {
+export function parseOutcomeEnvelope(
+  json: string,
+): DispatchResult<DispatchEnvelope | DispatchCancelledEnvelope | DispatchCompletedEnvelope> {
   let parsed: unknown
   try {
     parsed = JSON.parse(json)
@@ -184,6 +213,27 @@ export function parseWaitArgs(input: unknown): DispatchResult<WaitArgs> {
   return result.success
     ? { ok: true, value: result.data }
     : { ok: false, error: fromZodError("invalid wait args", result.error) }
+}
+
+/**
+ * Args for `janus_dispatch_continue`. `role` is optional: it is inferred
+ * from the target session's owning job spec and validated when supplied.
+ */
+export const ContinueArgsSchema = z
+  .object({
+    session_id: sessionIdSchema,
+    prompt: z.string(),
+    role: roleSchema.optional(),
+  })
+  .strict()
+
+export type ContinueArgs = z.infer<typeof ContinueArgsSchema>
+
+export function parseContinueArgs(input: unknown): DispatchResult<ContinueArgs> {
+  const result = ContinueArgsSchema.safeParse(input)
+  return result.success
+    ? { ok: true, value: result.data }
+    : { ok: false, error: fromZodError("invalid continue args", result.error) }
 }
 
 export interface SdkSession {

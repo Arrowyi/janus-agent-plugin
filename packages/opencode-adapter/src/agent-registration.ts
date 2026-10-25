@@ -261,7 +261,7 @@ export function buildCoderRuntimeBindings(pluginConfig: JanusPluginConfig): stri
     ? `- Optional stronger-model lane: role \`build\` routes to agent \`${pluginConfig.build_agent}\` (\`${pluginConfig.build_model ?? "host default model"}\`)`
     : "- Optional stronger-model lane: build DISABLED by configuration"
   const dispatchLine =
-    "- Job tools: `janus_dispatch` (role, prompt) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation."
+    "- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id` and `session_id`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch or continue a pending job — wait on it instead."
   return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${coderLiteLine}\n${buildLine}\n${dispatchLine}`
 }
 
@@ -363,7 +363,7 @@ export function buildJanusRuntimeBindings(pluginConfig: JanusPluginConfig): stri
     : "- Economical entry: lite DISABLED by configuration"
   const explorerLine = `- \`explorer\` (agent \`${pluginConfig.explorer_agent}\`, \`${resolveRoleModel(pluginConfig, "explorer")}\`) — bounded evidence gathering with a specific claim list and search plan`
 
-  const dispatchLine = "- Job tools: `janus_dispatch` (role, prompt) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation."
+  const dispatchLine = "- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id` and `session_id`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch or continue a pending job — wait on it instead."
 
   return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${consultantLine}\n${coderLine}\n${liteLine}\n${explorerLine}\n${dispatchLine}`
 }
@@ -469,7 +469,7 @@ export function buildRuntimeBindings(
   const costLine = `- Cost guard: ~$${costGuard} per provider (advisory, converge when approaching)`
 
   const namespaceLine = `- Memory namespace: \`${namespace}\``
-  const dispatchLine = "- Job tools: `janus_dispatch` (role, prompt) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation."
+  const dispatchLine = "- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id`, `session_id`, and the success `text`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace — never continue a pending job; wait on it first. In author mode, store the first writer dispatch envelope's `session_id` as `writer_session_id` in the brief and use `janus_dispatch_continue` for that document's maintenance edits (one writer session per document, no cross-document reuse); on a lost, foreign, or busy writer session, wait or make a fresh dispatch with the brief and update the stored id."
 
   const writerRoots = normalizeWriterDocsRoots(pluginConfig.writer_docs_roots)
   const writerModeLine =

@@ -223,7 +223,7 @@ async function main(): Promise<void> {
           pass: hasAuthor,
           detail: hasAuthor ? "skill text contains `author`" : "skill text MISSING `author`",
         })
-        for (const name of ["janus_dispatch_wait", "janus_dispatch_cancel"]) {
+        for (const name of ["janus_dispatch_wait", "janus_dispatch_cancel", "janus_dispatch_continue"]) {
           assertions.push({ name: `installed skill names ${name}`, pass: skillText.includes(name), detail: "installed tool-routing token" })
         }
       }

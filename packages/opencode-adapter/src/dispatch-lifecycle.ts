@@ -2,7 +2,7 @@ import { DISPATCH_ROLES, PRODUCTION_WAIT_BUDGET_MS, createKeyedMutex, serializeO
 import { createJob, loadJob } from "./dispatch-journal.ts"
 import { STARTUP_GRACE_MS } from "./dispatch-observer.ts"
 import { buildChainFailureMessage, embedsProviderErrorText, errorText, formatModel, isProviderErrorText, makeEnvelope, modelFailureHint, observationToOutcome } from "./dispatch-helpers.ts"
-import { abortAndReconcile, createSystemClock, findActiveAttempt } from "./dispatch-cancel.ts"
+import { abortAndReconcile, createSystemClock, findActiveAttempt, type ActiveAttempt } from "./dispatch-cancel.ts"
 import { launchAttempt, observeAttempt, LaunchError, type AttemptSubmission } from "./dispatch-attempt.ts"
 export { createSystemClock } from "./dispatch-cancel.ts"
 
@@ -13,6 +13,29 @@ export interface LaunchInput {
   readonly modelChain: ReadonlyArray<string | null>
   readonly parentID: string
   readonly directory: string
+  readonly waitMs?: number
+  readonly startupGraceMs?: number
+  readonly signal?: AbortSignal
+  /**
+   * When true, a successful launch returns a completed JSON envelope
+   * (job_id, session_id, attempt, waited_ms, text) instead of plain text,
+   * so the caller can later reuse `session_id` with
+   * `janus_dispatch_continue`. Pending/failed results are unchanged.
+   */
+  readonly returnHandle?: boolean
+}
+
+export interface ContinueInput {
+  readonly role: DispatchRole
+  readonly prompt: string
+  readonly agentName: string
+  readonly modelChain: ReadonlyArray<string | null>
+  readonly parentID: string
+  readonly directory: string
+  /** The existing dispatch session the new prompt is sent to. */
+  readonly sessionID: string
+  /** The original job root that owned the reused target session. */
+  readonly continuedFrom: string
   readonly waitMs?: number
   readonly startupGraceMs?: number
   readonly signal?: AbortSignal
@@ -30,6 +53,7 @@ export interface WaitInput {
 export interface DispatchLifecycle {
   readonly launch: (input: LaunchInput) => Promise<string>
   readonly wait: (input: WaitInput) => Promise<string>
+  readonly continue: (input: ContinueInput) => Promise<string>
 }
 
 export interface CreateDispatchLifecycleInput {
@@ -82,30 +106,98 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
     return { kind: "failure", reason: buildChainFailureMessage(spec.role, tried, lastError) }
   }
 
-  async function runLaunch(request: LaunchInput): Promise<string> {
+  interface JobRequest {
+    readonly role: DispatchRole
+    readonly prompt: string
+    readonly agentName: string
+    readonly modelChain: ReadonlyArray<string | null>
+    readonly parentID: string
+    readonly directory: string
+    readonly waitMs?: number
+    readonly startupGraceMs?: number
+    readonly signal?: AbortSignal
+  }
+
+  interface ContinuationSpec {
+    readonly sessionID: string
+    readonly continuedFrom: string
+  }
+
+  async function readCompletedHandle(jobID: string, spec: JobSpec): Promise<ActiveAttempt | undefined> {
+    const loaded = await loadJob(sdk, { jobID, directory: spec.directory, expectedParentID: spec.parent_id })
+    if (!loaded.ok) return undefined
+    return findActiveAttempt(loaded.value)
+  }
+
+  // One code path for a normal launch and a continuation: both create a job
+  // root (a continuation records sessionID/continuedFrom in its spec), run
+  // attempt 0 (a continuation prompts spec.session_id, the reused target),
+  // and share the recoverable failure/abort handling.
+  async function runJob(
+    request: JobRequest,
+    options: { readonly returnHandle?: boolean; readonly continuation?: ContinuationSpec },
+  ): Promise<string> {
     const modelChain = [...request.modelChain]
-    const created = await createJob(sdk, { parentID: request.parentID, directory: request.directory,
-      role: request.role, agentName: request.agentName, modelChain, prompt: request.prompt, clock })
+    const continuation = options.continuation
+    const created = await createJob(sdk, {
+      parentID: request.parentID, directory: request.directory,
+      role: request.role, agentName: request.agentName, modelChain, prompt: request.prompt, clock,
+      ...(continuation !== undefined ? { sessionID: continuation.sessionID, continuedFrom: continuation.continuedFrom } : {}),
+    })
     if (!created.ok) {
       const identity = created.error.jobID === undefined ? "" : ` (job_id=${created.error.jobID})`
       return serializeOutcome({ kind: "failure", reason: `failed to create job: ${created.error.message}${identity}` })
     }
     const jobID = created.value.jobID
-    const spec: JobSpec = { v: 1, kind: "job-spec", role: request.role, prompt: request.prompt,
+    const spec: JobSpec = {
+      v: 1, kind: "job-spec", role: request.role, prompt: request.prompt,
       agent_name: request.agentName, model_chain: modelChain, parent_id: request.parentID,
-      directory: request.directory, created_at: clock.now() }
-    return mutex.withLock(jobID, async () => serializeOutcome(await resolveAttemptChain({
-      jobID, spec, index: 0, waitBudgetMs: request.waitMs ?? PRODUCTION_WAIT_BUDGET_MS,
-      signal: request.signal, startupGraceMs: request.startupGraceMs,
-    }, clock.now(), false)), request.signal).catch((error: unknown) => {
+      directory: request.directory, created_at: clock.now(),
+      ...(continuation !== undefined ? { session_id: continuation.sessionID, continued_from: continuation.continuedFrom } : {}),
+    }
+    const startTime = clock.now()
+    return mutex.withLock(jobID, async () => {
+      const outcome = await resolveAttemptChain({
+        jobID, spec, index: 0, waitBudgetMs: request.waitMs ?? PRODUCTION_WAIT_BUDGET_MS,
+        signal: request.signal, startupGraceMs: request.startupGraceMs,
+      }, startTime, false)
+      if (outcome.kind === "success" && options.returnHandle === true) {
+        const handle = await readCompletedHandle(jobID, spec)
+        if (handle !== undefined) {
+          return JSON.stringify({
+            v: 1,
+            status: "completed",
+            job_id: jobID,
+            role: request.role,
+            attempt: { index: handle.index, model: handle.model },
+            session_id: handle.sessionID,
+            waited_ms: Math.max(0, clock.now() - startTime),
+            text: outcome.text,
+          })
+        }
+        // Never lose the success text when the handle cannot be read back.
+        return `${outcome.text}\n\n(handle unavailable: the completed session id could not be read back; the result above is final)`
+      }
+      return serializeOutcome(outcome)
+    }, request.signal).catch((error: unknown) => {
       if (error instanceof DOMException && error.name === "AbortError") {
-        return serializeOutcome(makeEnvelope("pending", jobID, request.role, { index: 0, model: modelChain[0] ?? null }, jobID, 0, "launch aborted before attempt started"))
+        return serializeOutcome(makeEnvelope("pending", jobID, request.role, { index: 0, model: modelChain[0] ?? null }, continuation?.sessionID ?? jobID, 0, "launch aborted before attempt started"))
       }
       const identity = error instanceof LaunchError && error.jobID !== undefined ? ` (job_id=${error.jobID})` : ""
       const message = error instanceof LaunchError ? error.message : errorText(error)
       const providerShaped = error instanceof LaunchError ? embedsProviderErrorText(message) : isProviderErrorText(message)
       const hint = providerShaped ? modelFailureHint(request.role, modelChain[0] ?? null) : ""
       return serializeOutcome({ kind: "failure", reason: `${request.role} dispatch failed: ${message}${identity}${hint}` })
+    })
+  }
+
+  async function runLaunch(request: LaunchInput): Promise<string> {
+    return runJob(request, { returnHandle: request.returnHandle })
+  }
+
+  async function runContinue(request: ContinueInput): Promise<string> {
+    return runJob(request, {
+      continuation: { sessionID: request.sessionID, continuedFrom: request.continuedFrom },
     })
   }
 
@@ -176,5 +268,5 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
       return serializeOutcome({ kind: "failure", reason: "consultation dispatch unavailable" })
     })
   }
-  return { launch: runLaunch, wait: runWait }
+  return { launch: runLaunch, wait: runWait, continue: runContinue }
 }

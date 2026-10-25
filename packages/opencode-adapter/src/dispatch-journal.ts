@@ -57,6 +57,10 @@ export interface CreateJobInput {
   readonly modelChain: ReadonlyArray<string | null>
   readonly prompt: string
   readonly clock: Clock
+  /** Existing dispatch session a continuation job reuses as its attempt-0 target. */
+  readonly sessionID?: string
+  /** Original job root that owned the reused target session. */
+  readonly continuedFrom?: string
 }
 export interface CreateJobResult {
   readonly jobID: string
@@ -118,6 +122,8 @@ export async function createJob(
     parent_id: input.parentID,
     directory,
     created_at: input.clock.now(),
+    ...(input.sessionID !== undefined ? { session_id: input.sessionID } : {}),
+    ...(input.continuedFrom !== undefined ? { continued_from: input.continuedFrom } : {}),
   }
   try {
     const append = await appendRecord(sdk, { jobID, directory, record: spec })

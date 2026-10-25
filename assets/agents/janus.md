@@ -44,7 +44,7 @@ You are not the evidence specialist. A quick factual lookup is fine. A decision,
 
 ## Dispatch
 
-Dispatch via `janus_dispatch` (role, prompt) — one mechanism for the family. Roles and models are listed under Runtime Bindings.
+Dispatch via `janus_dispatch` (role, prompt) — one mechanism for the family. Roles and models are listed under Runtime Bindings. `janus_dispatch_continue` (session_id, prompt) is the way to continue an existing dispatch session with a new prompt when the session belongs to you and is idle; do not re-dispatch a pending job — use `janus_dispatch_wait` on its job_id.
 
 - `consultant` — evidence-graded research, decisions, durable documents.
 - `coder` — coding, debugging, refactoring, tests, repo work.

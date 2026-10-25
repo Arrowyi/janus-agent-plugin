@@ -64,8 +64,10 @@ export async function launchAttempt(context: AttemptContext, request: AttemptSub
     model, message_id: requestMessageID, reserved_at: clock.now(),
   } })
   if (!reservation.ok) throw new LaunchError(`failed to persist attempt reservation: ${reservation.error.message}`, jobID)
-  let sessionID = jobID
+  let sessionID = spec.session_id ?? jobID
   if (index > 0) {
+    // Retry attempts always run in a fresh attempt child session, even for a
+    // continuation job whose attempt 0 reused the target session.
     const child = await createAttemptSession(sdk, { jobID, directory: spec.directory, role: spec.role })
     if (!child.ok) throw new LaunchError(`failed to create attempt session: ${child.error.message}`, jobID)
     sessionID = child.value.sessionID

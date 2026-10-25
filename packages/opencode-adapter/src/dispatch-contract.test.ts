@@ -5,6 +5,7 @@ import {
   DISPATCH_ROLES,
   DEFAULT_WAIT_MS,
   PRODUCTION_WAIT_BUDGET_MS,
+  parseContinueArgs,
   parseJournalRecord,
   parseWaitArgs,
   parseOutcomeEnvelope,
@@ -24,6 +25,7 @@ import {
   makeAttemptReservation,
   makeCancelledEnvelope,
   makeCancelIntent,
+  makeCompletedEnvelope,
   makeEnvelope,
   makeJobSpec,
   validRoleSpecs,
@@ -123,17 +125,44 @@ describe("envelope parsing and serialization", () => {
     const pending = makeEnvelope("pending", { waited_ms: 1_000 })
     const parsedPending = assertOk(parseOutcomeEnvelope(serializeOutcome({ kind: "nonterminal", envelope: pending })))
     expect(parsedPending.status).toBe("pending")
+    if (parsedPending.status === "pending" || parsedPending.status === "unknown" || parsedPending.status === "cancelling") {
+      expect(parsedPending.next).toBe("janus_dispatch_wait")
+    }
     expect(parsedPending.job_id).toBe(FAKE_JOB_ID)
     expect(parsedPending.role).toBe("analyst")
     expect(parsedPending.attempt).toEqual({ index: 0, model: "opencode/claude-sonnet-5-5" })
     expect(parsedPending.session_id).toBe(FAKE_SESSION_ID)
     expect(parsedPending.waited_ms).toBe(1_000)
-    expect(parsedPending.next).toBe("janus_dispatch_wait")
 
     const cancelled = makeCancelledEnvelope()
     const parsedCancelled = assertOk(parseOutcomeEnvelope(serializeOutcome({ kind: "cancelled", envelope: cancelled })))
     expect(parsedCancelled.status).toBe("cancelled")
     expect(parsedCancelled.job_id).toBe(FAKE_JOB_ID)
+  })
+
+  it("round-trips a completed return_handle envelope with text and no next field", () => {
+    const completed = makeCompletedEnvelope({ text: "the writer result", session_id: "ses_target", waited_ms: 42 })
+    const json = JSON.stringify(completed)
+    const parsed = assertOk(parseOutcomeEnvelope(json))
+    expect(parsed.status).toBe("completed")
+    if (parsed.status !== "completed") throw new Error("expected completed envelope")
+    expect(parsed.job_id).toBe(FAKE_JOB_ID)
+    expect(parsed.role).toBe("analyst")
+    expect(parsed.attempt).toEqual({ index: 0, model: "opencode/claude-sonnet-5-5" })
+    expect(parsed.session_id).toBe("ses_target")
+    expect(parsed.waited_ms).toBe(42)
+    expect(parsed.text).toBe("the writer result")
+    expect("next" in parsed).toBe(false)
+    expect("reason" in parsed).toBe(false)
+  })
+
+  it("rejects a completed envelope missing text or carrying reason/next fields", () => {
+    const missingText = JSON.stringify({ ...makeCompletedEnvelope(), text: undefined })
+    expect(assertError(parseOutcomeEnvelope(missingText)).message.length).toBeGreaterThan(0)
+    const withNext = JSON.stringify({ ...makeCompletedEnvelope(), next: "janus_dispatch_wait" })
+    expect(assertError(parseOutcomeEnvelope(withNext)).message).toContain("next")
+    const withReason = JSON.stringify({ ...makeCompletedEnvelope(), reason: "done" })
+    expect(assertError(parseOutcomeEnvelope(withReason)).message).toContain("reason")
   })
 
   it("does not treat plain success text as an envelope", () => {
@@ -144,9 +173,47 @@ describe("envelope parsing and serialization", () => {
     if (!parsed.ok) expect(parsed.error.message).toContain("JSON")
   })
 
-  it("rejects envelope with unknown status", () => {
-    const bad = JSON.stringify({ ...makeEnvelope("pending"), status: "completed" })
+  it("rejects envelope with an unsupported status", () => {
+    const bad = JSON.stringify({ ...makeEnvelope("pending"), status: "paused" })
     expect(assertError(parseOutcomeEnvelope(bad)).message).toContain("status")
+  })
+})
+
+describe("continuation journal fields", () => {
+  it("parses a job spec with session_id and continued_from", () => {
+    const parsed = assertOk(parseJournalRecord(makeJobSpec({ session_id: "ses_target", continued_from: "ses_origin" })))
+    expect(parsed.kind).toBe("job-spec")
+    if (parsed.kind === "job-spec") {
+      expect(parsed.session_id).toBe("ses_target")
+      expect(parsed.continued_from).toBe("ses_origin")
+    }
+  })
+
+  it("still parses legacy job specs without the continuation fields", () => {
+    for (const { record } of validRoleSpecs) {
+      const parsed = assertOk(parseJournalRecord(record))
+      expect(parsed.kind).toBe("job-spec")
+      if (parsed.kind === "job-spec") {
+        expect(parsed.session_id).toBeUndefined()
+        expect(parsed.continued_from).toBeUndefined()
+      }
+    }
+  })
+
+  it("rejects an empty session_id in a continuation spec", () => {
+    expect(parseJournalRecord({ ...makeJobSpec(), session_id: "" }).ok).toBe(false)
+    expect(parseJournalRecord({ ...makeJobSpec(), continued_from: "" }).ok).toBe(false)
+  })
+})
+
+describe("continue args validation", () => {
+  it("accepts valid args with an optional role and rejects bad values", () => {
+    expect(assertOk(parseContinueArgs({ session_id: FAKE_SESSION_ID, prompt: "apply the fix" })).role).toBeUndefined()
+    expect(assertOk(parseContinueArgs({ session_id: FAKE_SESSION_ID, prompt: "apply the fix", role: "writer" })).role).toBe("writer")
+    expect(assertError(parseContinueArgs({ session_id: "", prompt: "x" })).message).toContain("session_id")
+    expect(assertError(parseContinueArgs({ session_id: FAKE_SESSION_ID, prompt: "x", role: "oracle" })).message).toContain("role")
+    expect(assertError(parseContinueArgs({ session_id: FAKE_SESSION_ID })).message).toContain("prompt")
+    expect(assertError(parseContinueArgs({ session_id: FAKE_SESSION_ID, prompt: "x", unexpected: true })).message.length).toBeGreaterThan(0)
   })
 })
 

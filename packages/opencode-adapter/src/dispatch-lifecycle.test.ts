@@ -19,7 +19,7 @@ import {
   type FakeSdk,
 } from "./dispatch-test-fixtures.ts"
 import { createDispatchLifecycle, createSystemClock } from "./dispatch-lifecycle.ts"
-import { appendRecord, createJob } from "./dispatch-journal.ts"
+import { appendRecord, createJob, loadJob } from "./dispatch-journal.ts"
 import { createDispatchCancel } from "./dispatch-cancel.ts"
 import { createKeyedMutex } from "./dispatch-contract.ts"
 
@@ -1171,7 +1171,274 @@ describe("journal read outage", () => {
     if (parsed.ok) {
       expect(parsed.value.status).toBe("unknown")
       expect(parsed.value.job_id).toBe(jobID)
-      expect(parsed.value.reason).toContain("read failed")
+      if (parsed.value.status === "unknown" || parsed.value.status === "pending" || parsed.value.status === "cancelling") {
+        expect(parsed.value.reason).toContain("read failed")
+      }
     }
+  })
+})
+
+describe("continuation lifecycle", () => {
+  it("runContinue prompts the reused target session and records session_id/continued_from in a new continuation root", async () => {
+    const clock = createFakeClock()
+    const fake = createAutoCompletingFake("chapter one prose", clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    const first = await lifecycle.launch({
+      role: "writer", prompt: "draft chapter one", agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 1_000,
+    })
+    expect(first).toBe("chapter one prose")
+
+    const result = await lifecycle.continue({
+      role: "writer", prompt: "apply the review fix to chapter one", agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      sessionID: "ses_fake_1", continuedFrom: "ses_fake_1", waitMs: 1_000,
+    })
+
+    expect(result).toBe("chapter one prose")
+    // One new session was created: the continuation job root. The prompt went
+    // to the reused target session, not to a fresh attempt session.
+    const creates = fake.calls.filter((c) => (c as { method: string }).method === "create") as Array<{ input: { body: { title: string; parentID: string } } }>
+    expect(creates).toHaveLength(2)
+    expect(creates[1]!.input.body.title).toBe("[consultation-dispatch:v1] writer")
+    expect(creates[1]!.input.body.parentID).toBe(FAKE_PARENT_ID)
+    const asyncs = fake.calls.filter((c) => (c as { method: string }).method === "promptAsync") as Array<{ input: { path: { id: string }; body: { agent?: string; parts: SdkTextPart[] } } }>
+    expect(asyncs).toHaveLength(2)
+    expect(asyncs[0]!.input.path.id).toBe("ses_fake_1")
+    expect(asyncs[1]!.input.path.id).toBe("ses_fake_1")
+    expect(asyncs[1]!.input.body.parts).toEqual([{ type: "text", text: "apply the review fix to chapter one" }])
+    // The continuation journal records the reuse.
+    const loaded = await loadJob(fake, { jobID: "ses_fake_2", directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+    if (!loaded.ok) throw loaded.error
+    expect(loaded.value.spec.session_id).toBe("ses_fake_1")
+    expect(loaded.value.spec.continued_from).toBe("ses_fake_1")
+    expect(loaded.value.receipts[0]!.session_id).toBe("ses_fake_1")
+  })
+
+  it("a pending continuation returns the continuation job_id with the target session_id, and wait recovers it", async () => {
+    const clock = createFakeClock()
+    const fake = createPendingFake()
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    const launchPromise = lifecycle.launch({
+      role: "writer", prompt: "draft chapter one", agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 50, startupGraceMs: 10,
+    })
+    await advanceClockAfterTick(clock, 50)
+    const launched = parseEnvelope(await launchPromise)
+
+    const continuePromise = lifecycle.continue({
+      role: "writer", prompt: "apply the review fix", agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      sessionID: launched.session_id, continuedFrom: launched.job_id, waitMs: 50, startupGraceMs: 10,
+    })
+    const before = promptAsyncCount(fake)
+    await advanceClockAfterTick(clock, 50)
+    const continued = parseEnvelope(await continuePromise)
+
+    expect(continued.status).toMatch(/pending|unknown/)
+    expect(continued.job_id).not.toBe(launched.job_id)
+    expect(continued.session_id).toBe(launched.session_id)
+    expect(promptAsyncCount(fake)).toBe(before + 1)
+
+    const requestMessageID = fake.calls
+      .filter((c): c is { method: "promptAsync"; input: { path: { id: string }; body: { messageID?: string } } } => (c as { method: string }).method === "promptAsync")
+      .at(-1)!.input.body.messageID
+    if (requestMessageID === undefined) throw new Error("missing request ID")
+    fake.seedMessages(launched.session_id, [
+      completedAssistantMessage(requestMessageID, "fixed prose", {
+        sessionID: launched.session_id, id: `msg-continue-${launched.session_id}`,
+        time: { created: clock.now(), completed: clock.now() },
+      }),
+    ])
+    const waited = await lifecycle.wait({ jobID: continued.job_id, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 100 })
+    expect(waited).toBe("fixed prose")
+    // Wait on the continuation job used the target session, no new promptAsync.
+    expect(promptAsyncCount(fake)).toBe(before + 1)
+  })
+
+  it("cancel on a continuation job aborts the reused target session", async () => {
+    const clock = createFakeClock()
+    const fake = createFakeSdk()
+    const mutex = createKeyedMutex()
+    const base = fake.session.promptAsync.bind(fake.session)
+    let promptAsyncCalls = 0
+    fake.session.promptAsync = async (input) => {
+      const result = await base(input)
+      promptAsyncCalls++
+      const requestMessageID = input.body.messageID!
+      const sessionID = input.path.id
+      if (promptAsyncCalls === 1) {
+        // The original launch completes; the continuation prompt stays pending.
+        fake.seedMessages(sessionID, [completedAssistantMessage(requestMessageID, "chapter prose", { sessionID, id: `msg-draft-${sessionID}` })])
+      }
+      return result
+    }
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock, mutex })
+    const cancelHandler = createDispatchCancel({ sdk: fake, clock, mutex })
+    await lifecycle.launch({
+      role: "writer", prompt: "draft chapter one", agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 1_000,
+    })
+
+    // Continue with a pending follow-up prompt on the same target session.
+    const continuePromise = lifecycle.continue({
+      role: "writer", prompt: "apply the review fix", agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      sessionID: "ses_fake_1", continuedFrom: "ses_fake_1", waitMs: 0,
+    })
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    const continued = parseEnvelope(await continuePromise)
+
+    const result = parseEnvelope(await cancelHandler.cancel({ jobID: continued.job_id, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY }))
+
+    expect(result.status).toBe("cancelling")
+    // The abort targeted the reused target session, not the continuation root.
+    const aborts = fake.calls.filter((c) => (c as { method: string }).method === "abort") as Array<{ input: { path: { id: string } } }>
+    expect(aborts.map((a) => a.input.path.id)).toEqual(["ses_fake_1"])
+  })
+
+  it("a retryable failure inside a continuation creates a fresh attempt child under the continuation root", async () => {
+    const clock = createFakeClock()
+    const fake = createFakeSdk()
+    const base = fake.session.promptAsync.bind(fake.session)
+    let attempt = 0
+    fake.session.promptAsync = async (input) => {
+      const result = await base(input)
+      attempt++
+      const requestMessageID = input.body.messageID!
+      const sessionID = input.path.id
+      if (attempt === 2) {
+        // The continuation's reused target fails retryably on the primary model.
+        fake.seedMessages(sessionID, [
+          completedAssistantMessage(requestMessageID, "", {
+            sessionID, id: `msg-fail-${sessionID}`,
+            error: { name: "APIError", data: { isRetryable: true, status: 429, message: "rate limited" } },
+          }),
+        ])
+      } else {
+        fake.seedMessages(sessionID, [
+          completedAssistantMessage(requestMessageID, "usable prose", { sessionID, id: `msg-success-${sessionID}` }),
+        ])
+      }
+      return result
+    }
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    // Original writer launch: root ses_fake_1, prompt in ses_fake_1.
+    const first = await lifecycle.launch({
+      role: "writer", prompt: "draft chapter one", agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 1_000,
+    })
+    expect(first).toBe("usable prose")
+
+    const result = await lifecycle.continue({
+      role: "writer", prompt: "apply the review fix", agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5", "opencode-go/glm-5.3"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      sessionID: "ses_fake_1", continuedFrom: "ses_fake_1", waitMs: 1_000,
+    })
+
+    expect(result).toBe("usable prose")
+    const asyncs = fake.calls.filter((c) => (c as { method: string }).method === "promptAsync") as Array<{ input: { path: { id: string }; body: { model?: { modelID: string } } } }>
+    expect(asyncs).toHaveLength(3)
+    // Continuation attempt 0 reused the target session; attempt 1 (retry) ran
+    // in a fresh attempt child under the continuation root ses_fake_2.
+    expect(asyncs[1]!.input.path.id).toBe("ses_fake_1")
+    expect(asyncs[1]!.input.body.model?.modelID).toBe("claude-sonnet-5-5")
+    expect(asyncs[2]!.input.path.id).toBe("ses_fake_3")
+    expect(asyncs[2]!.input.body.model?.modelID).toBe("glm-5.3")
+    const creates = fake.calls.filter((c) => (c as { method: string }).method === "create") as Array<{ input: { body: { title: string; parentID: string } } }>
+    expect(creates).toHaveLength(3)
+    expect(creates[1]!.input.body.title).toBe("[consultation-dispatch:v1] writer")
+    expect(creates[2]!.input.body.title).toBe("[consultation-dispatch:v1] attempt writer")
+    expect(creates[2]!.input.body.parentID).toBe("ses_fake_2")
+    expect(abortCount(fake)).toBe(0)
+  })
+})
+
+describe("return_handle launch results", () => {
+  it("returns a completed envelope with the successful session and text when returnHandle is true", async () => {
+    const clock = createFakeClock()
+    const fake = createAutoCompletingFake("the writer result", clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+
+    const result = await lifecycle.launch({
+      role: "writer", prompt: "draft chapter one", agentName: "consultation-writer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 1_000, returnHandle: true,
+    })
+
+    const parsed = parseOutcomeEnvelope(result)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw parsed.error
+    expect(parsed.value.status).toBe("completed")
+    if (parsed.value.status !== "completed") throw new Error("expected completed envelope")
+    expect(parsed.value.job_id).toBe("ses_fake_1")
+    expect(parsed.value.role).toBe("writer")
+    expect(parsed.value.attempt).toEqual({ index: 0, model: "opencode/claude-sonnet-5-5" })
+    expect(parsed.value.session_id).toBe("ses_fake_1")
+    expect(parsed.value.text).toBe("the writer result")
+    expect(parsed.value.waited_ms).toBeGreaterThanOrEqual(0)
+  })
+
+  it("returns plain text on success when returnHandle is not set", async () => {
+    const clock = createFakeClock()
+    const fake = createAutoCompletingFake("plain result", clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+
+    const result = await lifecycle.launch({
+      role: "analyst", prompt: "analyze", agentName: "consultation-analyst",
+      modelChain: ["opencode-go/qwen3.8-max"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 1_000,
+    })
+
+    expect(result).toBe("plain result")
+    expect(parseOutcomeEnvelope(result).ok).toBe(false)
+  })
+
+  it("keeps the success text when the handle cannot be read back", async () => {
+    const clock = createFakeClock()
+    const fake = createAutoCompletingFake("usable report", clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    const children = fake.session.children.bind(fake.session)
+    let broken = false
+    fake.session.children = async (input) => {
+      if (broken) return { error: { name: "APIError", data: { statusCode: 503 } } }
+      return children(input)
+    }
+
+    const first = await lifecycle.launch({
+      role: "analyst", prompt: "analyze", agentName: "consultation-analyst",
+      modelChain: ["opencode-go/qwen3.8-max"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 1_000,
+    })
+    expect(first).toBe("usable report")
+
+    broken = true
+    const result = await lifecycle.launch({
+      role: "analyst", prompt: "analyze again", agentName: "consultation-analyst",
+      modelChain: ["opencode-go/qwen3.8-max"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 1_000, returnHandle: true,
+    })
+
+    expect(result).toContain("usable report")
+    expect(result).toContain("handle unavailable")
+    expect(result.startsWith("usable report")).toBe(true)
+  })
+
+  it("leaves pending and failed results untouched when returnHandle is true", async () => {
+    const clock = createFakeClock()
+    const fake = createPendingFake()
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    const launchPromise = lifecycle.launch({
+      role: "analyst", prompt: "analyze", agentName: "consultation-analyst",
+      modelChain: ["opencode-go/qwen3.8-max"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 50, startupGraceMs: 10, returnHandle: true,
+    })
+    await advanceClockAfterTick(clock, 50)
+    const result = await launchPromise
+    const envelope = parseEnvelope(result)
+    expect(envelope.status).toMatch(/pending|unknown/)
+    expect(envelope.job_id).toMatch(/^ses_fake_/)
+    expect("text" in envelope).toBe(false)
   })
 })

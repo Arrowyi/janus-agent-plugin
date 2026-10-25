@@ -8,6 +8,7 @@ import {
 import {
   DISPATCH_ROLES,
   createKeyedMutex,
+  parseContinueArgs,
   parseWaitArgs,
   type Clock,
   type DispatchRole,
@@ -16,7 +17,9 @@ import {
 } from "./dispatch-contract.ts"
 import { createDispatchLifecycle, createSystemClock, type DispatchLifecycle } from "./dispatch-lifecycle.ts"
 import { createDispatchCancel } from "./dispatch-cancel.ts"
+import { loadJob } from "./dispatch-journal.ts"
 import { splitModel, errorText, isRetryableModelError } from "./dispatch-helpers.ts"
+import path from "node:path"
 
 export { splitModel, errorText, isRetryableModelError }
 
@@ -27,6 +30,8 @@ export { splitModel, errorText, isRetryableModelError }
  */
 export { DISPATCH_ROLES }
 export type { DispatchRole }
+
+const DISPATCH_MARKER = "[consultation-dispatch:v1] "
 
 export interface RoleTarget {
   agentName: string
@@ -71,13 +76,14 @@ export interface DispatchToolDeps {
 }
 
 /**
- * Build the three consultation job tools with one shared coordinator set.
+ * Build the four consultation job tools with one shared coordinator set.
  *
  * It dispatches ONLY to the consultation roles (`consultant`, `coder`, `lite`,
  * `explorer`, `analyst`, `critic`, `verifier`, `writer`, `coder-lite`, `build`)
- * using the recoverable lifecycle coordinator. It is additive: it neither
- * shadows nor interferes with the built-in `task` tool or any other plugin's
- * tools.
+ * using the recoverable lifecycle coordinator. `janus_dispatch_continue`
+ * reuses an existing dispatch session from the same caller. It is additive:
+ * it neither shadows nor interferes with the built-in `task` tool or any
+ * other plugin's tools.
  */
 export function createJanusDispatchTools(
   client: PluginInput["client"],
@@ -93,10 +99,11 @@ export function createJanusDispatchTools(
 
   const dispatch = tool({
     description:
-      "Dispatch ONLY to a consultation role (consultant, coder, lite, explorer, analyst, critic, verifier, writer, coder-lite, build). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting.",
+      "Dispatch ONLY to a consultation role (consultant, coder, lite, explorer, analyst, critic, verifier, writer, coder-lite, build). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
     args: {
       role: tool.schema.enum(DISPATCH_ROLES),
       prompt: tool.schema.string(),
+      return_handle: tool.schema.boolean().optional(),
     },
     async execute(args, context: ToolContext): Promise<string> {
       const config = await loadPluginConfig(process.env)
@@ -127,6 +134,118 @@ export function createJanusDispatchTools(
         modelChain,
         parentID: context.sessionID,
         directory: context.directory,
+        signal: context.abort,
+        returnHandle: args.return_handle,
+      })
+    },
+  })
+
+  const continueTool = tool({
+    description:
+      "Continue an existing dispatch session with a new prompt. session_id comes from a janus_dispatch return_handle completed envelope or a pending envelope. Reuse is limited to the same caller and workspace, an idle dispatch session (not busy/retrying); returns the specialist's response text, or a recoverable pending envelope whose job_id works with janus_dispatch_wait. Never continue a pending job (wait for it first) and never pass a continuation job_id as session_id — use the original session_id.",
+    args: {
+      session_id: tool.schema.string(),
+      prompt: tool.schema.string(),
+      role: tool.schema.enum(DISPATCH_ROLES).optional(),
+    },
+    async execute(args, context: ToolContext): Promise<string> {
+      const parsed = parseContinueArgs(args)
+      if (!parsed.ok) return `Error: ${parsed.error.message}`
+      const { session_id: targetSessionID, prompt } = parsed.value
+      const config = await loadPluginConfig(process.env)
+
+      // Resolve the target session in the caller's workspace.
+      const targetResult = await sdk.session.get({
+        path: { id: targetSessionID },
+        query: { directory: context.directory },
+      })
+      const target = targetResult.data
+      if (target === undefined) {
+        return `Error: target session ${targetSessionID} was not found in the current workspace`
+      }
+      if (path.normalize(target.directory) !== path.normalize(context.directory)) {
+        return "Error: target session belongs to a different workspace; session reuse is limited to the same directory"
+      }
+      if (!target.title.startsWith(DISPATCH_MARKER)) {
+        return "Error: target session is not a dispatch session"
+      }
+
+      // Resolve the owning job root and the target's role. The target is
+      // either a job root owned by this caller, or an attempt child of a
+      // normal job root owned by this caller. A continuation job root (its
+      // spec carries session_id) is rejected: callers must continue the
+      // original session, not a continuation job.
+      let jobRootID: string
+      let role: DispatchRole
+      if (target.parentID === context.sessionID) {
+        jobRootID = target.id
+      } else if (target.parentID === undefined) {
+        return "Error: target dispatch session is not owned by this caller; session reuse is limited to the same caller and workspace"
+      } else {
+        jobRootID = target.parentID
+      }
+      const loadedResult = await loadJob(sdk, {
+        jobID: jobRootID,
+        directory: context.directory,
+        expectedParentID: context.sessionID,
+      })
+      if (!loadedResult.ok) {
+        return "Error: target dispatch session is not owned by this caller; session reuse is limited to the same caller and workspace"
+      }
+      const loaded = loadedResult.value
+      if (loaded.spec.session_id !== undefined) {
+        return `Error: ${targetSessionID} is a continuation job${target.parentID === context.sessionID ? "" : " attempt"}; use the original dispatch session_id, not a continuation job_id`
+      }
+      role = loaded.spec.role
+      if (target.parentID !== context.sessionID) {
+        if (!loaded.children.some((child) => child.id === targetSessionID)) {
+          return "Error: target session is not an attempt of an owned dispatch job"
+        }
+        if (target.title !== `${DISPATCH_MARKER}attempt ${role}`) {
+          return `Error: target session title does not match the dispatch role ${role}`
+        }
+      }
+      if (parsed.value.role !== undefined && parsed.value.role !== role) {
+        return `Error: role ${parsed.value.role} does not match the target session's dispatch role ${role}`
+      }
+
+      const enabled: Record<DispatchRole, boolean> = {
+        explorer: true,
+        analyst: true,
+        critic: config.critic_enabled,
+        verifier: config.verifier_enabled,
+        writer: config.writer_enabled || config.writer_delegate_agent !== undefined,
+        coder: config.coder_enabled,
+        lite: config.lite_enabled,
+        "coder-lite": config.coder_lite_enabled,
+        build: config.build_enabled,
+        consultant: true,
+      }
+      if (!enabled[role]) return `Error: ${role} is disabled by configuration`
+
+      // Idle check: a busy/retrying target must be waited on, not re-prompted.
+      // A status map that omits the session reports idle.
+      const statusResult = await sdk.session.status({ query: { directory: context.directory } })
+      const status = statusResult.data?.[targetSessionID]
+      if (status !== undefined && status.type !== "idle") {
+        return `Error: target session is ${status.type}; wait for the active job first (janus_dispatch_wait)`
+      }
+
+      const { agentName, model } = resolveRoleTarget(config, role)
+      const modelChain: Array<string | null> =
+        role === "build" || (role === "writer" && config.writer_delegate_agent !== undefined)
+          ? [model ?? null]
+          : resolveRoleModelChain(config, role).map((m) => m ?? null)
+
+      return lifecycle.continue({
+        role,
+        prompt,
+        agentName,
+        modelChain,
+        parentID: context.sessionID,
+        directory: context.directory,
+        sessionID: targetSessionID,
+        continuedFrom: jobRootID,
         signal: context.abort,
       })
     },
@@ -170,6 +289,7 @@ export function createJanusDispatchTools(
     janus_dispatch: dispatch,
     janus_dispatch_wait: wait,
     janus_dispatch_cancel: cancel,
+    janus_dispatch_continue: continueTool,
   }
 }
 

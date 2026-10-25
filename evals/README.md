@@ -19,7 +19,7 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 14 cases from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, and C40-C48 author-separation (writer/consultant) cases.
+- `fixtures/consultation-cases.json` - 14 cases from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 author-separation (writer/consultant) cases, and C49-C54 writer-session reuse and generic dispatch continuation cases.
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
@@ -80,6 +80,7 @@ id encodes the scenario, and the test file encodes the function under test.
 | C29 | packages/opencode-adapter/src/dispatch-cancel.test.ts |
 | C30 | packages/opencode-adapter/src/dispatch-lifecycle.test.ts; packages/opencode-adapter/src/dispatch-tool.test.ts; packages/opencode-adapter/src/dispatch-registration.test.ts |
 | C41 | packages/opencode-adapter/src/agent-registration.test.ts; packages/opencode-adapter/src/plugin.test.ts |
+| C54 | packages/opencode-adapter/src/dispatch-tool.test.ts; packages/opencode-adapter/src/dispatch-lifecycle.test.ts |
 | M1 | packages/memory-sqlite/src/store.test.ts |
 | M2 | packages/memory-sqlite/src/store.test.ts |
 | M4 | packages/memory-sqlite/src/store.test.ts |
@@ -91,8 +92,9 @@ id encodes the scenario, and the test file encodes the function under test.
 | M11 | packages/memory-sqlite/src/store.test.ts |
 | M12 | packages/memory-sqlite/src/multi-instance.test.ts |
 
-Model-graded cases (C3, C4, C5, C6, C7, C8, C10, C11, C12, C13, C14, C15-C25, C31-C40, C42-C48, M3, M5) have no test-file
-mapping by design (C41, C44, C45, and C47 carry deterministic backstops named in their notes).
+Model-graded cases (C3, C4, C5, C6, C7, C8, C10, C11, C12, C13, C14, C15-C25,
+C31-C40, C42-C48, C49-C53, M3, M5) have no test-file mapping by design (C41,
+C44, C45, C47, C49-C52 carry deterministic backstops named in their notes).
 
 ## Recoverable lifecycle evaluation (C26-C30)
 
@@ -176,6 +178,38 @@ plus the writer's child-session trace:
 Reject a run where the consultant edits prose itself in author mode, where
 the writer writes outside its roots, or where author state silently drifts
 from the brief and manifest.
+
+## Writer session reuse and generic continuation evaluation (C49-C54)
+
+These cases check the Phase 2 generic session-reuse mechanism —
+`janus_dispatch` with `return_handle: true` and `janus_dispatch_continue` —
+both in the author workflow (writer session reuse) and as a role-agnostic
+dispatch capability. Record the tool trace plus the brief's
+`writer_session_id` field:
+
+- **C49/C51** — the first writer dispatch captures the session handle
+  (`return_handle: true`; completed envelope's `session_id`, or the pending
+  envelope's `session_id` followed by a same-job wait) and stores it in the
+  brief; the envelope `text` is used as the result and raw envelope JSON is
+  never shown to the user.
+- **C50** — a maintenance edit on the same document and consultant session
+  continues the stored writer session (`janus_dispatch_continue`,
+  role `writer`) with a delta-sized prompt — no fresh writer job root for
+  that turn, no replayed full brief, and no continue while the previous
+  writer job is pending.
+- **C52** — a busy/lost/foreign stored session: wait for the active job or
+  fall back to a fresh dispatch with the full brief, update the stored id,
+  and disclose the fresh session only if it changes cost or behavior.
+- **C53** — a different document gets a fresh writer session; no
+  cross-document reuse of a writer session.
+- **C54** — the mechanism is generic: an analyst session continues the same
+  way (deterministic at the tool/lifecycle level; see the coverage map).
+
+Adversarial rubric: **Reject a fresh `janus_dispatch` where a reusable idle
+writer session exists for that document, a `janus_dispatch_continue` on a
+pending job, a continuation `job_id` passed as `session_id`, cross-document
+session reuse, and a lost session silently replaced without updating the
+brief's stored id.**
 
 ## Task-fit routing evaluation (C15-C25)
 

@@ -4,15 +4,11 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import type { PluginInput, ToolContext } from "@opencode-ai/plugin"
 
-import {
-  createJanusDispatchTool,
-  createJanusDispatchTools,
-  resolveRoleTarget,
-  splitModel,
-} from "./dispatch-tool.ts"
+import { createJanusDispatchTool, createJanusDispatchTools, resolveRoleTarget, splitModel } from "./dispatch-tool.ts"
+import { appendRecord, createAttemptSession, createJob } from "./dispatch-journal.ts"
 import { JanusPluginConfigSchema, type JanusPluginConfig } from "./plugin-config.ts"
 import { createFakeClock, createFakeSdk, type FakeSdk } from "./dispatch-test-fixtures.ts"
-import { PRODUCTION_WAIT_BUDGET_MS, type DispatchEnvelope, type SdkAssistantMessage, type SdkMessageWithParts, type SdkTextPart } from "./dispatch-contract.ts"
+import { parseOutcomeEnvelope, PRODUCTION_WAIT_BUDGET_MS, type DispatchEnvelope, type SdkAssistantMessage, type SdkMessageWithParts, type SdkTextPart } from "./dispatch-contract.ts"
 import type { DispatchLifecycle, LaunchInput } from "./dispatch-lifecycle.ts"
 
 function config(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConfig {
@@ -80,6 +76,25 @@ function createRespondingFake(responseText: string, clock = createFakeClock()): 
       return result
     }
   return fake
+}
+
+function outputText(result: unknown): string {
+  if (typeof result === "string") return result
+  if (typeof result === "object" && result !== null && "output" in result) {
+    const output = (result as { output: unknown }).output
+    if (typeof output === "string") return output
+  }
+  throw new Error(`unexpected tool result: ${JSON.stringify(result)}`)
+}
+
+/** Advance the fake clock past the 300000 ms soft wait budget so a pending
+ * observation expires deterministically instead of sleeping forever. */
+async function exhaustBudget(clock: ReturnType<typeof createFakeClock>): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  for (let i = 0; i < 160; i++) {
+    await Promise.resolve()
+    clock.advance(2_000)
+  }
 }
 
 describe("resolveRoleTarget", () => {
@@ -421,6 +436,7 @@ describe("createJanusDispatchTool", () => {
         return JSON.stringify(envelope)
       },
       wait: async () => "never called",
+      continue: async () => "never called",
     }
     const fake = createFakeSdk()
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { lifecycle: spyLifecycle })
@@ -429,5 +445,417 @@ describe("createJanusDispatchTool", () => {
 
     expect(captured).toHaveLength(1)
     expect(captured[0]!.waitMs ?? PRODUCTION_WAIT_BUDGET_MS).toBe(PRODUCTION_WAIT_BUDGET_MS)
+    expect(captured[0]!.returnHandle).toBeUndefined()
+  })
+
+  it("passes return_handle through to the lifecycle launch", async () => {
+    const captured: LaunchInput[] = []
+    const spyLifecycle: DispatchLifecycle = {
+      launch: async (input) => {
+        captured.push(input)
+        return "spy result"
+      },
+      wait: async () => "never called",
+      continue: async () => "never called",
+    }
+    const fake = createFakeSdk()
+    const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { lifecycle: spyLifecycle })
+
+    await dispatchTool.execute({ role: "writer", prompt: "draft", return_handle: true }, fakeContext())
+
+    expect(captured[0]!.returnHandle).toBe(true)
+  })
+})
+
+describe("janus_dispatch return_handle results", () => {
+  const savedEnv: Record<string, string | undefined> = {}
+  let tmpConfigDir: string
+  let configPath: string
+
+  beforeEach(() => {
+    savedEnv.JANUS_CONFIG = process.env.JANUS_CONFIG
+    savedEnv.HOME = process.env.HOME
+    tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-handle-"))
+    configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, "{}")
+    process.env.JANUS_CONFIG = configPath
+  })
+
+  afterEach(() => {
+    if (savedEnv.JANUS_CONFIG === undefined) delete process.env.JANUS_CONFIG
+    else process.env.JANUS_CONFIG = savedEnv.JANUS_CONFIG
+    if (savedEnv.HOME === undefined) delete process.env.HOME
+    else process.env.HOME = savedEnv.HOME
+    rmSync(tmpConfigDir, { recursive: true, force: true })
+  })
+
+  it("returns a completed envelope with the reused session id on success", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("the writer result", clock)
+    const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock })
+
+    const result = await dispatchTool.execute({ role: "writer", prompt: "draft chapter one", return_handle: true }, fakeContext())
+
+    const parsed = parseOutcomeEnvelope(outputText(result))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw parsed.error
+    expect(parsed.value.status).toBe("completed")
+    if (parsed.value.status !== "completed") throw new Error("expected completed envelope")
+    expect(parsed.value.role).toBe("writer")
+    expect(parsed.value.job_id).toMatch(/^ses_fake_/)
+    expect(parsed.value.session_id).toMatch(/^ses_fake_/)
+    expect(parsed.value.attempt.index).toBe(0)
+    expect(parsed.value.text).toBe("the writer result")
+  })
+
+  it("keeps plain text as the default success result without return_handle", async () => {
+    const fake = createRespondingFake("plain writer result")
+    const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"])
+
+    const result = await dispatchTool.execute({ role: "writer", prompt: "draft chapter one" }, fakeContext())
+
+    expect(outputText(result)).toBe("plain writer result")
+    expect(parseOutcomeEnvelope(outputText(result)).ok).toBe(false)
+  })
+})
+
+describe("janus_dispatch_continue", () => {
+  const savedEnv: Record<string, string | undefined> = {}
+  let tmpConfigDir: string
+  let configPath: string
+
+  beforeEach(() => {
+    savedEnv.JANUS_CONFIG = process.env.JANUS_CONFIG
+    savedEnv.HOME = process.env.HOME
+    tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-continue-"))
+    configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, "{}")
+    process.env.JANUS_CONFIG = configPath
+  })
+
+  afterEach(() => {
+    if (savedEnv.JANUS_CONFIG === undefined) delete process.env.JANUS_CONFIG
+    else process.env.JANUS_CONFIG = savedEnv.JANUS_CONFIG
+    if (savedEnv.HOME === undefined) delete process.env.HOME
+    else process.env.HOME = savedEnv.HOME
+    rmSync(tmpConfigDir, { recursive: true, force: true })
+  })
+
+  function createTools(fake: FakeSdk, clock = createFakeClock()) {
+    return createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+  }
+
+  async function dispatchWriterWithHandle(fake: FakeSdk, tools: ReturnType<typeof createTools>, responseText = "chapter one prose"): Promise<{ jobID: string; sessionID: string; text: string }> {
+    const result = await tools.janus_dispatch.execute(
+      { role: "writer", prompt: "draft chapter one", return_handle: true },
+      fakeContext(),
+    )
+    const parsed = parseOutcomeEnvelope(outputText(result))
+    if (!parsed.ok || parsed.value.status !== "completed") {
+      throw new Error(`expected completed envelope: ${outputText(result)}`)
+    }
+    expect(parsed.value.text).toBe(responseText)
+    return { jobID: parsed.value.job_id, sessionID: parsed.value.session_id, text: parsed.value.text }
+  }
+
+  it("continues the writer job-root session and records the reuse in a continuation job", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("maintenance applied", clock)
+    const tools = createTools(fake, clock)
+    const { sessionID } = await dispatchWriterWithHandle(fake, tools, "maintenance applied")
+
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix to chapter one" },
+      fakeContext(),
+    )
+
+    expect(result).toBe("maintenance applied")
+    const asyncs = fake.calls.filter((c) => (c as { method: string }).method === "promptAsync") as Array<{ input: { path: { id: string }; body: { agent?: string; parts: SdkTextPart[] } } }>
+    expect(asyncs).toHaveLength(2)
+    // Both prompts went to the same reused session.
+    expect(asyncs[0]!.input.path.id).toBe(sessionID)
+    expect(asyncs[1]!.input.path.id).toBe(sessionID)
+    expect(asyncs[1]!.input.body.agent).toBe("consultation-writer")
+    expect(asyncs[1]!.input.body.parts).toEqual([{ type: "text", text: "apply the review fix to chapter one" }])
+    // A continuation job root was created under the caller, with the reuse journaled.
+    const creates = fake.calls.filter((c) => (c as { method: string }).method === "create") as Array<{ input: { body: { title: string; parentID: string } } }>
+    expect(creates).toHaveLength(2)
+    expect(creates[1]!.input.body.title).toBe("[consultation-dispatch:v1] writer")
+    expect(creates[1]!.input.body.parentID).toBe("ses_parent")
+  })
+
+  it("continues an attempt-child session of a normal job root", async () => {
+    // The tool always resolves a single-model chain, so a retry attempt child
+    // is constructed directly through the journal (two-model spec).
+    const clock = createFakeClock()
+    const fake = createFakeSdk()
+    const { jobID, attemptSessionID } = await (async () => {
+      const created = await createJob(fake, {
+        parentID: "ses_parent", directory: "/tmp/project", role: "writer",
+        agentName: "consultation-writer", modelChain: ["opencode/claude-sonnet-5-5", "opencode-go/glm-5.3"],
+        prompt: "draft chapter one", clock,
+      })
+      if (!created.ok) throw created.error
+      const jobID = created.value.jobID
+      const child = await createAttemptSession(fake, { jobID, directory: "/tmp/project", role: "writer" })
+      if (!child.ok) throw child.error
+      const messageID = "msg-attempt-child-0"
+      for (const record of [
+        { v: 1, kind: "attempt-reservation", job_id: jobID, attempt_index: 1, model: "opencode-go/glm-5.3", message_id: messageID, reserved_at: clock.now() } as const,
+        { v: 1, kind: "attempt-receipt", job_id: jobID, attempt_index: 1, session_id: child.value.sessionID, message_id: messageID, received_at: clock.now() } as const,
+      ]) {
+        const appended = await appendRecord(fake, { jobID, directory: "/tmp/project", record })
+        if (!appended.ok) throw appended.error
+      }
+      return { jobID, attemptSessionID: child.value.sessionID }
+    })()
+    const tools = createTools(fake, clock)
+
+    // Seed the attempt child's completed reply so the continuation observes it.
+    const base = fake.session.promptAsync.bind(fake.session)
+    let promptAsyncCalls = 0
+    fake.session.promptAsync = async (input) => {
+      const result = await base(input)
+      promptAsyncCalls++
+      fake.seedMessages(input.path.id, [
+        completedAssistantMessage(input.body.messageID!, "maintenance applied", {
+          sessionID: input.path.id, id: `msg-continue-${input.path.id}`,
+        }),
+      ])
+      return result
+    }
+
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: attemptSessionID, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+
+    expect(result).toBe("maintenance applied")
+    // The continuation prompted the attempt child, not the job root.
+    const asyncs = fake.calls.filter((c) => (c as { method: string }).method === "promptAsync") as Array<{ input: { path: { id: string } } }>
+    expect(asyncs).toHaveLength(1)
+    expect(asyncs[0]!.input.path.id).toBe(attemptSessionID)
+    expect(promptAsyncCalls).toBe(1)
+    // The continuation root was created under the caller.
+    const creates = fake.calls.filter((c) => (c as { method: string }).method === "create") as Array<{ input: { body: { title: string; parentID: string } } }>
+    expect(creates.at(-1)!.input.body.title).toBe("[consultation-dispatch:v1] writer")
+    expect(creates.at(-1)!.input.body.parentID).toBe("ses_parent")
+    expect(jobID).toMatch(/^ses_fake_/)
+  })
+
+  it("returns a pending envelope carrying the continuation job id and the target session id", async () => {
+    const clock = createFakeClock()
+    const fake = createFakeSdk()
+    fake.setPromptAsyncResult({ data: undefined })
+    const tools = createTools(fake, clock)
+
+    const firstResult = await (async () => {
+      const launched = tools.janus_dispatch.execute({ role: "writer", prompt: "draft chapter one" }, fakeContext())
+      await exhaustBudget(clock)
+      return outputText(await launched)
+    })()
+    const first = parseOutcomeEnvelope(firstResult)
+    if (!first.ok) throw first.error
+    expect(first.value.status).toMatch(/pending|unknown/)
+    const targetSession = first.value.session_id
+
+    const continueResult = await (async () => {
+      const continued = tools.janus_dispatch_continue.execute(
+        { session_id: targetSession, prompt: "apply the review fix" },
+        fakeContext(),
+      )
+      await exhaustBudget(clock)
+      return outputText(await continued)
+    })()
+    const continued = parseOutcomeEnvelope(continueResult)
+    if (!continued.ok) throw continued.error
+    expect(continued.value.status).toMatch(/pending|unknown/)
+    expect(continued.value.job_id).not.toBe(first.value.job_id)
+    expect(continued.value.session_id).toBe(targetSession)
+    expect(promptAsyncCount(fake)).toBe(2)
+  })
+
+  it("infers the role from the target job and rejects a mismatched role argument", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("analyst analysis", clock)
+    const tools = createTools(fake, clock)
+    const result = await tools.janus_dispatch.execute(
+      { role: "analyst", prompt: "analyze the evidence", return_handle: true },
+      fakeContext(),
+    )
+    const parsed = parseOutcomeEnvelope(outputText(result))
+    if (!parsed.ok || parsed.value.status !== "completed") throw new Error("expected completed envelope")
+    const sessionID = parsed.value.session_id
+
+    // Role is inferred when omitted.
+    const continued = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "re-analyze with the new evidence" },
+      fakeContext(),
+    )
+    expect(continued).toBe("analyst analysis")
+
+    // A mismatched role is rejected without a new prompt.
+    const before = promptAsyncCount(fake)
+    const mismatch = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "re-analyze", role: "writer" },
+      fakeContext(),
+    )
+    expect(mismatch).toMatch(/^Error: role writer does not match/)
+    expect(promptAsyncCount(fake)).toBe(before)
+  })
+
+  it("rejects a busy target with a wait-first error and no new prompt", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("chapter one prose", clock)
+    const tools = createTools(fake, clock)
+    const { sessionID } = await dispatchWriterWithHandle(fake, tools)
+
+    fake.setStatusResult({ data: { [sessionID]: { type: "busy" } } })
+    const before = promptAsyncCount(fake)
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+
+    expect(result).toMatch(/^Error: target session is busy; wait for the active job first/)
+    expect(promptAsyncCount(fake)).toBe(before)
+  })
+
+  it("allows a target whose status entry reports idle and rejects retrying targets", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("chapter one prose", clock)
+    const tools = createTools(fake, clock)
+    const { sessionID } = await dispatchWriterWithHandle(fake, tools)
+
+    fake.setStatusResult({ data: { [sessionID]: { type: "idle" } } })
+    const idle = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+    expect(idle).toBe("chapter one prose")
+
+    fake.setStatusResult({ data: { [sessionID]: { type: "retry" } } })
+    const retrying = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix again" },
+      fakeContext(),
+    )
+    expect(retrying).toMatch(/^Error: target session is retry; wait for the active job first/)
+  })
+
+  it("rejects a continuation job id used as session_id", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("maintenance applied", clock)
+    const tools = createTools(fake, clock)
+    const { sessionID } = await dispatchWriterWithHandle(fake, tools, "maintenance applied")
+
+    const first = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+    expect(first).toBe("maintenance applied")
+    // The continuation job root is the second created session.
+    const creates = fake.calls.filter((c) => (c as { method: string }).method === "create") as Array<{ input: { body: { title: string } } }>
+    expect(creates).toHaveLength(2)
+    // ses_fake_2 is the continuation job root created by the continue above.
+    const before = promptAsyncCount(fake)
+    const rejected = await tools.janus_dispatch_continue.execute(
+      { session_id: "ses_fake_2", prompt: "continue the continuation" },
+      fakeContext(),
+    )
+    expect(rejected).toMatch(/^Error: ses_fake_2 is a continuation job; use the original dispatch session_id/)
+    expect(promptAsyncCount(fake)).toBe(before)
+  })
+
+  it("rejects a foreign caller, a foreign workspace, and a non-dispatch session", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("chapter one prose", clock)
+    const tools = createTools(fake, clock)
+    const { sessionID } = await dispatchWriterWithHandle(fake, tools)
+    const before = promptAsyncCount(fake)
+
+    // A different caller session cannot reuse the job.
+    const foreignCaller = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix" },
+      fakeContext({ sessionID: "ses_other_caller" }),
+    )
+    expect(foreignCaller).toMatch(/^Error: target dispatch session is not owned by this caller/)
+    expect(promptAsyncCount(fake)).toBe(before)
+
+    // A session in a different workspace is rejected.
+    const foreignWorkspace = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix" },
+      fakeContext({ directory: "/tmp/other-project" }),
+    )
+    expect(foreignWorkspace).toMatch(/^Error: target session belongs to a different workspace/)
+    expect(promptAsyncCount(fake)).toBe(before)
+
+    // A non-dispatch session title is rejected.
+    const plain = await fake.session.create({
+      body: { parentID: "ses_parent", title: "plain chat session" },
+      query: { directory: "/tmp/project" },
+    })
+    const nonDispatch = await tools.janus_dispatch_continue.execute(
+      { session_id: plain.data!.id, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+    expect(nonDispatch).toMatch(/^Error: target session is not a dispatch session/)
+    expect(promptAsyncCount(fake)).toBe(before)
+  })
+
+  it("rejects a missing target session with a clear error", async () => {
+    const fake = createFakeSdk()
+    const tools = createTools(fake)
+
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: "ses_missing", prompt: "apply the review fix" },
+      fakeContext(),
+    )
+
+    expect(result).toMatch(/^Error: target session ses_missing was not found/)
+  })
+
+  it("rejects a disabled role target without a new prompt", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("chapter one prose", clock)
+    const tools = createTools(fake, clock)
+    const { sessionID } = await dispatchWriterWithHandle(fake, tools)
+
+    writeFileSync(configPath, JSON.stringify({ writer_enabled: false }))
+    const before = promptAsyncCount(fake)
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+
+    expect(result).toBe("Error: writer is disabled by configuration")
+    expect(promptAsyncCount(fake)).toBe(before)
+  })
+
+  it("rejects untrusted arg fields at the boundary and foreign callers through valid args", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("maintenance applied", clock)
+    const tools = createTools(fake, clock)
+    const { sessionID } = await dispatchWriterWithHandle(fake, tools, "maintenance applied")
+
+    expect(Object.keys(tools.janus_dispatch_continue.args)).toEqual(["session_id", "prompt", "role"])
+
+    // Unknown arg fields are rejected by the strict args schema before any
+    // SDK access or context binding is consulted.
+    const maliciousArgs = {
+      session_id: sessionID, prompt: "apply the review fix", role: "writer" as const,
+      parentID: "ses_evil", agent: "evil", model: "evil/model", return_handle: true,
+    }
+    const rejected = await tools.janus_dispatch_continue.execute(maliciousArgs, { ...fakeContext(), sessionID: "ses_attacker" })
+    expect(rejected).toMatch(/^Error: invalid continue args/)
+    expect(promptAsyncCount(fake)).toBe(1)
+
+    // With valid args, ownership comes from the tool context, never the args:
+    // a foreign caller session cannot reuse this caller's job.
+    const foreign = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix" },
+      { ...fakeContext(), sessionID: "ses_attacker" },
+    )
+    expect(foreign).toMatch(/^Error: target dispatch session is not owned by this caller/)
+    expect(promptAsyncCount(fake)).toBe(1)
   })
 })

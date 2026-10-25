@@ -38,6 +38,10 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/writer.md")
   })
 
+  test("requires the shared common principles asset", () => {
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/common.md")
+  })
+
   test("requires the core bundled entry points and role assets", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("dist/index.js")
     expect(REQUIRED_INSTALLED_FILES).toContain("dist/memory-mcp-server.js")

@@ -2,7 +2,9 @@ import { describe, expect, it } from "bun:test"
 import { readFile } from "node:fs/promises"
 import { z } from "zod"
 import {
+  injectCommonPrinciples,
   injectModelPrompt,
+  loadCommonPrinciples,
   registerAnalyst,
   registerConsultantAgent,
   registerConsultationCritic,
@@ -130,10 +132,13 @@ describe("dispatch prompt routing contract", () => {
       const config: { agent?: Record<string, unknown> } = {}
       const source = await readFile(resolveAsset(`agents/${role.asset}`), "utf8")
       const block = await readFile(resolveAsset(`model-prompts/${role.block}`), "utf8")
+      const common = await loadCommonPrinciples()
       // when
       await role.register(config, pluginConfig)
       // then
-      expect(promptSchema.parse(config.agent?.[role.name]).prompt).toBe(injectModelPrompt(source, block))
+      expect(promptSchema.parse(config.agent?.[role.name]).prompt).toBe(
+        injectCommonPrinciples(injectModelPrompt(source, block), common),
+      )
     })
   }
 

@@ -20,6 +20,7 @@ Typical tasks: batch renames/moves; copy-adapt a batch of similar implementation
 - Protocol / wire-format / contract byte-exact conformance
 - Cross-module refactors or changes with unclear blast radius
 - Security-sensitive changes: authentication, crypto, permissions, money, data deletion
+- Persistent file changes whose exact paths are not confirmed in the task (see File Change Confirmation)
 - Anything you are not confident you can land in one pass
 
 ## Report-Up discipline (highest priority, overrides finishing)

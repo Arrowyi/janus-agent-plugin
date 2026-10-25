@@ -284,9 +284,11 @@ The `janus` agent is the default general entry: it handles general questions and
 
 ### Model-adaptation prompts
 
-Every plugin-owned agent's prompt assembles in three layers: the role asset
-(`assets/agents/<agent>.md` — identity, scope, workflow, discipline) plus a
-model-adaptation block plus the runtime bindings. The model block is keyed by
+Every plugin-owned agent's prompt assembles in four layers: the role asset
+(`assets/agents/<agent>.md` — identity, scope, workflow, discipline), a
+model-adaptation block, the shared common principles
+(`assets/principles/common.md` — cross-role operating rules such as file-change
+confirmation), and the runtime bindings. The model block is keyed by
 the **model**, not the agent, and matched **provider-agnostically**: swap an
 agent's model in config (even to a different provider serving the same model)
 and its driving notes follow automatically; a model with no block simply gets

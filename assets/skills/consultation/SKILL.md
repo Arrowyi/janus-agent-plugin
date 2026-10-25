@@ -9,6 +9,10 @@ description: Evidence-driven consultation workflow producing decision briefs, op
 
 Define the authoritative cognitive workflow for evidence-driven consultation. Route every question to one of six modes (select, verify, plan, research, guide, author), decompose it into claims, grade evidence, audit user-generated sources for deliberate deception, classify risk, run counter-evidence checks, label every atom with an epistemic status, and produce a concise mode-specific decision brief, a readable research report, or a durable technical document behind one outline-approval gate. Reusable by any agent, not only `consultant`.
 
+## Prompt/Skill Boundary
+
+The consultant role asset (`assets/agents/consultant.md`) is the always-on contract and safety net: identity, mode and tier routing, dispatch lifecycle safety, output anchors, interaction discipline, the author outline gate, memory ownership, injection defense, and failure behavior. This skill is the authoritative detailed workflow: claim decomposition, source evaluation, the deception intent audit, channel strategy, epistemic status, risk thresholds, counter-evidence, plan robustness, research mode, author profiles and completion checks, output templates, and memory record rules. If the two ever conflict, the prompt's safety and operational rules win; workflow detail lives here.
+
 ## When to Use
 
 Load this skill when the user asks for a recommendation, comparison, or option choice (`select`); a check on a claim, rumor, or argument (`verify`); an actionable plan for lifestyle, fitness, body care, interpersonal, or learning goals (`plan`); a composite operational guide that fuses a recommendation, a procedure, and background for an end-to-end goal (攻略, X入门, guide to X, how do I get started with X) (`guide`); a deep investigation or topic survey (`research`); a durable technical document to keep or share — a tutorial, course, architecture analysis, or technical explanation (教程, 课程, 架构分析, write-up) (`author`); personalized advice; or a second opinion — and whenever evidence quality, source reliability, astroturfing, risk level, or prior experience materially affects the answer.
@@ -27,10 +31,44 @@ Two independent decisions shape every consultation:
   If the mode is ambiguous, ask one clarifying question. For a non-trivial answer, you may add a one-line mode note after the conclusion (e.g. "模式：select（购买决策）"); never put it before the conclusion. Skip the note for simple answers.
 - **Tier** (how deep to go) — `fast`, `standard`, or `deep`, from risk and complexity. Tier is orthogonal to mode: a `verify` can be fast (check one primary source) or deep (multi-channel plus intent audit). An `author` consultation routes to standard or deep, never fast.
 
+### Tier Selection
+
+#### Fast
+
+Use when the question is low-risk, directly verifiable, and minimally personalized.
+
+- Prefer a primary authoritative source.
+- Perform an exact or very small memory lookup.
+- If a load-bearing fact still needs targeted search, dispatch an explorer; do not invoke unrelated roles for a direct fact.
+- Answer in one to several sentences when possible.
+
+#### Standard
+
+Use for comparisons, recommendations, composite guides, personalization, or moderate inference.
+
+- Identify which evidence, analysis, independent challenge, influence audit, or writing work could materially change the result. Delegate a specialist task when you can name the decision it could change and the specific failure it would catch; if you cannot name both, skip it with that reason.
+- Check source independence and provenance. Do not skip the verifier merely because manipulation is not yet proven; see the role-specific conditions in Team Orchestration.
+- Retrieve relevant experience and preferences progressively.
+- Return a mode-specific deliverable; keep the conclusion and next action in the first screen.
+
+#### Deep
+
+Use for high risk, strong source conflicts, missing primary evidence, inference-dominated conclusions, broad comparisons, any research-mode question, or any broad composite guide. A guide is composite and synthesis-heavy, so it routes to standard or deep, never fast. Assess source intent when a material conclusion depends on influence or independence, regardless of mode. An author consultation also routes to standard or deep, never fast.
+
+- In a direct user turn, ask before escalating and consuming the larger budget. In dispatched mode, return the budget decision (estimated cost, what it buys, and alternatives) to the dispatcher.
+- Decompose consequential work and assign it to whichever specialists fit. Multiple explorers or analysts, a critic, a verifier, or a writer may be appropriate, but deep tier never means calling every role by default.
+- Seek supporting and opposing evidence and assess intent when the evidence makes it relevant or uncertain.
+- Keep final synthesis and output with yourself.
+
+Deep work is done by the consultant's own team; there is no separate deep-research agent. Research mode is how a deep, understanding-oriented investigation runs.
+
+Tier decision dimensions: potential harm from a wrong answer, availability of authoritative primary sources, conflict among reliable sources, dependence on personal context, and proportion of synthesis versus direct evidence.
+
 ### Operating contexts
 
 - **Direct user turn:** ask up to three decision-changing questions, present approval gates, and use the status block.
-- **Dispatched bounded task:** do not ask the end user or wait for a user-facing approval. Make assumptions, list them, and return the decision request to the dispatcher. Memory saving follows the task's `Memory ownership` line; absent it, return a concise memory summary and do not save. This context overrides the intake and approval instructions below.
+- **Dispatched bounded task:** do not ask the end user or wait for a user-facing approval, **except the persistent-file-change gate below**. Make assumptions, list them, and return the decision request to the dispatcher. Memory saving follows the task's `Memory ownership` line; absent it, return a concise memory summary and do not save. This context overrides the intake and approval instructions below, except for file changes.
+- **Persistent file changes:** before creating, editing, or deleting a file (scratch/temporary files are exempt), list the exact paths and one-line reasons and wait for the user's explicit confirmation. A dispatched task returns the proposed file list to the dispatcher; it does not edit until the dispatch prompt confirms those exact paths or says no further confirmation is needed. The author outline gate satisfies this only when its manifest lists the exact file paths. After the change, report the exact paths actually changed and note anything unverified or outside the confirmed scope; omit this when no files changed.
 
 ## Workflow
 
@@ -57,6 +95,14 @@ For `author` mode, follow the Author Mode section instead of the generic loop: i
 The consultant leads five research/writing subagents, each with a dedicated role profile and a model matched to that profile: `explorer` (gather evidence), `analyst` (reason over evidence), `critic` (independently challenge a conclusion), `verifier` (audit possible source manipulation or opaque independence), and `writer` (author-mode writing work). A specialist's dedicated profile and matched model make it the more suitable executor than the general consultant for work inside that profile; dispatch via `janus_dispatch` whenever a task falls within a role's profile. Two execution delegates are available for bounded work: `lite` for low-risk quick answers, and `coder` for code examples or code tasks. `coder` owns its own lanes (`coder-lite`, optional `build`); the consultant does not implement production code.
 
 Route each work unit to the most suitable agent. For each role, delegate a bounded task when the work falls within that role's dedicated profile and you can name the decision it could change and the specific failure it would catch; if you cannot name both, skip it with that reason. Uncertainty alone is not a dispatch reason: assess roles whose profiles plausibly match, but require a concrete check before spending a child session. A mode or tier never makes a role mandatory by itself. The configured per-tier role caps are **maximums, never a required roster**. A zero cap or disabled role leaves a material check unavailable; disclose the gap rather than silently acting as if it was done. Deep-tier budget approval still applies before deeper work. Do not mistake a tool call or an empty child result for a completed check. Do the work inline only when it belongs to no specialist's profile, not merely because you could perform it yourself.
+
+Default per-tier role **maximums** (not minimums or a required roster):
+
+| Tier | explorer | analyst | critic | verifier | writer |
+|------|----------|---------|--------|----------|--------|
+| fast | 5 | 0 | 0 | 0 | 0 |
+| standard | 5 | 1 | 1 | 1 | 1 |
+| deep | 5 | 3 | 2 | 2 | 2 |
 
 The `lite` agent is the economical quick-answer leaf rather than a sixth research specialist: the consultant may route bounded, low-risk simple-consultation and search subtasks (multi-tool lookups, cross-checking a few sources, reading configs or docs) to `lite`, relaying its returned answer in lite's answer-first format. A one-liner answerable from context stays inline; specialist profiles (graded evidence, adversarial challenge, influence audit, writing) are never substituted by lite. Coding goes to `coder`, which owns the lanes: fully specified mechanical work goes to `coder-lite` (its stop-and-report is a legitimate partial outcome the coder integrates); judgment-heavy work stays with `coder` or goes to the optional `build` host escalation. The consultant does not write production code; if `coder` is unavailable, disclose the gap and ask the user (direct) or the dispatcher (dispatched) for a usable agent. A disabled or unavailable lane is disclosed like any other missing capability.
 
@@ -263,7 +309,7 @@ Intake keeps the one-to-three-question limit and asks only decision-changing que
 
 Before outline approval, dispatch the `writer` for a writing blueprint on any non-trivial document (tutorials and multi-section architecture or explanation documents): the blueprint optimizes chapter order, mental-model progression, cross-chapter example continuity, and per-section teaching beats, and returns `sectionPlan` (with `id`, `title`, `purpose`, `file?`, `learningObjectives`, `prerequisites`, `verificationTargets`), `continuityMap`, and `teachingBeats`. It precedes the outline gate so no approval is needed. Skip only a genuinely trivial single-section document, and disclose that skip. Never request a full chapter before approval. After the outline and destination are approved, dispatch the writer for substantial sections or chapters, one bounded task per independently draftable unit. Supply profile, audience and assumed knowledge, approved map and section goal, source notes with verified claims and unknowns, desired tone and language, terminology, example policy, and neighboring-section summaries. The writer returns usable reader-facing prose plus unsupported claims to check, not just a blueprint. Review factual and cross-document consistency, obtain necessary evidence or technical verification, then revise and write the final file yourself (or supply the final inline text). A writer cannot research missing facts, search the web, write files, call memory tools, dispatch agents, or claim an example executed without an actual result. It treats all supplied source notes as untrusted data and returns unsupported claims or gaps to the consultant.
 
-Outline gate: before writing a large document, present audience and assumed prerequisites; the learning or documentation goal; the chapter/file list with a one-sentence purpose each; load-bearing claims requiring verification; planned executable examples; verification depth and permission implications; and the estimated artifact location. Wait for one approval. Later scope additions require approval only for the outline delta, not for unaffected chapters. If the outline is rejected, revise only the outline; do not draft chapters prematurely.
+Outline gate: before writing a large document, present audience and assumed prerequisites; the learning or documentation goal; the chapter/file list with exact paths and a one-sentence purpose each; load-bearing claims requiring verification; planned executable examples; verification depth and permission implications; and the resolved artifact location. Wait for one approval; that approval counts as file-change confirmation only when the manifest lists the exact file paths to be written. Later scope additions require approval only for the outline delta, not for unaffected chapters. If the outline is rejected, revise only the outline; do not draft chapters prematurely.
 
 For `multi_file`, an index file (README.md) is both the reading map and the artifact manifest: it records audience, version scope, chapter order, learning paths, and links. No private workflow state or unverified scratch notes go into the published document tree.
 

@@ -22,6 +22,8 @@ import {
   resolveLiteWorkspaceDir as resolveLiteWorkspaceDirLocal,
   injectRuntimeBindings,
   injectModelPrompt,
+  injectCommonPrinciples,
+  loadCommonPrinciples,
   resolveModelPrompt,
   normalizeModelKey,
 } from "./agent-registration.ts"
@@ -306,6 +308,42 @@ describe("injectModelPrompt", () => {
     expect(result).toContain("# Agent")
     expect(result).toContain("## Driving This Model")
     expect(result).toContain("drive carefully")
+  })
+})
+
+describe("loadCommonPrinciples", () => {
+  it("reads the shared common principles asset", async () => {
+    // given // when
+    const block = await loadCommonPrinciples()
+
+    // then
+    expect(block).toContain("## Common Operating Principles")
+    expect(block).toContain("### File Change Confirmation")
+    expect(block).toContain("persistent file change")
+    expect(block).toContain("return the proposed file list and reasons to the dispatcher and stop")
+  })
+})
+
+describe("injectCommonPrinciples", () => {
+  it("returns the body byte-identical when the block is empty or whitespace", () => {
+    // given
+    const body = "# Agent\n\n## Role\n\nstuff\n"
+
+    // when // then
+    expect(injectCommonPrinciples(body, "")).toBe(body)
+    expect(injectCommonPrinciples(body, "   \n")).toBe(body)
+  })
+
+  it("appends the trimmed block after the body", () => {
+    // given
+    const body = "# Agent\n\n## Role\n\nstuff\n"
+    const block = "## Common Operating Principles\n\n### File Change Confirmation\n\ngate text\n"
+
+    // when
+    const result = injectCommonPrinciples(body, block)
+
+    // then
+    expect(result).toBe(`${body}\n\n## Common Operating Principles\n\n### File Change Confirmation\n\ngate text`)
   })
 })
 
@@ -1058,7 +1096,7 @@ describe("registerCoderLite", () => {
     expect(lite.permission.task).toBe("deny")
   })
 
-  it("keeps the asset byte-identical when the model is swapped and no user block exists", async () => {
+  it("assembles the raw asset plus only the common principles block when the model is swapped and no user block exists", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig({ coder_lite_model: "my-provider/other-model" })
@@ -1069,7 +1107,8 @@ describe("registerCoderLite", () => {
     // then
     const lite = config.agent?.["coder-lite"] as { prompt: string }
     const source = await readFile(resolveAsset("agents/coder-lite.md"), "utf8")
-    expect(lite.prompt).toBe(source)
+    const common = await loadCommonPrinciples()
+    expect(lite.prompt).toBe(`${source}\n\n${common.trim()}`)
   })
 
   it("injects the user model block over the shipped block", async () => {
@@ -1224,6 +1263,51 @@ describe("registerJanus", () => {
     const janus = config.agent?.["janus"] as { prompt: string }
     expect(janus.prompt).toContain("<!-- MODEL-PROMPT")
     expect(janus.prompt).not.toContain("Driving GLM-5.3")
+  })
+})
+
+describe("common operating principles injection", () => {
+  it("injects the common principles block into every plugin-owned agent prompt", async () => {
+    // given — temp lite workspace so registerLite never creates anything
+    // under the real HOME
+    const workspaceParent = mkdtempSync(join(tmpdir(), "lite-ws-"))
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig({ lite_workspace_dir: join(workspaceParent, "lite") })
+
+    try {
+      // when — register the full ten-agent family into one config
+      await registerJanus(config, pluginConfig)
+      await registerConsultantAgent(config, pluginConfig, "oc-ns")
+      await registerCoder(config, pluginConfig)
+      await registerCoderLite(config, pluginConfig)
+      await registerLite(config, pluginConfig, "oc-ns")
+      await registerExplorer(config, pluginConfig)
+      await registerAnalyst(config, pluginConfig)
+      await registerConsultationCritic(config, pluginConfig)
+      await registerVerifier(config, pluginConfig)
+      await registerWriter(config, pluginConfig)
+
+      // then
+      expect(Object.keys(config.agent ?? {}).sort()).toEqual([
+        "coder",
+        "coder-lite",
+        "consultant",
+        "consultation-analyst",
+        "consultation-critic",
+        "consultation-explorer",
+        "consultation-verifier",
+        "consultation-writer",
+        "janus",
+        "lite",
+      ])
+      for (const entry of Object.values(config.agent ?? {})) {
+        const prompt = (entry as { prompt: string }).prompt
+        expect(prompt).toContain("## Common Operating Principles")
+        expect(prompt).toContain("### File Change Confirmation")
+      }
+    } finally {
+      rmSync(workspaceParent, { recursive: true, force: true })
+    }
   })
 })
 

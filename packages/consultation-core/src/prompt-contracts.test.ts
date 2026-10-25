@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { readFile } from "node:fs/promises"
+import { readFile, readdir } from "node:fs/promises"
 
 import { AuthorSectionSchema } from "./author-contracts.ts"
 import { AnalysisDraftBaseSchema, CritiqueDraftSchema } from "./team.ts"
@@ -73,10 +73,43 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("Memory ownership")
   })
 
-  it("janus hands consultation memory to the consultant", async () => {
+  it("janus hands consultation memory to the consultant and preserves its reply format", async () => {
     const prompt = await readAgentPrompt("janus.md")
 
     expect(prompt).toContain("Memory ownership: consultant saves")
+    expect(prompt).toContain("Consultant relay format")
+    expect(prompt).toContain("结论：")
+    expect(prompt).toContain("下一步：")
+    expect(prompt).toContain("Do not rewrite it into Janus's short style")
+  })
+
+  it("shared common principles asset carries the persistent file-change confirmation gate", async () => {
+    const common = await readFile(
+      new URL("../../../assets/principles/common.md", import.meta.url),
+      "utf8",
+    )
+
+    expect(common).toContain("## Common Operating Principles")
+    expect(common).toContain("### File Change Confirmation")
+    expect(common).toContain("persistent file change")
+    expect(common).toContain(
+      "In dispatched mode, do not ask the end user: return the proposed file list and reasons to the dispatcher and stop",
+    )
+    expect(common).toContain("After a round that changed files")
+    expect(common).toContain("exact paths actually changed")
+  })
+
+  it("no agent asset duplicates the shared file-change confirmation section", async () => {
+    const agentDir = new URL("../../../assets/agents/", import.meta.url)
+    const files = (await readdir(agentDir)).filter((file) => file.endsWith(".md")).sort()
+
+    expect(files.length).toBe(10)
+    for (const file of files) {
+      const prompt = await readFile(new URL(file, agentDir), "utf8")
+      if (prompt.includes("## File Change Confirmation")) {
+        throw new Error(`${file} duplicates the shared File Change Confirmation section`)
+      }
+    }
   })
 
   it("skill keeps the dispatched context and structured handoffs", async () => {
@@ -89,6 +122,9 @@ describe("agent prompt contracts", () => {
     expect(skill).toContain("Memory ownership")
     expect(skill).toContain("resolved")
     expect(skill).toContain("sectionPlan")
+    expect(skill).toContain("Persistent file changes")
+    expect(skill).toContain("exact paths")
+    expect(skill).toContain("exact paths actually changed")
   })
 
   it("consultant prompt states the terminal-first double anchor", async () => {
@@ -100,7 +136,6 @@ describe("agent prompt contracts", () => {
       "证据与来源（可跳过）",
       "把握：高 / 中 / 低",
       "没有明显赢家",
-      "100-120 characters",
     ]) {
       expect(prompt).toContain(text)
     }
@@ -124,6 +159,7 @@ describe("agent prompt contracts", () => {
       "author: delivery brief",
       "证据与来源（可跳过）",
       "没有明显赢家",
+      "100-120 characters",
     ]) {
       expect(skill).toContain(text)
     }

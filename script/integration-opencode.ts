@@ -50,6 +50,16 @@ import {
   writerAssetPathForEntry,
 } from "./integration-helpers.ts"
 
+function readAgentPrompt(configJson: unknown, agent: string): string | undefined {
+  if (typeof configJson !== "object" || configJson === null) return undefined
+  const agentMap = (configJson as Record<string, unknown>)["agent"]
+  if (typeof agentMap !== "object" || agentMap === null) return undefined
+  const entry = (agentMap as Record<string, unknown>)[agent]
+  if (typeof entry !== "object" || entry === null) return undefined
+  const prompt = (entry as Record<string, unknown>)["prompt"]
+  return typeof prompt === "string" ? prompt : undefined
+}
+
 async function main(): Promise<void> {
   const onPath = await isOpencodeOnPath()
   if (!onPath) {
@@ -180,6 +190,16 @@ async function main(): Promise<void> {
             name: "config has janus agent key",
             pass: hasJanus,
             detail: hasJanus ? "agent.janus present" : "agent.janus MISSING",
+          })
+          const janusPrompt = readAgentPrompt(json, "janus")
+          const janusHasCommonPrinciples =
+            janusPrompt !== undefined && janusPrompt.includes("## Common Operating Principles")
+          assertions.push({
+            name: "installed janus prompt includes common principles",
+            pass: janusHasCommonPrinciples,
+            detail: janusHasCommonPrinciples
+              ? "agent.janus.prompt contains ## Common Operating Principles"
+              : "agent.janus.prompt MISSING ## Common Operating Principles",
           })
         }
       } catch (err) {

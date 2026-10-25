@@ -33,6 +33,8 @@ const RUNTIME_BINDINGS_PLACEHOLDER = /<!--\s*RUNTIME-BINDINGS[\s\S]*?-->/
 
 const MODEL_PROMPT_PLACEHOLDER = /<!--\s*MODEL-PROMPT[\s\S]*?-->/
 
+const COMMON_PRINCIPLES_ASSET = "principles/common.md"
+
 const EXPLORER_DESCRIPTION =
   "Search and information-gathering specialist. Gathers graded sources for specific claims and returns a structured report. Dispatched by the consultant and may fan out to multiple instances."
 
@@ -194,8 +196,10 @@ export async function registerLite(
   const body = await readFile(resolveAsset("agents/lite.md"), "utf8")
   const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "lite"))
   const withModelPrompt = injectModelPrompt(body, modelBlock)
+  const commonPrinciples = await loadCommonPrinciples()
+  const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
   const runtimeBlock = buildLiteRuntimeBindings(pluginConfig, workspaceDir, namespace)
-  const assembledPrompt = injectRuntimeBindings(withModelPrompt, runtimeBlock)
+  const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
 
   const entry: AllModeAgentEntry = {
     mode: "all",
@@ -241,8 +245,10 @@ export async function registerCoder(
   const body = await readFile(resolveAsset("agents/coder.md"), "utf8")
   const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "coder"))
   const withModelPrompt = injectModelPrompt(body, modelBlock)
+  const commonPrinciples = await loadCommonPrinciples()
+  const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
   const runtimeBlock = buildCoderRuntimeBindings(pluginConfig)
-  const assembledPrompt = injectRuntimeBindings(withModelPrompt, runtimeBlock)
+  const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
 
   const entry: AllModeAgentEntry = {
     mode: "all",
@@ -288,7 +294,9 @@ export async function registerCoderLite(
 
   const body = await readFile(resolveAsset("agents/coder-lite.md"), "utf8")
   const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "coder-lite"))
-  const prompt = injectModelPrompt(body, modelBlock)
+  const withModelPrompt = injectModelPrompt(body, modelBlock)
+  const commonPrinciples = await loadCommonPrinciples()
+  const prompt = injectCommonPrinciples(withModelPrompt, commonPrinciples)
 
   const entry: CodingLaneEntry = {
     mode: "subagent",
@@ -329,9 +337,9 @@ export function buildJanusRuntimeBindings(pluginConfig: JanusPluginConfig): stri
 /**
  * Register the `janus` daily-driver primary agent: mode "all" (user-selectable
  * primary AND dispatchable), no memory attachment, a layered prompt (role
- * asset + model-adaptation block + runtime bindings), and the resolved janus
- * model. A pre-existing user-defined entry under the same name is left
- * untouched.
+ * asset + model-adaptation block + common principles + runtime bindings), and
+ * the resolved janus model. A pre-existing user-defined entry under the same
+ * name is left untouched.
  */
 export async function registerJanus(
   config: MutableConfig,
@@ -342,8 +350,10 @@ export async function registerJanus(
   const body = await readFile(resolveAsset("agents/janus.md"), "utf8")
   const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "janus"))
   const withModelPrompt = injectModelPrompt(body, modelBlock)
+  const commonPrinciples = await loadCommonPrinciples()
+  const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
   const runtimeBlock = buildJanusRuntimeBindings(pluginConfig)
-  const assembledPrompt = injectRuntimeBindings(withModelPrompt, runtimeBlock)
+  const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
 
   const entry: AllModeAgentEntry = {
     mode: "all",
@@ -485,6 +495,25 @@ export function injectModelPrompt(body: string, block: string): string {
 }
 
 /**
+ * Load the shared common-principles block injected into every plugin-owned
+ * agent prompt. Reads `assets/principles/common.md`; a missing asset is a
+ * deployment error and propagates.
+ */
+export async function loadCommonPrinciples(): Promise<string> {
+  return readFile(resolveAsset(COMMON_PRINCIPLES_ASSET), "utf8")
+}
+
+/**
+ * Inject the common-principles block into an assembled prompt body, after the
+ * model-adaptation block and before the runtime bindings. An empty block
+ * returns the body unchanged.
+ */
+export function injectCommonPrinciples(body: string, block: string): string {
+  if (block.trim().length === 0) return body
+  return `${body}\n\n${block.trim()}`
+}
+
+/**
  * Register the `consultant` primary agent into the OpenCode config.
  *
  * Reads `assets/agents/consultant.md`, injects the runtime bindings block,
@@ -504,8 +533,10 @@ export async function registerConsultantAgent(
 
   const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "consultant"))
   const withModelPrompt = injectModelPrompt(consultantBody, modelBlock)
+  const commonPrinciples = await loadCommonPrinciples()
+  const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
   const runtimeBlock = buildRuntimeBindings(pluginConfig, namespace)
-  const assembledPrompt = injectRuntimeBindings(withModelPrompt, runtimeBlock)
+  const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
 
   const entry: ConsultantAgentEntry = {
     mode: "primary",
@@ -536,7 +567,12 @@ async function registerReadOnlySubagent(
   if (config.agent?.[options.name]) return
 
   const modelBlock = await resolveModelPrompt(options.pluginConfig, options.model)
-  const body = injectModelPrompt(await readFile(resolveAsset(options.assetFile), "utf8"), modelBlock)
+  const withModelPrompt = injectModelPrompt(
+    await readFile(resolveAsset(options.assetFile), "utf8"),
+    modelBlock,
+  )
+  const commonPrinciples = await loadCommonPrinciples()
+  const body = injectCommonPrinciples(withModelPrompt, commonPrinciples)
 
   const entry: SubagentEntry = {
     mode: "subagent",

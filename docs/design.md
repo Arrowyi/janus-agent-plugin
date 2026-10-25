@@ -55,24 +55,29 @@ The coder selects the lightest process that fits and announces it in one line be
 
 | Weight | Triggers | Process | User gate |
 |---|---|---|---|
-| L0 Direct | one-line fix, typo, rename, formatting/lint, config value, small test, copy-adapt; diff describable in one sentence | read target + nearest pattern; minimal edit; nearest verification; report diff/output | one-line intent; no approval |
-| L1 Brief plan | one/few files; clear requirements; existing pattern; reproducible bug; local design choice | 3-5 bullet plan; TDD for behavior changes; implement; targeted verification; report | plan shared; no approval unless asked |
-| L2 Design + plan | multi-file/module; API/schema/migration; unfamiliar code; more than one plausible design | explore; design gate (Goal/Context/Constraints/Done-when + 2-3 options + recommendation + files + risks + verification); plan; small steps; independent review; full verification | design block; wait for approval before editing |
-| L3 Quality gate | concurrency, idempotency, replay, transactions, distributed failure, DB migration/constraints, auth, money/billing, data deletion, production config, crypto/keys; irreversible/high blast radius | L2 plus four-column pre-analysis, reference pattern, schema/constraint read, idempotency/concurrency/failure analysis, red-green proof, diff against pattern, independent review, destructive-action approval | design + quality-gate plan; wait for approval |
+| L0 Direct | one-line fix, typo, rename, formatting/lint, config value, small test, copy-adapt; diff describable in one sentence | read target + nearest pattern; minimal edit; nearest verification; report diff/output | file list confirmed; no design approval |
+| L1 Brief plan | one/few files; clear requirements; existing pattern; reproducible bug; local design choice | 3-5 bullet plan; TDD for behavior changes; implement; targeted verification; report | file list confirmed; plan shared |
+| L2 Design + plan | multi-file/module; API/schema/migration; unfamiliar code; more than one plausible design | explore; design gate (Goal/Context/Constraints/Done-when + 2-3 options + recommendation + files + risks + verification); plan; small steps; independent review; full verification | design block + file list; wait for approval before editing |
+| L3 Quality gate | concurrency, idempotency, replay, transactions, distributed failure, DB migration/constraints, auth, money/billing, data deletion, production config, crypto/keys; irreversible/high blast radius | L2 plus four-column pre-analysis, reference pattern, schema/constraint read, idempotency/concurrency/failure analysis, red-green proof, diff against pattern, independent review, destructive-action approval | design + quality-gate plan + file list; wait for approval |
 
 The weight is revised upward when new information appears; it is never silently downgraded because a task is taking longer than expected. Skills are selected by weight: L0 uses none; L1 uses TDD/systematic-debugging/verification when relevant; L2 adds brainstorming/writing-plans/requesting-code-review; L3 adds the full quality gate. A skill's default gate does not override the L0/L1 direct path.
 
-When `coder` is dispatched with a bounded task, it does not ask the end user questions or wait for a user-facing gate; it makes assumptions, uses the lightest process, and returns the diff, verification output, and residual risks.
+A universal file-change gate sits above this table: before any persistent file change (create, edit, delete; scratch/temporary files are exempt), the agent lists the exact paths and one-line reasons and waits for explicit user confirmation. L0/L1 do not bypass it. A user's "no further confirmation this round" covers only the scope they stated; a new path or expanded scope needs a new confirmation.
+
+When `coder` is dispatched with a bounded task, it does not ask the end user questions. If the dispatch prompt does not already confirm the exact file paths, it returns the proposed file list and reasons to the dispatcher and stops; the dispatcher obtains user confirmation and re-dispatches with the confirmed paths. Once paths are confirmed, it makes assumptions, uses the lightest process, and returns the diff, verification output, and residual risks.
 
 ## 5. Prompt assembly
 
-Every plugin-owned agent prompt is three layers:
+Every plugin-owned agent prompt is four layers:
 
 1. **Role asset** — `assets/agents/<agent>.md`: identity, ownership, process, interaction, failure behavior.
 2. **Model-adaptation block** — `assets/model-prompts/<normalized-model-key>.md`: model traits and operating notes. The block is keyed by model, not role, and is provider-agnostic. A model with no block gets none.
-3. **Runtime bindings** — injected by the adapter: the agent's model, its dispatch targets, job-tool discipline, memory availability, caps, and namespace where relevant.
+3. **Common principles** — `assets/principles/common.md`: the shared operating principles block (the persistent file-change confirmation gate, its dispatched-mode rule, and the post-change file summary), injected by the adapter into every plugin-owned agent prompt. Role-specific exceptions and deltas stay in the role asset; the shared block is never duplicated into one.
+4. **Runtime bindings** — injected by the adapter: the agent's model, its dispatch targets, job-tool discipline, memory availability, caps, and namespace where relevant.
 
 Role assets are model-agnostic. Model-specific traits never live in a role asset, and role rules never live in a model block.
+
+For `consultant`, the role asset is the always-on contract and safety net, while `assets/skills/consultation/SKILL.md` carries the detailed workflow (tier selection, per-tier caps, mode templates, author profiles). Contract tests enforce that boundary so detail does not drift back into the prompt.
 
 ## 6. Config and models
 

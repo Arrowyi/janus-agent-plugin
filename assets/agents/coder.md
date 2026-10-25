@@ -108,7 +108,7 @@ Risks: ...
 Verification: ...
 ```
 
-Ask at most 1-3 decision-changing questions. Do not interview for completeness. If the user says "just do it", proceed with the recommendation and state the assumptions. If the user rejects the direction, revise the design; do not start coding.
+Ask at most 1-3 decision-changing questions. Do not interview for completeness. If the user says "just do it", treat it as design approval only; still present the exact file list for confirmation unless the user explicitly waives file-change confirmation for this round. If the user rejects the direction, revise the design; do not start coding.
 
 ## Coding discipline
 
@@ -125,8 +125,8 @@ Ask at most 1-3 decision-changing questions. Do not interview for completeness. 
 
 ## Delegation
 
-- `coder-lite`: fully specified, decision-free, mechanically repeatable work. Give it exact files, desired end state, and acceptance criteria. Never send it judgment, debugging, protocol-precision, cross-module, or security-sensitive work.
-- `build`: optional stronger-model escalation. Use it only when your model is a confirmed weak spot or the host build agent is known stronger. It is not a default lane.
+- `coder-lite`: fully specified, decision-free, mechanically repeatable work. Give it exact files, desired end state, and acceptance criteria. Pass the confirmed path list (or the user's no-further-confirmation instruction); otherwise it must return its own file list before editing. Never send it judgment, debugging, protocol-precision, cross-module, or security-sensitive work.
+- `build`: optional stronger-model escalation. Use it only when your model is a confirmed weak spot or the host build agent is known stronger. It is not a default lane. Pass the confirmed path list (or the no-further-confirmation instruction) and instruct it to return its own file list before editing if confirmation is absent; if it cannot honor this gate, do not delegate persistent file changes to it.
 - Do not dispatch `consultant` (that creates a cycle). If you need evidence, do a quick official-docs lookup or hand the task back to `janus`/`consultant`.
 - Do not chain more than one level of dispatch. Spot-check returned work; never trust a subagent's success report without the diff and verification output.
 

@@ -74,6 +74,7 @@ Installed layout:
   assets/agents/*.md          agent prompts (read at startup)
   assets/model-prompts/*.md   model-adaptation blocks (keyed by model slug)
   assets/skills/consultation/SKILL.md
+  assets/commands/janus-models.md
   package.json                provenance
   build-meta.json             version / git sha / build time
 ```
@@ -95,7 +96,7 @@ Restart OpenCode so it picks up the new plugin entry. On startup the plugin's `c
 4. registers the research subagents `consultation-explorer`, `consultation-analyst`, `consultation-critic`, `consultation-verifier` (each read-only, each on its configured model, each with shell and dispatch denied; the verifier reuses the critic's model by default) and the scoped-write author executor `consultation-writer` (edit allowed only under `writer_docs_roots`, default `userdoc/**`; shell and dispatch denied; targeted web lookups allowed; step-capped at 80; an empty `writer_docs_roots` makes it read-only and the consultant publishes its returned prose). It also creates the author state dir `$XDG_DATA_HOME/janus-agent/author` where the consultant writes per-document briefs;
 5. registers the `janus-memory` local MCP server (when memory is enabled, the default);
 6. registers `janus_dispatch{role,prompt,return_handle?}`, `janus_dispatch_wait{job_id,wait_ms?}`, `janus_dispatch_cancel{job_id}`, and `janus_dispatch_continue{session_id,prompt,role?}` for the ten dispatch roles (these do not interfere with the built-in `task` tool or other plugins);
-7. installs the `consultation` skill and the `janus-memory` browse command into your OpenCode config directory.
+7. installs the `consultation` skill and the `/janus-memory` and `/janus-models` slash commands into your OpenCode config directory.
 
 ### Recoverable team jobs
 
@@ -277,7 +278,7 @@ A missing file is fine; all fields have defaults. Create the file to override de
 | `tier_role_caps.*` | object | fast `5/0/0/0/0`, standard `5/1/1/1/1`, deep `5/3/2/2/2` | Advisory maximum instances per role per tier, never minimum calls; `writer` defaults to 0 when a tier omits it |
 | `cost_guard_provider_usd` | number | `10` | Advisory stop-loss per provider (converge when approaching) |
 | `install_skill` | boolean | `true` | Whether to install the consultation skill into the OpenCode config dir |
-| `install_commands` | boolean | `true` | Whether to install the `janus-memory` browse slash command |
+| `install_commands` | boolean | `true` | Whether to install the `janus-memory` and `janus-models` slash commands |
 | `memory_enabled` | boolean | `true` | Whether to register and launch the memory MCP server |
 | `embedding.base_url` | string | (none) | OpenAI-compatible embedding API base URL |
 | `embedding.api_key_env` | string | (none) | Name of the env var holding the embedding API key |
@@ -380,6 +381,7 @@ The author state directory lives at `$XDG_DATA_HOME/janus-agent/author` (default
 4. **Memory MCP starts**: the `janus-memory` MCP server is registered. Its five tools (`memory_recall`, `memory_expand`, `memory_prepare`, `memory_commit`, `memory_manage`) are available to the consultant agent.
 5. **Research subagents registered**: `consultation-explorer`, `consultation-analyst`, `consultation-critic`, `consultation-verifier` (read-only), and `consultation-writer` (scoped-write: edits allowed only under `userdoc/**` unless `writer_docs_roots` is changed) appear as subagents (mode `subagent`), dispatched by the consultant via the `janus_dispatch` tool.
 6. **Skill present**: the skill file exists at `~/.config/opencode/skills/consultation/SKILL.md` (or your `$OPENCODE_CONFIG_DIR/skills/consultation/SKILL.md`).
+7. **Commands present**: `commands/janus-memory.md` and `commands/janus-models.md` exist under `~/.config/opencode/` (or your `$OPENCODE_CONFIG_DIR/commands/`).
 
 You can also run the automated integration proof:
 
@@ -426,7 +428,13 @@ The evaluation fixtures under `evals/fixtures/` encode the architecture verifica
    rm -rf ~/.config/opencode/skills/consultation
    ```
 
-4. **Remove the plugin config file** (optional):
+4. **Remove the installed commands** (optional):
+
+   ```bash
+   rm -f ~/.config/opencode/commands/janus-memory.md ~/.config/opencode/commands/janus-models.md
+   ```
+
+5. **Remove the plugin config file** (optional):
 
    ```bash
    rm -f ~/.config/janus-agent/config.jsonc
@@ -438,7 +446,7 @@ The evaluation fixtures under `evals/fixtures/` encode the architecture verifica
    rm -f "$XDG_CONFIG_HOME/janus-agent/config.jsonc"
    ```
 
-5. **Remove the memory data, state, and cache** (optional, this deletes all stored experience):
+6. **Remove the memory data, state, and cache** (optional, this deletes all stored experience):
 
    ```bash
    rm -rf ~/.local/share/janus-agent
@@ -454,6 +462,6 @@ The evaluation fixtures under `evals/fixtures/` encode the architecture verifica
    rm -rf "$XDG_CACHE_HOME/janus-agent"
    ```
 
-6. **Remove lite's workspace (optional):** `rm -rf ~/.local/share/janus-agent/lite`.
+7. **Remove lite's workspace (optional):** `rm -rf ~/.local/share/janus-agent/lite`.
 
-7. **Restart OpenCode** to confirm the plugin is no longer loaded.
+8. **Restart OpenCode** to confirm the plugin is no longer loaded.

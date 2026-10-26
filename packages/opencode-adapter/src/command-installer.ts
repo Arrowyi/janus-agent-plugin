@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import { resolveAsset } from "./asset-paths.ts"
 import { resolveOpencodeConfigDir } from "./skill-installer.ts"
 
 /**
@@ -7,6 +8,12 @@ import { resolveOpencodeConfigDir } from "./skill-installer.ts"
  * binary and the MCP server name so all three surfaces share one name.
  */
 export const MEMORY_COMMAND_PREFIX = "janus-memory"
+
+/**
+ * The model inventory/evaluation/switch command. It is explicit-only: no
+ * skill is installed and nothing is triggered implicitly.
+ */
+export const MODELS_COMMAND_PREFIX = "janus-models"
 
 const USER_MODIFIED_MARKER = "<!-- user-modified -->"
 
@@ -43,17 +50,13 @@ This lists consultations for the current project (memory is per-project). For a 
 `
 }
 
-/**
- * Install the memory-browse slash command into the opencode config directory.
- * Writes `<configDir>/commands/janus-memory.md` with the resolved CLI
- * path baked in. Written only when missing or when the content differs; a file
- * whose first line is `<!-- user-modified -->` is never overwritten.
- */
-export async function installMemoryCommands(env: NodeJS.ProcessEnv): Promise<void> {
-  const configDir = resolveOpencodeConfigDir(env)
+async function installCommandFile(
+  configDir: string,
+  commandName: string,
+  content: string,
+): Promise<void> {
   const targetDir = join(configDir, "commands")
-  const targetFile = join(targetDir, `${MEMORY_COMMAND_PREFIX}.md`)
-  const content = commandContent()
+  const targetFile = join(targetDir, `${commandName}.md`)
 
   let existing: string | undefined
   try {
@@ -70,4 +73,26 @@ export async function installMemoryCommands(env: NodeJS.ProcessEnv): Promise<voi
   const tmpFile = `${targetFile}.tmp`
   await writeFile(tmpFile, content, "utf8")
   await rename(tmpFile, targetFile)
+}
+
+/**
+ * Install the memory-browse slash command into the opencode config directory.
+ * Writes `<configDir>/commands/janus-memory.md`. Written only when missing or
+ * when the content differs; a file whose first line is `<!-- user-modified -->`
+ * is never overwritten.
+ */
+export async function installMemoryCommands(env: NodeJS.ProcessEnv): Promise<void> {
+  const configDir = resolveOpencodeConfigDir(env)
+  await installCommandFile(configDir, MEMORY_COMMAND_PREFIX, commandContent())
+}
+
+/**
+ * Install the explicit `/janus-models` command from the shipped asset. The
+ * asset is the single source of truth; the file is written only when missing
+ * or when the content differs, and a user-modified file is never overwritten.
+ */
+export async function installModelsCommand(env: NodeJS.ProcessEnv): Promise<void> {
+  const configDir = resolveOpencodeConfigDir(env)
+  const content = await readFile(resolveAsset("commands/janus-models.md"), "utf8")
+  await installCommandFile(configDir, MODELS_COMMAND_PREFIX, content)
 }

@@ -19,9 +19,8 @@
  *   (e) Assert via HTTP: GET /config responds 200 and its JSON contains the
  *       `consultant` agent key, the `consultation-writer` agent key, and the
  *       `janus-memory` mcp key.
- *   (f) Assert the consultation skill file was installed at
- *       `<sandbox>/config/opencode/skills/consultation/SKILL.md` and contains
- *       the `author` mode contract.
+ *   (f) Assert the consultation skill file and the janus-models command file
+ *       were installed in the sandbox config directory.
  *   (g) Assert NOTHING was written into the plugin repo directory during the
  *       run by comparing `git status --porcelain` before and after.
  *   (h) Kill the server, print a PASS/FAIL evidence summary per assertion,
@@ -226,6 +225,26 @@ async function main(): Promise<void> {
         for (const name of ["janus_dispatch_wait", "janus_dispatch_cancel", "janus_dispatch_continue"]) {
           assertions.push({ name: `installed skill names ${name}`, pass: skillText.includes(name), detail: "installed tool-routing token" })
         }
+      }
+      const modelsCommandPath = join(sandboxConfig, "opencode", "commands", "janus-models.md")
+      const modelsCommandExists = existsSync(modelsCommandPath)
+      assertions.push({
+        name: "janus-models command installed in sandbox config",
+        pass: modelsCommandExists,
+        detail: modelsCommandExists ? modelsCommandPath : `NOT FOUND: ${modelsCommandPath}`,
+      })
+
+      if (modelsCommandExists) {
+        const modelsCommandText = readFileSync(modelsCommandPath, "utf8")
+        const hasInventory = modelsCommandText.includes("盘点")
+        const hasModelEval = modelsCommandText.includes("模型评估")
+        const hasPromptEval = modelsCommandText.includes("prompt 评估")
+        const hasExecute = modelsCommandText.includes("执行变更")
+        assertions.push({
+          name: "installed janus-models command contains the workflow dimensions",
+          pass: hasInventory && hasModelEval && hasPromptEval && hasExecute,
+          detail: `inventory=${hasInventory} model=${hasModelEval} prompt=${hasPromptEval} execute=${hasExecute}`,
+        })
       }
       const liteWorkspace = join(sandboxData, "janus-agent", "lite")
       const liteWorkspaceExists = existsSync(liteWorkspace)

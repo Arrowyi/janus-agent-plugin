@@ -750,6 +750,53 @@ describe("createJanusConfigHook", () => {
     }
   })
 
+  it("installs both slash commands when install_commands is true", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    process.env.HOME = tmpHome
+    delete process.env.JANUS_CONFIG
+    delete process.env.XDG_CONFIG_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
+
+    try {
+      // when
+      await hook(config)
+
+      // then
+      expect(existsSync(join(tmpHome, "commands", "janus-memory.md"))).toBe(true)
+      expect(existsSync(join(tmpHome, "commands", "janus-models.md"))).toBe(true)
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true })
+    }
+  })
+
+  it("installs neither slash command when install_commands is false", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    const janusConfigDir = join(tmpHome, ".config", "janus-agent")
+    mkdirSync(janusConfigDir, { recursive: true })
+    writeFileSync(join(janusConfigDir, "config.jsonc"), '{\n  "install_commands": false\n}')
+    process.env.HOME = tmpHome
+    delete process.env.JANUS_CONFIG
+    delete process.env.XDG_CONFIG_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
+
+    try {
+      // when
+      await hook(config)
+
+      // then
+      expect(existsSync(join(tmpHome, "commands", "janus-memory.md"))).toBe(false)
+      expect(existsSync(join(tmpHome, "commands", "janus-models.md"))).toBe(false)
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true })
+    }
+  })
+
   it("namespace is oc- plus first 12 hex chars of sha256 of project.id", async () => {
     // given
     const tmpHome = makeTempHome()

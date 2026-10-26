@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { MEMORY_COMMAND_PREFIX, installMemoryCommands } from "./command-installer.ts"
+import { MEMORY_COMMAND_PREFIX, MODELS_COMMAND_PREFIX, installMemoryCommands, installModelsCommand } from "./command-installer.ts"
+import { resolveAsset } from "./asset-paths.ts"
 
 const directories: string[] = []
 afterEach(async () => {
@@ -61,6 +62,54 @@ describe("installMemoryCommands", () => {
     await writeFile(target, "<!-- user-modified -->\ncustom", "utf8")
     // when
     await installMemoryCommands(envFor(configDir))
+    const after = await readFile(target, "utf8")
+    // then
+    expect(after).toBe("<!-- user-modified -->\ncustom")
+  })
+})
+
+describe("installModelsCommand", () => {
+  test("writes the shipped janus-models command and leaves the frontmatter unpinned", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    // when
+    await installModelsCommand(envFor(configDir))
+    const file = await readFile(join(configDir, "commands", `${MODELS_COMMAND_PREFIX}.md`), "utf8")
+    const asset = await readFile(resolveAsset("commands/janus-models.md"), "utf8")
+    // then
+    expect(file).toBe(asset)
+    expect(file).toContain("盘点")
+    expect(file).toContain("模型评估")
+    expect(file).toContain("prompt 评估")
+    expect(file).toContain("综合建议")
+    expect(file).toContain("执行变更")
+    expect(file).toContain("model_prompts")
+    expect(file).toContain("有就覆盖替换，没有就添加")
+    const frontmatter = file.split("---")[1] ?? ""
+    expect(frontmatter).not.toContain("agent:")
+  })
+
+  test("is idempotent: a second call leaves the file unchanged", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    await installModelsCommand(envFor(configDir))
+    const first = await readFile(join(configDir, "commands", `${MODELS_COMMAND_PREFIX}.md`), "utf8")
+    // when
+    await installModelsCommand(envFor(configDir))
+    const second = await readFile(join(configDir, "commands", `${MODELS_COMMAND_PREFIX}.md`), "utf8")
+    // then
+    expect(second).toBe(first)
+  })
+
+  test("does not overwrite a user-modified command file", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    const commandsDir = join(configDir, "commands")
+    await mkdir(commandsDir, { recursive: true })
+    const target = join(commandsDir, `${MODELS_COMMAND_PREFIX}.md`)
+    await writeFile(target, "<!-- user-modified -->\ncustom", "utf8")
+    // when
+    await installModelsCommand(envFor(configDir))
     const after = await readFile(target, "utf8")
     // then
     expect(after).toBe("<!-- user-modified -->\ncustom")

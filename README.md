@@ -18,6 +18,7 @@ Janus is a daily-driver agent family for [OpenCode](https://opencode.ai) — `ja
 | `coder-lite` (subagent) | `opencode-go/glm-5.3-flash` | Mechanical coding lane: fully specified bulk edits, formatting/lint fixes, boilerplate from templates. Workspace edits allowed, everything else asks; stops and reports up on anything ambiguous |
 | `build` (dispatch role) | host's build agent | Optional stronger-model escalation for judgment-heavy coding; normally dispatched by `coder`. If unavailable, the coder codes itself or reports the gap |
 | `janus-memory` (MCP) | — | Local SQLite memory shared across the agents: auto-saved consultation records, recall, edit, delete, outcome feedback |
+| `janus-models` (command) | — | Explicit model-rotation entry: inventory the suite's agents and effective models, evaluate model and prompt fit with live evidence, and apply approved changes to the user-level Janus config |
 
 ### Which agent should I use?
 
@@ -59,7 +60,7 @@ Register the printed entry in `~/.config/opencode/opencode.json` (create if miss
 }
 ```
 
-Restart OpenCode. The plugin registers the agents, the memory MCP, the `consultation` skill, and the dispatch tools automatically.
+Restart OpenCode. The plugin registers the agents, the memory MCP, the `consultation` skill, the `/janus-memory` and `/janus-models` commands, and the dispatch tools automatically.
 
 ## Usage
 
@@ -80,6 +81,8 @@ Answers are terminal-first: a full answer opens with `结论 / 理由 / 下一�
 
 **Memory.** Consultations auto-save (question + conclusion summaries — never transcripts). Browse and manage them with the `/janus-memory` command or the `janus-memory` CLI. Prior experience and preferences surface in later consultations, with an outcome-feedback loop.
 
+**Models.** Run `/janus-models` for an explicit, interactive model-rotation workflow. With no arguments it inventories every suite agent's effective model and prompt source, then offers a menu: model evaluation, `model_prompt` evaluation, a combined recommendation, or execution. Model and prompt changes are written only to the user-level Janus config; the command shows an exact diff and waits for confirmation before writing. `/janus-models 帮助` lists the argument forms.
+
 **Documents.** Author-mode documents are produced by a consultant + writer pair: the consultant owns intake, evidence, the outline approval, the author brief, verification, and publishing; the writer is the sole author of reader-facing prose and (unless `writer_docs_roots` is empty) the sole writer of approved document files under the configured roots (default `userdoc`). With `writer_docs_roots: []` the writer returns prose and the consultant publishes it. A document's writer session is reused across its feedback turns: the first writer dispatch captures a session handle (`return_handle: true`), the brief stores it as `writer_session_id`, and later bounded edits continue that session via `janus_dispatch_continue` — a generic dispatch mechanism (same caller, same workspace, idle target) that works for any role's session, not only the writer's.
 
 **Configuration.** Optional JSONC config at `~/.config/janus-agent/config.jsonc` (or `$JANUS_CONFIG` / XDG): per-agent models and model-prompt blocks, agent names, enable flags, `writer_docs_roots`, team caps, memory and embedding settings. The full field reference lives in [docs/deployment.md](docs/deployment.md).
@@ -90,7 +93,7 @@ Answers are terminal-first: a full answer opens with `结论 / 理由 / 下一�
 JANUS_PLUGIN_ENTRY=~/.local/share/janus-agent-plugin/dist/index.js bun run integration
 ```
 
-The isolated integration proof spawns a sandboxed OpenCode server and asserts the agents, MCP, skill, and dispatch tools register correctly — it never touches your real config or data.
+The isolated integration proof spawns a sandboxed OpenCode server and asserts the agents, MCP, skills, commands, and dispatch tools register correctly — it never touches your real config or data.
 
 ## Development
 

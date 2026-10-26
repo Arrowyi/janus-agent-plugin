@@ -15,7 +15,7 @@ import {
 import { createJanusDispatchTools } from "./dispatch-tool.ts"
 import { registerMemoryMcp } from "./mcp-registration.ts"
 import { installConsultationSkill } from "./skill-installer.ts"
-import { installMemoryCommands } from "./command-installer.ts"
+import { installMemoryCommands, installModelsCommand } from "./command-installer.ts"
 import { computeNamespace } from "./namespace.ts"
 
 /**
@@ -78,6 +78,7 @@ export function createJanusConfigHook(
 
     if (pluginConfig.install_commands) {
       await installMemoryCommands(env)
+      await installModelsCommand(env)
     }
   }
 }

@@ -19,7 +19,7 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 14 cases from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 author-separation (writer/consultant) cases, and C49-C54 writer-session reuse and generic dispatch continuation cases.
+- `fixtures/consultation-cases.json` - 14 cases from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 author-separation (writer/consultant) cases, and C49-C55 writer-session reuse, blueprint-first capture, and generic dispatch continuation cases.
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
@@ -93,8 +93,8 @@ id encodes the scenario, and the test file encodes the function under test.
 | M12 | packages/memory-sqlite/src/multi-instance.test.ts |
 
 Model-graded cases (C3, C4, C5, C6, C7, C8, C10, C11, C12, C13, C14, C15-C25,
-C31-C40, C42-C48, C49-C53, M3, M5) have no test-file mapping by design (C41,
-C44, C45, C47, C49-C52 carry deterministic backstops named in their notes).
+C31-C40, C42-C48, C49-C53, C55, M3, M5) have no test-file mapping by design (C41,
+C44, C45, C47, C49-C52, C55 carry deterministic backstops named in their notes).
 
 ## Recoverable lifecycle evaluation (C26-C30)
 
@@ -179,7 +179,7 @@ Reject a run where the consultant edits prose itself in author mode, where
 the writer writes outside its roots, or where author state silently drifts
 from the brief and manifest.
 
-## Writer session reuse and generic continuation evaluation (C49-C54)
+## Writer session reuse and generic continuation evaluation (C49-C55)
 
 These cases check the Phase 2 generic session-reuse mechanism —
 `janus_dispatch` with `return_handle: true` and `janus_dispatch_continue` —
@@ -204,6 +204,11 @@ dispatch capability. Record the tool trace plus the brief's
   cross-document reuse of a writer session.
 - **C54** — the mechanism is generic: an analyst session continues the same
   way (deterministic at the tool/lifecycle level; see the coverage map).
+- **C55** — a first writer dispatch that is the pre-approval blueprint runs
+  before the brief exists: the consultant retains that session id in working
+  context, writes it into the brief when the brief is created at the outline
+  gate, and uses it for the post-approval drafting continue — no early brief,
+  no lost id, no fresh writer session.
 
 Adversarial rubric: **Reject a fresh `janus_dispatch` where a reusable idle
 writer session exists for that document, a `janus_dispatch_continue` on a

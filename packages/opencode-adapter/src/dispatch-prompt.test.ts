@@ -113,6 +113,19 @@ describe("dispatch prompt routing contract", () => {
       expect(source).toContain("return_handle")
       expect(source).toContain("writer_session_id")
     })
+
+    it(`retains the writer session id across the pre-approval blueprint when loading ${asset}`, async () => {
+      // given
+      const path = resolveAsset(asset)
+      // when
+      const source = await readFile(path, "utf8")
+      // then: the blueprint may run before the brief exists; the handle is
+      // retained in working context and written into the brief at the gate.
+      expect(source).toContain("pre-approval blueprint")
+      expect(source).toContain("retain the `session_id` in working context")
+      expect(source).toContain("when the brief is created at the outline gate")
+      expect(source).toContain("do not create the brief early")
+    })
   }
 
   it("retains job-control identifiers when assembling the consultant", async () => {

@@ -484,5 +484,14 @@
     "then": "janus_dispatch_continue sends the new prompt to the same analyst session (same caller, same workspace, idle target), the response returns as plain text or a recoverable pending envelope, and the mechanism is role-agnostic — no writer-specific path is involved.",
     "grading": "deterministic",
     "notes": "Executable: packages/opencode-adapter/src/dispatch-tool.test.ts — 'infers the role from the target job and rejects a mismatched role argument' and the janus_dispatch_continue suite (writer job-root, attempt-child, pending, busy, continuation-job rejection); packages/opencode-adapter/src/dispatch-lifecycle.test.ts — continuation lifecycle (prompt targets the reused session; continuation root records session_id/continued_from; wait/cancel on a continuation job). The live-consultant attribution remains a model review."
+  },
+  {
+    "id": "C55",
+    "title": "A blueprint-first writer session id survives until the brief exists",
+    "given": "A new document needs a writer blueprint before outline approval, and the author brief has not been created yet.",
+    "when": "The consultant dispatches the blueprint writer with return_handle: true, presents the outline, creates the brief at the outline gate, and drafts after approval.",
+    "then": "It retains the pre-approval blueprint's session_id in working context, writes it into the brief as writer_session_id when the brief is created at the outline gate, and after approval drafts by continuing that same writer session with janus_dispatch_continue — no early brief, no lost id, and no fresh writer session for the drafting turn.",
+    "grading": "model",
+    "notes": "Rubric: Inspect the tool trace and the brief: the blueprint's return_handle session_id is held across the gate without an early brief write, the brief records it as writer_session_id when created, and the post-approval drafting turn is a janus_dispatch_continue on that session rather than a second janus_dispatch. Deterministic backstop: the consultant prompt/skill retain-before-brief instruction is asserted by dispatch-prompt.test.ts; same-session continue behavior is covered by dispatch-tool.test.ts."
   }
 ]

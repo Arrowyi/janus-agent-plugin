@@ -154,11 +154,15 @@ export function createJanusDispatchTools(
       const { session_id: targetSessionID, prompt } = parsed.value
       const config = await loadPluginConfig(process.env)
 
-      // Resolve the target session in the caller's workspace.
+      // Resolve the target session in the caller's workspace. A read error is
+      // transient and retryable; only an error-free empty result is not-found.
       const targetResult = await sdk.session.get({
         path: { id: targetSessionID },
         query: { directory: context.directory },
       })
+      if (targetResult.error !== undefined) {
+        return `Error: failed to read target session: ${targetSessionID} in ${context.directory} (${errorText(targetResult.error)}); retry janus_dispatch_continue`
+      }
       const target = targetResult.data
       if (target === undefined) {
         return `Error: target session ${targetSessionID} was not found in the current workspace`
@@ -190,6 +194,9 @@ export function createJanusDispatchTools(
         expectedParentID: context.sessionID,
       })
       if (!loadedResult.ok) {
+        if (loadedResult.error.reason === "read-error") {
+          return `Error: target dispatch journal is temporarily unreadable: ${jobRootID} in ${context.directory} (${loadedResult.error.message}); retry janus_dispatch_continue`
+        }
         return "Error: target dispatch session is not owned by this caller; session reuse is limited to the same caller and workspace"
       }
       const loaded = loadedResult.value
@@ -223,31 +230,53 @@ export function createJanusDispatchTools(
       }
       if (!enabled[role]) return `Error: ${role} is disabled by configuration`
 
-      // Idle check: a busy/retrying target must be waited on, not re-prompted.
-      // A status map that omits the session reports idle.
-      const statusResult = await sdk.session.status({ query: { directory: context.directory } })
-      const status = statusResult.data?.[targetSessionID]
-      if (status !== undefined && status.type !== "idle") {
-        return `Error: target session is ${status.type}; wait for the active job first (janus_dispatch_wait)`
+      // Idle check + continue under one per-target lock. The host can keep
+      // reporting a session idle for a sub-second window after the previous
+      // `promptAsync`, so two concurrent continues could both pass the probe
+      // and double-prompt the same session. The `continue:` key namespace is
+      // distinct from the lifecycle's internal `mutex.withLock(jobID)`, so
+      // holding it across the status check and the continue call closes that
+      // TOCTOU window for plugin-driven continues without deadlocking the
+      // lifecycle. The status probe still runs: the lock is a concurrency
+      // guard, not a replacement for busy/retry rejection.
+      let outcome: string
+      try {
+        outcome = await mutex.withLock(`continue:${targetSessionID}`, async () => {
+          const statusResult = await sdk.session.status({ query: { directory: context.directory } })
+          if (statusResult.error !== undefined) {
+            return `Error: failed to read target session status: ${targetSessionID} in ${context.directory} (${errorText(statusResult.error)}); retry janus_dispatch_continue`
+          }
+          // A status map that omits the session reports idle.
+          const status = statusResult.data?.[targetSessionID]
+          if (status !== undefined && status.type !== "idle") {
+            return `Error: target session is ${status.type}; wait for the active job first (janus_dispatch_wait)`
+          }
+
+          const { agentName, model } = resolveRoleTarget(config, role)
+          const modelChain: Array<string | null> =
+            role === "build" || (role === "writer" && config.writer_delegate_agent !== undefined)
+              ? [model ?? null]
+              : resolveRoleModelChain(config, role).map((m) => m ?? null)
+
+          return lifecycle.continue({
+            role,
+            prompt,
+            agentName,
+            modelChain,
+            parentID: context.sessionID,
+            directory: context.directory,
+            sessionID: targetSessionID,
+            continuedFrom: jobRootID,
+            signal: context.abort,
+          })
+        }, context.abort)
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return "Error: continue aborted before the target session was prompted; retry janus_dispatch_continue"
+        }
+        throw error
       }
-
-      const { agentName, model } = resolveRoleTarget(config, role)
-      const modelChain: Array<string | null> =
-        role === "build" || (role === "writer" && config.writer_delegate_agent !== undefined)
-          ? [model ?? null]
-          : resolveRoleModelChain(config, role).map((m) => m ?? null)
-
-      return lifecycle.continue({
-        role,
-        prompt,
-        agentName,
-        modelChain,
-        parentID: context.sessionID,
-        directory: context.directory,
-        sessionID: targetSessionID,
-        continuedFrom: jobRootID,
-        signal: context.abort,
-      })
+      return outcome
     },
   })
 

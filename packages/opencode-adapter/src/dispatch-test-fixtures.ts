@@ -141,6 +141,8 @@ export interface FakeSdk extends DispatchSdk {
   setPromptAsyncError(error: unknown): void
   setPromptAsyncRejection(error: unknown): void
   setStatusResult(result: { readonly data?: Readonly<Record<string, SdkSessionStatus>>; readonly error?: unknown }): void
+  setGetResult(result: { readonly data?: SdkSession; readonly error?: unknown }): void
+  setChildrenResult(result: { readonly data?: ReadonlyArray<SdkSession>; readonly error?: unknown }): void
 }
 
 /**
@@ -157,6 +159,8 @@ export function createFakeSdk(): FakeSdk {
   let promptAsyncResult: { readonly data?: void | undefined; readonly error?: unknown } = { data: undefined }
   let promptAsyncReject: { readonly shouldThrow: boolean; readonly error: unknown } = { shouldThrow: false, error: undefined }
   let statusResult: { readonly data?: Readonly<Record<string, SdkSessionStatus>>; readonly error?: unknown } = { data: {} }
+  let getResult: { readonly data?: SdkSession; readonly error?: unknown } | undefined
+  let childrenResult: { readonly data?: ReadonlyArray<SdkSession>; readonly error?: unknown } | undefined
 
   function record(method: string, input: unknown): void {
     calls.push({ method, input })
@@ -184,6 +188,12 @@ export function createFakeSdk(): FakeSdk {
     },
     setStatusResult(result) {
       statusResult = result
+    },
+    setGetResult(result) {
+      getResult = result
+    },
+    setChildrenResult(result) {
+      childrenResult = result
     },
     session: {
       create: async (input) => {
@@ -243,11 +253,13 @@ export function createFakeSdk(): FakeSdk {
       },
       get: async (input) => {
         record("get", input)
+        if (getResult !== undefined) return getResult
         const session = sessions.get(input.path.id)
         return { data: session }
       },
       children: async (input) => {
         record("children", input)
+        if (childrenResult !== undefined) return childrenResult
         const list = [...sessions.values()].filter((s) => s.parentID === input.path.id)
         return { data: list }
       },

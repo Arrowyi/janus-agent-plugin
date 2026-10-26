@@ -8,7 +8,7 @@ import { createJanusDispatchTool, createJanusDispatchTools, resolveRoleTarget, s
 import { appendRecord, createAttemptSession, createJob } from "./dispatch-journal.ts"
 import { JanusPluginConfigSchema, type JanusPluginConfig } from "./plugin-config.ts"
 import { createFakeClock, createFakeSdk, type FakeSdk } from "./dispatch-test-fixtures.ts"
-import { parseOutcomeEnvelope, PRODUCTION_WAIT_BUDGET_MS, type DispatchEnvelope, type SdkAssistantMessage, type SdkMessageWithParts, type SdkTextPart } from "./dispatch-contract.ts"
+import { createKeyedMutex, parseOutcomeEnvelope, PRODUCTION_WAIT_BUDGET_MS, type DispatchEnvelope, type KeyedMutex, type SdkAssistantMessage, type SdkMessageWithParts, type SdkTextPart } from "./dispatch-contract.ts"
 import type { DispatchLifecycle, LaunchInput } from "./dispatch-lifecycle.ts"
 
 function config(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConfig {
@@ -857,5 +857,150 @@ describe("janus_dispatch_continue", () => {
     )
     expect(foreign).toMatch(/^Error: target dispatch session is not owned by this caller/)
     expect(promptAsyncCount(fake)).toBe(1)
+  })
+
+  it("returns a retryable error and prompts nothing when the target session read fails", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("chapter one prose", clock)
+    const tools = createTools(fake, clock)
+    const { sessionID } = await dispatchWriterWithHandle(fake, tools)
+    const beforePrompts = promptAsyncCount(fake)
+    const beforeCreates = fake.calls.filter((c) => (c as { method: string }).method === "create").length
+
+    fake.setGetResult({ error: { name: "APIError", data: { statusCode: 503 } } })
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+
+    expect(result).toContain("failed to read target session:")
+    expect(result).toContain(sessionID)
+    expect(result).toContain("/tmp/project")
+    expect(result).toContain("APIError: 503")
+    expect(result).toContain("retry janus_dispatch_continue")
+    expect(promptAsyncCount(fake)).toBe(beforePrompts)
+    expect(fake.calls.filter((c) => (c as { method: string }).method === "create")).toHaveLength(beforeCreates)
+  })
+
+  it("returns a retryable error and prompts nothing when the dispatch journal read fails", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("chapter one prose", clock)
+    const tools = createTools(fake, clock)
+    const { jobID, sessionID } = await dispatchWriterWithHandle(fake, tools)
+    const beforePrompts = promptAsyncCount(fake)
+    const beforeCreates = fake.calls.filter((c) => (c as { method: string }).method === "create").length
+
+    fake.setChildrenResult({ error: { name: "APIError", data: { statusCode: 503 } } })
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+
+    expect(result).toContain("target dispatch journal is temporarily unreadable:")
+    expect(result).toContain(jobID)
+    expect(result).toContain("/tmp/project")
+    expect(result).toContain("retry janus_dispatch_continue")
+    expect(result).not.toContain("not owned by this caller")
+    expect(promptAsyncCount(fake)).toBe(beforePrompts)
+    expect(fake.calls.filter((c) => (c as { method: string }).method === "create")).toHaveLength(beforeCreates)
+  })
+
+  it("returns a retryable error and prompts nothing when the target status read fails", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("chapter one prose", clock)
+    const tools = createTools(fake, clock)
+    const { sessionID } = await dispatchWriterWithHandle(fake, tools)
+    const beforePrompts = promptAsyncCount(fake)
+    const beforeCreates = fake.calls.filter((c) => (c as { method: string }).method === "create").length
+
+    fake.setStatusResult({ error: { name: "APIError", data: { statusCode: 503 } } })
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+
+    expect(result).toContain("failed to read target session status:")
+    expect(result).toContain(sessionID)
+    expect(result).toContain("/tmp/project")
+    expect(result).toContain("APIError: 503")
+    expect(result).toContain("retry janus_dispatch_continue")
+    expect(promptAsyncCount(fake)).toBe(beforePrompts)
+    expect(fake.calls.filter((c) => (c as { method: string }).method === "create")).toHaveLength(beforeCreates)
+  })
+
+  it("serializes concurrent continues so the second re-checks status before prompting", async () => {
+    // given — an owned writer job root and a mutex that records lock attempts
+    const clock = createFakeClock()
+    const fake = createFakeSdk()
+    const created = await createJob(fake, {
+      parentID: "ses_parent", directory: "/tmp/project", role: "writer",
+      agentName: "consultation-writer", modelChain: ["opencode/claude-sonnet-5-5"],
+      prompt: "draft chapter one", clock,
+    })
+    if (!created.ok) throw created.error
+    const targetSessionID = created.value.jobID
+
+    const inner = createKeyedMutex()
+    const keys: string[] = []
+    const secondQueued = Promise.withResolvers<void>()
+    const mutex: KeyedMutex = {
+      withLock: (key, fn, signal) => {
+        keys.push(key)
+        if (keys.filter((candidate) => candidate === `continue:${targetSessionID}`).length === 2) {
+          secondQueued.resolve()
+        }
+        return inner.withLock(key, fn, signal)
+      },
+    }
+
+    // The first continue sees idle and holds the lock; the second attempt sees
+    // busy once the first prompt is in flight.
+    let statusCalls = 0
+    fake.session.status = async () => {
+      statusCalls++
+      return { data: { [targetSessionID]: { type: statusCalls === 1 ? "idle" : "busy" } } }
+    }
+
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    let continueCalls = 0
+    const lifecycle: DispatchLifecycle = {
+      launch: async () => "never called",
+      wait: async () => "never called",
+      continue: async () => {
+        continueCalls++
+        entered.resolve()
+        await release.promise
+        return "first continuation"
+      },
+    }
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock, mutex, lifecycle })
+
+    // when — two continues race for the same target session
+    const first = tools.janus_dispatch_continue.execute(
+      { session_id: targetSessionID, prompt: "apply the first fix" },
+      fakeContext(),
+    )
+    await entered.promise
+    const second = tools.janus_dispatch_continue.execute(
+      { session_id: targetSessionID, prompt: "apply the second fix" },
+      fakeContext(),
+    )
+
+    // The second attempt queues on the per-target lock instead of probing status
+    // or entering the lifecycle while the first still holds it.
+    await secondQueued.promise
+    expect(keys.filter((key) => key === `continue:${targetSessionID}`)).toHaveLength(2)
+    expect(statusCalls).toBe(1)
+    expect(continueCalls).toBe(1)
+
+    release.resolve()
+    const [firstResult, secondResult] = await Promise.all([first, second])
+
+    // then — the first completes, the second re-probes and rejects as busy
+    expect(firstResult).toBe("first continuation")
+    expect(secondResult).toMatch(/^Error: target session is busy; wait for the active job first/)
+    expect(statusCalls).toBe(2)
+    expect(continueCalls).toBe(1)
   })
 })

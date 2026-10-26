@@ -236,14 +236,14 @@ async function main(): Promise<void> {
 
       if (modelsCommandExists) {
         const modelsCommandText = readFileSync(modelsCommandPath, "utf8")
-        const hasInventory = modelsCommandText.includes("盘点")
-        const hasModelEval = modelsCommandText.includes("模型评估")
-        const hasPromptEval = modelsCommandText.includes("prompt 评估")
-        const hasExecute = modelsCommandText.includes("执行变更")
+        const hasInventory = modelsCommandText.includes("Inventory")
+        const hasModelEval = modelsCommandText.includes("Model evaluation")
+        const hasPromptEval = modelsCommandText.includes("Prompt evaluation")
+        const hasExecute = modelsCommandText.includes("Execute changes")
         assertions.push({
           name: "installed janus-models command contains the workflow dimensions",
           pass: hasInventory && hasModelEval && hasPromptEval && hasExecute,
-          detail: `inventory=${hasInventory} model=${hasModelEval} prompt=${hasPromptEval} execute=${hasExecute}`,
+          detail: `Inventory=${hasInventory} Model evaluation=${hasModelEval} Prompt evaluation=${hasPromptEval} Execute changes=${hasExecute}`,
         })
       }
       const liteWorkspace = join(sandboxData, "janus-agent", "lite")

@@ -36,6 +36,7 @@ export const REQUIRED_INSTALLED_FILES = [
   "assets/agents/writer.md",
   "assets/model-prompts/claudesonnet55.md",
   "assets/model-prompts/gemini38flash.md",
+  "assets/model-prompts/gemini4argon.md",
   "assets/model-prompts/deepseekflash.md",
   "assets/model-prompts/deepseekv41flash.md",
   "assets/model-prompts/glm53flash.md",

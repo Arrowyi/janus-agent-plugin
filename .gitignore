@@ -10,6 +10,7 @@ tmp/
 .omo/
 .opencode/
 .codegraph
+/opencode.json
 
 # isolated git worktrees
 .worktrees/
@@ -22,3 +23,6 @@ userdoc/
 
 # superpowers process artifacts (specs/plans) — not part of the shipped product
 /docs/superpowers/
+
+# codebase-memory-mcp graph snapshot
+.codebase-memory/

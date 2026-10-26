@@ -1,10 +1,11 @@
 ## Driving DeepSeek V4.1-Flash
 
-Profile (DeepSeek model card + Vals + AA, 2026-10): high-throughput, strong instruction-following, and strong at tool use and agentic work (Terminal-Bench 4.0 42.3% vendor, DeepSWE 74.2% vendor, SkillsBench 69.8% #1 Vals), with native image input and 1M context. Weaker at pure knowledge/reasoning (GPQA 90.9% vendor, HLE 36.8–39.1% vendor) and at factual calibration: on AA-Omniscience its non-hallucination rate is 46% in non-reasoning mode, so it tends to answer rather than abstain when unsure. It can also be verbose under long reasoning.
+Profile (DeepSeek model card + Vals + AA, 1017 release 2026-10): strongest at agentic and coding work, but its score is harness-sensitive — Terminal-Bench 4.0 is 42.3% in DeepSeek's own run and 31.8% in Vals' independent run. It is a heavy reasoner (thinking on by default, effort high) and still token-heavy against peers. It has native image input and a 1M context window. The real weak spot is calibration: on AA-Omniscience (2026-10-19) its accuracy is 46% and its non-hallucination rate is 33%, so when it does not know a fact it tends to answer anyway rather than abstain.
 
 Operating notes:
-- Use tool calls to settle facts instead of reasoning from memory; this model is strong at tool use and fast enough to check.
-- Calibration is a weak spot: mark unverified facts explicitly instead of filling gaps with plausible guesses.
-- Its self-checking can expand into long output; keep output bounded and stop when the evidence is sufficient.
-- For code, data, and protocol work, run the actual check; a fluent explanation is not evidence.
-- When given images or long documents, read them fully and quote the specific detail you rely on; native vision and 1M context are strengths.
+- Settle facts with a tool call, not memory. Anything that changes — dates, versions, figures, availability — gets checked, then cited.
+- Work in a loop: run it, read the actual output, fix, re-run. The first pass is good, not verified — and this model does not reliably see that its own output is wrong.
+- Never report a test, check, or page you did not actually run or open. Describe what you did, not what should have happened.
+- When the fact is not in front of you, say 不确定 / 没查到 and name what would settle it; never fill the gap with a plausible guess.
+- Stop when the answer is sufficient. Extra self-review rounds are the main avoidable cost.
+- Large inputs: 1M context is capacity, not guaranteed recall. Locate and quote the span you rely on, and re-check anything buried deep. For images, read the whole image before judging.

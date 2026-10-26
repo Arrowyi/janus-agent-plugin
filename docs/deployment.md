@@ -325,7 +325,7 @@ So `deepseek/deepseek-v4-pro` and `opencode-go/deepseek-v4-pro` both resolve to
 2. else the shipped library block `assets/model-prompts/<key>.md`;
 3. else empty — the role asset runs standalone.
 
-Seven blocks ship, each file named by its normalized key: six for the shipped
+Eight blocks ship, each file named by its normalized key: six for the shipped
 default models — `glm53.md` (GLM-5.3; default for consultant, janus, and coder),
 `deepseekv41flash.md` (DeepSeek V4.1-Flash; default for lite and explorer),
 `qwen38max.md` (Qwen3.8-Max; default for analyst), `gemini38flash.md` (Gemini
@@ -333,7 +333,8 @@ default models — `glm53.md` (GLM-5.3; default for consultant, janus, and coder
 default for coder-lite), and `claudesonnet55.md` (Claude Sonnet 5.5; default
 for writer) — plus `deepseekflash.md` for the direct-provider id
 `deepseek/deepseek-flash` (the same V4.1-Flash model, but a different
-normalized key).
+normalized key), and `gemini4argon.md` for the optional Gemini 4 Argon
+override (`opencode-go/gemini-4-argon`).
 
 To add a block for a model that has none: name the file after the model's
 normalized key — the same rule above applied to the model id — drop it at

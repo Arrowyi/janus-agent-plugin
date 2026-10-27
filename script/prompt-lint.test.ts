@@ -35,11 +35,7 @@ const AGENT_BUDGETS: Record<string, number> = {
 
 const FRAGMENT_BUDGET = 500
 const SKILL_MODULE_BUDGET = 2000
-// DR8 sets 9500. The design mode (D1) adds the required method, record
-// rules, boundaries, and template: Phase 3 measures 10348 words. The ceiling is
-// raised here to 10500 and reported to the dispatcher for a decision; the
-// alternative is a dedicated compression pass over the existing modules.
-const SKILL_TOTAL_BUDGET = 10500
+const SKILL_TOTAL_BUDGET = 9500
 
 /**
  * Sentences intentionally mirrored across role prompts. Each entry names why

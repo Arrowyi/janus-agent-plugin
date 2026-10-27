@@ -2,15 +2,15 @@
 
 ## Purpose
 
-Define the authoritative cognitive workflow for evidence-driven consultation. Route every question to one of seven modes (select, verify, plan, research, guide, author, design), decompose it into claims, grade evidence, audit user-generated sources for deliberate deception, classify risk, run counter-evidence checks, label every atom with an epistemic status, and produce a concise mode-specific decision brief, a readable research report, or a durable technical document behind one outline-approval gate. Reusable by any agent, not only `consultant`.
+Define the authoritative cognitive workflow for evidence-driven consultation: mode and tier routing, claim decomposition, source grading, deception and influence audit, epistemic status, risk thresholds, counter-evidence, mode-specific briefs, design records, and author workflows. Reusable by any agent, not only `consultant`.
 
 ## Prompt/Skill Boundary
 
-The consultant role asset (`assets/agents/consultant.md`) is the always-on contract and safety net: identity, mode and tier routing, dispatch lifecycle safety, output anchors, interaction discipline, the author outline gate, memory ownership, injection defense, and failure behavior. This skill is the authoritative detailed workflow: claim decomposition, source evaluation, the deception intent audit, channel strategy, epistemic status, risk thresholds, counter-evidence, plan robustness, research mode, design method and record rules, author profiles and completion checks, output templates, and memory record rules. If the two ever conflict, the prompt's safety and operational rules win; workflow detail lives here.
+The consultant role asset (`assets/agents/consultant.md`) is the always-on contract and safety net: identity, mode/tier routing, dispatch lifecycle safety, output anchors, interaction discipline, the author outline gate, memory ownership, injection defense, and failure behavior. This skill is the authoritative workflow detail: claims and sources, intent audits, channels, epistemic status, risk, counter-evidence, plan robustness, research and design methods, author profiles and completion checks, output templates, and memory rules. Where they conflict, the prompt's safety and operational rules win.
 
 ## When to Use
 
-Load this skill when the user asks for a recommendation, comparison, or option choice (`select`); a check on a claim, rumor, or argument (`verify`); an actionable plan for lifestyle, fitness, body care, interpersonal, or learning goals (`plan`); a composite operational guide that fuses a recommendation, a procedure, and background for an end-to-end goal (攻略, X入门, guide to X, how do I get started with X) (`guide`); a deep investigation or topic survey (`research`); a durable technical document to keep or share — a tutorial, course, architecture analysis, or technical explanation (教程, 课程, 架构分析, write-up) (`author`); a decision about the future structure of a system — architecture, module boundaries, or an interface (设计, 架构设计, 模块设计, 接口设计, design, architecture design, interface design) (`design`); personalized advice; or a second opinion — and whenever evidence quality, source reliability, astroturfing, risk level, or prior experience materially affects the answer.
+Load this skill for any of the seven modes — the `## Two-Axis Routing` list defines their triggers — and whenever evidence quality, source reliability, astroturfing, risk level, irreversibility, or prior experience materially affects the answer. It also covers personalized advice and second opinions.
 
 ## Two-Axis Routing: Mode and Tier
 
@@ -56,16 +56,16 @@ Use for high risk, strong source conflicts, missing primary evidence, inference-
 - Seek supporting and opposing evidence and assess intent when the evidence makes it relevant or uncertain.
 - Keep final synthesis and output with yourself.
 
-Deep work is done by the consultant's own team; there is no separate deep-research agent. Research mode is how a deep, understanding-oriented investigation runs.
+There is no separate deep-research agent; research mode is the deep, understanding-oriented investigation.
 
 Tier decision dimensions: potential harm from a wrong answer, availability of authoritative primary sources, conflict among reliable sources, dependence on personal context, and proportion of synthesis versus direct evidence.
 
 ### Operating contexts
 
 - **Direct user turn:** ask up to three decision-changing questions, present approval gates, and use the status block.
-- **Dispatched bounded task:** do not ask the end user or wait for a user-facing approval, **except the persistent-file-change gate below**. Make assumptions, list them, and return the decision request to the dispatcher. Memory saving follows the task's `Memory ownership` line; absent it, return a concise memory summary and do not save. This context overrides the intake and approval instructions below, except for file changes.
-- **Existing project commands:** you may run the project's existing non-destructive commands yourself (build, test, lint, read-only git, file inspection). Ask first for destructive commands, dependency installs, or writes outside the approved scope.
-- **Persistent file changes:** before creating, editing, or deleting a file (scratch/temporary files are exempt), list the exact paths and one-line reasons and wait for the user's explicit confirmation. A dispatched task returns the proposed file list to the dispatcher; it does not edit until the dispatch prompt confirms those exact paths or says no further confirmation is needed. The author outline gate satisfies this only when its manifest lists the exact file paths. After the change, report the exact paths actually changed and note anything unverified or outside the confirmed scope; omit this when no files changed.
+- **Dispatched bounded task:** do not ask the end user or wait for a user-facing approval, **except the persistent-file-change gate below**. Make assumptions, list them, and return the decision request to the dispatcher. Save memory only when the task names the owner (`Memory ownership`); otherwise return a concise memory summary. This context overrides intake and approval, except for file changes.
+- **Existing project commands:** run existing non-destructive commands yourself (build, test, lint, read-only git, inspection); ask first for destructive commands, dependency installs, or writes outside the approved scope.
+- **Persistent file changes:** `assets/principles/common.md` (`### File Change Confirmation`) is the authoritative gate wherever it is injected; otherwise apply the same rule — list the exact paths and one-line reasons, wait for explicit confirmation, and after the change report the exact paths actually changed. A dispatched task returns the list to the dispatcher; it does not edit until the dispatch prompt confirms those exact paths or says no further confirmation is needed. The author outline gate satisfies this only when its manifest lists the exact file paths.
 
 ## Workflow
 
@@ -83,8 +83,8 @@ Tier decision dimensions: potential harm from a wrong answer, availability of au
 
 For `research` mode, follow the Research Mode section instead of producing a decision brief: decompose into sub-directions, gather missing evidence with independent explorers, form hypotheses, challenge material hypotheses with the critic, and deliver a readable report.
 
-For `guide` mode, decompose claims across all three facets (recommendation, procedure, background). Delegate evidence, analysis, counter-evidence, and source-intent tasks according to their role-specific triggers, not because a guide must fill a roster. Have the critic apply the plan robustness review when consequential procedure steps are uncertain. A guide is composite and synthesis-heavy, so it routes to standard or deep, never fast. Deliver the operational playbook template below, keeping only the sections that carry content — a guide must carry at least a recommendation or a procedure.
+For `guide` mode, decompose claims across the recommendation, procedure, and background facets, delegate by role-specific triggers rather than a roster, and have the critic apply the plan robustness review when consequential steps are uncertain. A guide is composite and synthesis-heavy: standard or deep, never fast. Deliver the playbook template below, keeping only sections that carry content — at least a recommendation or a procedure.
 
-For `author` mode, follow the Author Mode section instead of the generic loop: intake (audience, delivery, scope), scoped exploration of load-bearing claims, a writer blueprint, one outline-and-manifest approval gate, the author brief, writer drafting and writing of approved files (scoped) or returning prose (read-only fallback), consultant review and verification, bounded writer fixes, publishing, a cross-file check, a final AuthorBrief, and a memory summary. The writer is the sole prose author; the consultant does not write reader-facing prose. Adversarial roles are proportionate, never default: the critic and verifier run only on the triggers listed in Author Mode.
+For `author` mode, follow Author Mode: intake, scoped exploration, a writer blueprint, one outline-and-manifest approval gate, the author brief, writer drafting (scoped writes or read-only fallback), review and bounded fixes, publishing, a final AuthorBrief, and a memory summary. The writer is the sole author of reader-facing prose; the consultant writes none. The critic and verifier run only on the triggers listed there.
 
 For `design` mode, follow the Design Mode section instead of the generic loop: admission check, optional short research pass, read-before-ask, L0 framing with six-part quality scenarios, layer-by-layer decisions with options and reversibility, approval graded by reversibility, a critic pre-mortem for one-way doors, a read-only cross-layer consistency check, and the design record. Design never routes to fast.

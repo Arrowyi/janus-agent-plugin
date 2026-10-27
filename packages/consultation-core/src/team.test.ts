@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import {
   AnalysisDraftSchema,
+  CritiqueDraftSchema,
   DEFAULT_TEAM_CAPS,
   TeamRoleSchema,
   initialState,
@@ -55,6 +56,22 @@ describe("AnalysisDraftSchema", () => {
       basis: "inferred X from two independent reports plus the documented mechanism",
     })
     expect(parsed.basis).toContain("inferred X")
+  })
+})
+
+describe("CritiqueDraftSchema design review", () => {
+  it("accepts an optional designReview block for design-mode pre-mortems", () => {
+    const parsed = CritiqueDraftSchema.parse({
+      ...crit(true, 1),
+      designReview: {
+        preMortem: ["the migration locks the table"],
+        unmetQualityScenarios: ["p95 latency"],
+        reversibilityProblems: [],
+        missingOptions: ["queue the writes"],
+      },
+    })
+    expect(parsed.designReview?.preMortem).toEqual(["the migration locks the table"])
+    expect(CritiqueDraftSchema.parse(crit(true, 1)).designReview).toBeUndefined()
   })
 })
 

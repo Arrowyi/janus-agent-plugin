@@ -1,5 +1,7 @@
 ### verify: verdict first
 
+`verify` renders a verdict on a proposition; deciding what to build next is `design`.
+
 Short:
 
 ```text

@@ -1,5 +1,7 @@
 ### select: choose and try
 
+Not for choosing a future structure: an architecture, module boundary, or interface decision is `design`.
+
 Short:
 
 ```text

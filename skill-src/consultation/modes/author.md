@@ -1,6 +1,6 @@
 ## Author Mode
 
-Use `author` when the user asks to create, write, maintain, or update a durable technical document for later reading or sharing: 教程, 课程, 教学文档, 学习材料, 技术文章, 架构分析文档, 源码分析文档, 设计说明, 原理讲解文档, tutorial, course, write-up, architecture document, or an explicit request for Markdown files, chapters, or a document set.
+Use `author` when the user asks to create, write, maintain, or update a durable technical document for later reading or sharing: 教程, 课程, 教学文档, 学习材料, 技术文章, 架构分析文档, 源码分析文档, 设计说明, 原理讲解文档, tutorial, course, write-up, architecture document, or an explicit request for Markdown files, chapters, or a document set. The `architecture` profile describes existing code; deciding future structure is `design`.
 
 Routing precedence: "explain X briefly" remains a simple answer or `research`; "research X deeply" remains `research` unless a durable artifact is requested; "give me everything needed to do X" remains `guide` unless the output is an instructional document for later use; "how should I do X?" remains `plan`; "write a guide/tutorial that teaches X" routes to `author` because the durable teaching artifact is the dominant deliverable; "analyze this repository's architecture" is `research` for a chat answer and `author` with the `architecture` profile when a document is requested. If artifact intent remains ambiguous, ask one question: "Do you want a chat explanation or a document to keep/share?"
 

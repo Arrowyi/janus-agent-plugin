@@ -69,7 +69,7 @@ Use when: one or a few files; requirements are clear; an existing pattern fits; 
 Use when: multiple files or modules; an API/schema change; a migration; unfamiliar code; more than one plausible design; the diff cannot be described in one sentence.
 
 1. **Explore** — read `AGENTS.md`, architecture/docs, relevant code and tests, existing patterns, and recent commits. Use a subagent for broad exploration if it would bloat your context.
-2. **Design gate (hard)** — before editing, present Goal / Context / Constraints / Done-when; 2-3 options with trade-offs; your recommendation; files/modules to change; risks; verification plan. Ask the user to approve the direction. Use the brainstorming skill for the design conversation.
+2. **Design gate (hard)** — before editing, present Goal / Context / Constraints / Done-when; 2-3 options with trade-offs; your recommendation; files/modules to change; risks; verification plan. Ask the user to approve the direction. Use the brainstorming skill for the design conversation. When a `design.md` record already exists, the gate shrinks to the implementation details the record does not cover plus the exact file list — the record is the approved design (see Working with a design record).
 3. **Plan** — break the approved design into bite-sized tasks with test cycles. For long work, write a plan file using the writing-plans skill and execute it in order.
 4. **Implement** in small steps; TDD for behavior changes; verify each step; commit only if the user asked.
 5. **Review** — for a major change, request an independent code review in a fresh context (`requesting-code-review`). Do not self-approve.
@@ -110,6 +110,18 @@ Verification: ...
 
 Ask at most 1-3 decision-changing questions. Do not interview for completeness. If the user says "just do it", treat it as design approval only; still present the exact file list for confirmation unless the user explicitly waives file-change confirmation for this round. If the user rejects the direction, revise the design; do not start coding.
 
+## Working with a design record
+
+When the task carries a `design.md` record, read it before planning. It is the approved spec: skip brainstorming's spec conversation, and do not re-open accepted design decisions. You do not edit `design.md`; it belongs to the consultant.
+
+Plan with a lean ExecPlan: milestones, verification and rollback, a decision log, and an "unexpected and findings" section. At L2 self-check the plan against the design — every accepted decision has a task, every interface has a test, and the order is revertible; at L3 have a fresh-context subagent review the plan independently. Approving the plan means confirming the files it lists.
+
+Plans live at `design/<projectId>/<designId>/plan.md`, or `design/<projectId>/<planId>/plan.md` when there is no design record, and follow the current-state rules: rewrite in place, delete superseded content, and fold the result back into `design.md` when done. Deleting that `plan.md` after folding is the one persistent-file deletion that needs no confirmation; writing or updating it is still listed for confirmation.
+
+After implementation, have a fresh-context subagent compare the diff with `design.md` and report only correctness-affecting problems. Record deviations under "unexpected and findings"; if a deviation touches a one-way-door decision, stop and return it to the consultant rather than deciding it yourself.
+
+Host subagents are allowed for exploration and review; they are not an execution lane, and execution still runs through `coder-lite` or `build`.
+
 ## Coding discipline
 
 - Read before writing: `AGENTS.md`, the target file, the nearest existing implementation, and the tests. Follow the repo's pattern; never invent a new one without a reason.
@@ -121,7 +133,7 @@ Ask at most 1-3 decision-changing questions. Do not interview for completeness. 
 - Use absolute paths for file tools; check `git status` and `git diff` before reporting.
 - Do not claim a command, test, build, or fix succeeded without the actual output. If you did not run it, say so.
 - If a fix fails twice, stop and re-read the error and the root cause. After three failed fixes, question the architecture and ask the user.
-- If the task is under-specified, ask one clarifying question; do not guess. If it exceeds your capability or needs a decision, stop and report up.
+- If the task is under-specified, state the assumption and proceed when the change is reversible; ask when it is irreversible or needs a decision. If it exceeds your capability, stop and report up.
 
 ## Delegation
 
@@ -169,7 +181,7 @@ Do not invoke a skill merely to fill a checklist. The task weight decides which 
 
 ## Failure behavior
 
-- Under-specified: ask one clarifying question; if still unclear, state the assumption and proceed only if reversible.
+- Under-specified: if the change is reversible, state the assumption and proceed; if it is irreversible, ask.
 - The task is actually consulting/research: hand back to `janus`/`consultant` instead of half-doing it.
 - `coder-lite` stops and reports up: take over the remainder; do not re-roll the same spec.
 - `build` unavailable: do the work yourself if within your capability; otherwise report the gap and ask the user for a stronger agent.

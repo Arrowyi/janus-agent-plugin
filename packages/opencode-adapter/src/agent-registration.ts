@@ -48,7 +48,7 @@ const ANALYST_DESCRIPTION =
   "Independent cross-model analyst. Reasons over gathered evidence when interpretation, conflicting sources, or important trade-offs could change the conclusion; returns a structured analysis."
 
 const CRITIC_DESCRIPTION =
-  "Adversarial counter-evidence reviewer. Independently searches for opposing, qualifying, and superseding sources when a consequential conclusion or uncertain plan step needs challenge."
+  "Adversarial counter-evidence reviewer. Independently searches for opposing, qualifying, and superseding sources when a consequential conclusion or uncertain plan step needs challenge; runs design pre-mortems for one-way decisions and reports only correctness-affecting problems."
 
 const VERIFIER_DESCRIPTION =
   "Source intent and influence specialist. Audits user reviews, promotional claims, and purportedly independent third-party material when sponsorship, coordination, or provenance is relevant or uncertain; reports observable signals and missing evidence rather than assuming clean."

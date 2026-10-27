@@ -637,6 +637,7 @@ describe("registerConsultationCritic", () => {
     expect(critic.prompt).toContain("# Consultation Critic")
     expect(critic.prompt).toContain("counterEvidence")
     expect(critic.description).toContain("counter-evidence")
+    expect(critic.description).toContain("design pre-mortems")
     expect(critic.permission).toMatchObject({ edit: "deny", bash: "deny", task: "deny" })
   })
 
@@ -1830,6 +1831,13 @@ describe("model-prompt blocks are model-property only", () => {
     expect(source).toContain("Design gate — how to ask")
     expect(source).toContain("Do not use a heavyweight process for a simple task")
     expect(source).toContain("Do not skip design for a complex one")
+    expect(source).toContain("## Working with a design record")
+    expect(source).toContain("the gate shrinks to the implementation details")
+    expect(source).toContain("Approving the plan means confirming the files it lists")
+    expect(source).toContain("compare the diff with `design.md`")
+    expect(source).toContain("one-way-door decision")
+    expect(source).toContain("Deleting that `plan.md` after folding is the one persistent-file deletion that needs no confirmation")
+    expect(source).toContain("Host subagents are allowed for exploration and review")
   })
 
   it("coder prompt overrides installed skill workflow at P0", async () => {
@@ -1859,12 +1867,19 @@ describe("model-prompt blocks are model-property only", () => {
     expect(lite).toContain("You are a leaf: you never dispatch another agent.")
     expect(lite).toContain("escalate to `consultant`")
     expect(lite).toContain("escalate to `coder`")
+    expect(lite).toContain("personal plans, system design, or durable documents")
     expect(janus).toContain("## Routing")
     expect(janus).toContain("`coder`")
     expect(janus).toContain("A 1-2 tool-call task you can do yourself")
     // The inline small-edit carve-out must never swallow the document lane.
     expect(janus).toContain("except document tasks")
     expect(janus).toContain("never an edit to a document file")
+    expect(janus).toContain("Do not run your own design gate")
+    expect(janus).toContain("`consultant` (`design` mode)")
+    expect(janus).toContain("An implementation plan for a codebase -> `coder`")
+    expect(janus).toContain("Reading, summarizing, or explaining an existing document")
+    expect(janus).toContain("The dispatch tool still exposes `coder-lite` and `build`")
+    expect(lite).toContain("read-only document Q&A")
   })
 
   it("consultant prompt has a dispatched-mode guard and does not implement code", async () => {

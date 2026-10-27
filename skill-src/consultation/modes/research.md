@@ -13,6 +13,8 @@ Research mode runs deep. Workflow:
 
 The report is for a busy human reader, not an academic. Lead with the bottom line (BLUF), write in plain language, and put the detail under `证据与来源（可跳过）` — conclusion and key points first, evidence and disagreements on demand. Never output invented numerical confidence.
 
+Research explains a topic; deciding the system's future structure is `design`.
+
 <!-- part -->
 
 ### research: bottom line then meaning

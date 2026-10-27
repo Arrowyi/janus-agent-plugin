@@ -50,6 +50,8 @@ const PROMPT_DETAIL_ONLY_MARKERS = [
   "temporal bursts",
   "100-120 characters",
   "Tier decision dimensions",
+  "six-part scenario",
+  "one-way-door pre-mortem",
 ] as const
 
 const SKILL_DETAIL_MARKERS = [
@@ -66,6 +68,9 @@ const SKILL_DETAIL_MARKERS = [
   "temporal bursts",
   "sectionPlan",
   "100-120 characters",
+  "six-part scenario",
+  "one-way-door pre-mortem",
+  "design: decision record",
 ] as const
 
 // The effective prompt is the role asset plus the shared principle fragments

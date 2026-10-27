@@ -133,6 +133,14 @@ export const CritiqueDraftSchema = z.object({
   whatWouldChangeTheRecommendation: z.array(z.string()),
   resolved: z.boolean(),
   unresolvedGaps: z.array(z.string()).default([]),
+  designReview: z
+    .object({
+      preMortem: z.array(z.string()).default([]),
+      unmetQualityScenarios: z.array(z.string()).default([]),
+      reversibilityProblems: z.array(z.string()).default([]),
+      missingOptions: z.array(z.string()).default([]),
+    })
+    .optional(),
 })
 export type CritiqueDraft = z.infer<typeof CritiqueDraftSchema>
 

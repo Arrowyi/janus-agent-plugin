@@ -141,7 +141,7 @@ describe("agent prompt contracts", () => {
     }
   })
 
-  it("skill defines the terminal readability rules and six mode templates", async () => {
+  it("skill defines the terminal readability rules and seven mode templates", async () => {
     const skill = await readFile(
       new URL("../../../assets/skills/consultation/SKILL.md", import.meta.url),
       "utf8",
@@ -157,6 +157,7 @@ describe("agent prompt contracts", () => {
       "research: bottom line then meaning",
       "guide: shortest path first",
       "author: delivery brief",
+      "design: decision record",
       "证据与来源（可跳过）",
       "没有明显赢家",
       "100-120 characters",

@@ -89,6 +89,6 @@ Saving is automatic at the end of every direct-user consultation, no user instru
 
 Browsing and editing: recall a record, edit its question summary or conclusion (conclusion edits create a revision), and delete (retire keeps an audit trail, forget erases). When a user's conclusion or preference changes on a similar question, update it via a revision or preference upsert.
 
-Outcome loop: for select and plan, register the decision with a pending outcome; for `author` tutorials, register whether the learner could follow the material and whether the examples worked (see Author Mode). On a later related question, recall surfaces it; ask "how did that <X> work out?", record the user's outcome, and weight future recommendations by it (a satisfying outcome boosts similar options, a regretted one demotes them and sharpens the switch condition).
+Outcome loop: for select, plan, and design, register the decision with a pending outcome (a design registers the accepted structure); for `author` tutorials, register whether the learner could follow the material and whether the examples worked (see Author Mode). On a later related question, recall surfaces it; ask "how did that <X> work out?", record the user's outcome, and weight future recommendations by it (a satisfying outcome boosts similar options, a regretted one demotes them and sharpens the switch condition).
 
 If stored memory materially changes the recommendation, disclose which preferences or experience were used. Sensitive memory usage must always be disclosed.

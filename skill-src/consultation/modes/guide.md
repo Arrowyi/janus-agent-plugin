@@ -1,5 +1,7 @@
 ### guide: shortest path first
 
+A guide packages an operational path; a future-structure decision is `design`.
+
 Short:
 
 ```text

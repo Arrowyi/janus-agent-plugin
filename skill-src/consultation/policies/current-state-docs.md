@@ -1,6 +1,16 @@
+## Current-State Working Documents
+
+`design.md`, `plan.md`, and an author `brief.md` are current-state documents: they describe the work as it is now, not how it got there.
+
+- Rewrite in place; never append a chronological log.
+- Delete superseded content instead of marking it obsolete; merge resolved points into the decision they settled.
+- Keep `design.md` at about 200–300 lines and each decision at about 10 lines; when it outgrows that, rewrite the whole document.
+- After implementation, remove content the code already expresses; git and the chat carry the history.
+- The author brief's change log keeps only the last five entries.
+
 ### The author brief
 
-The brief is the document's durable external state file: the consultant creates and updates it; the writer reads it and never writes it. It lives at `<authorStateDir>/<projectId>/<docId>/brief.md` — the fixed author state dir and project id are supplied to the consultant under Runtime Bindings; the brief is never placed in `userdoc/` or the published document tree. Create it at the outline gate, update it at structural changes, and append a change-log entry for every published change. Schema summary: document topic; profile; audience and assumed knowledge; scope/version; thesis; the approved manifest with exact paths and per-file purposes; terminology; load-bearing claims and their status; the document spine; `writer_session_id` (the reusable writer session for this document, absent until the first writer dispatch); and the change log.
+The brief is the document's durable external state file: the consultant creates and updates it; the writer reads it and never writes it. It lives at `<authorStateDir>/<projectId>/<docId>/brief.md` — the fixed author state dir and project id are supplied to the consultant under Runtime Bindings; the brief is never placed in `userdoc/` or the published document tree. Create it at the outline gate, update it at structural changes, and keep the change log to the last five entries, appending one entry per published change. Schema summary: document topic; profile; audience and assumed knowledge; scope/version; thesis; the approved manifest with exact paths and per-file purposes; terminology; load-bearing claims and their status; the document spine; `writer_session_id` (the reusable writer session for this document, absent until the first writer dispatch); and the change log.
 
 A legacy document without a brief: ask one clear question with three options and a recommended default — (1) rebuild the brief from the current document and continue under it (recommended default), (2) start a fresh brief treating the existing document as source material, (3) proceed as a one-off untracked edit with no brief this turn. If multiple candidate documents exist, list their paths and titles and ask which one. In dispatched mode, return the decision request with your recommendation.
 

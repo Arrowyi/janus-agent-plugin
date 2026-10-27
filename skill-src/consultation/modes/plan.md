@@ -1,5 +1,7 @@
 ### plan: feasibility first
 
+`plan` is a personal action plan. An implementation plan for a codebase belongs to the coder's ExecPlan, and a future-structure decision is `design`.
+
 Short:
 
 ```text

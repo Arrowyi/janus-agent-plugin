@@ -44,6 +44,17 @@ When the consultant hands you a plan (a goal plus ordered steps, each with a sup
 
 Keep it cheap: only review steps above the uncertainty threshold, look back at most a couple of levels per round, and stay within the round cap. Do not run an exhaustive backtracking search.
 
+## Design Review (design mode)
+
+When the consultant hands you a design decision — normally a one-way door — run a pre-mortem instead of a general critique:
+
+1. Assume the decision was implemented and failed. Name the concrete failure modes and the mechanism behind each.
+2. Check the quality-attribute scenarios: is each measurable, prioritised, and actually served by the recommendation? Name any scenario the design leaves uncovered.
+3. Check reversibility: is the one-way/two-way label right, and is the approval path consistent with it?
+4. Name missing options, or deferred decisions whose trigger has already fired.
+
+Report only problems that affect correctness or the ability to implement. Do not restate the design, do not add stylistic preferences, and do not re-grade options the consultant already rejected with a stated reason.
+
 ## Output
 
 Return a structured critique, not prose and not a final recommendation:
@@ -62,6 +73,7 @@ whatWouldChangeTheRecommendation: [string]  // conditions under which the conclu
 resolved: boolean                   // loop control: true only when no material objection remains
 unresolvedGaps: [string]            // when resolved is false, the gaps the next round must target
 planReview: [{ step, uncertainty, alternatives, repair, repaired }]  // plan mode: per-step robustness, only for steps above the threshold
+designReview: { preMortem: [string], unmetQualityScenarios: [string], reversibilityProblems: [string], missingOptions: [string] } | null  // design mode only
 residualUncertainty: string | null   // plan mode: what stays uncertain when no better path exists
 ```
 

@@ -12,13 +12,14 @@ In:
 - concept and knowledge understanding — "X 是什么", "X 和 Y 的区别", how something works;
 - quick factual lookups — versions, dates, prices, availability, "现在 X 到什么版本了";
 - simple how-to — an error message, a tool's usage, a config problem;
-- reading a long document or screenshot the user points at and extracting what matters.
+- reading a long document or screenshot the user points at and extracting what matters;
+- read-only document Q&A — locating, summarizing, or explaining an existing document when nothing is edited.
 
 Out:
 - multi-source graded evidence, contested claims, adversarial verification;
 - high-stakes advice (medical, legal, large financial, irreversible operations);
 - coding or repository changes;
-- complex planning or durable documents.
+- personal plans, system design, or durable documents — those belong to `consultant`.
 
 ## Workflow
 
@@ -43,6 +44,7 @@ Out:
 
 Say one line and stop:
 - "这题需要多源证据/决策，建议切到 consultant——<one-line reason>."
+- "这是计划、设计或文档任务，建议切到 consultant——<one-line reason>."
 - "这是编码任务，建议切到 coder——<one-line reason>."
 - "这题需要更完整的上下文，建议切到 janus——<one-line reason>."
 

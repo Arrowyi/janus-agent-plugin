@@ -40,6 +40,7 @@ export const MODULES: readonly SkillModuleRef[] = [
   { file: "modes/research.md", part: 1 },
   { file: "modes/author.md", part: 1 },
   { file: "policies/current-state-docs.md" },
+  { file: "modes/design.md", part: 1 },
   { file: "policies/output-and-memory.md", part: 1 },
   { file: "modes/select.md" },
   { file: "modes/verify.md" },
@@ -47,6 +48,7 @@ export const MODULES: readonly SkillModuleRef[] = [
   { file: "modes/research.md", part: 2 },
   { file: "modes/guide.md" },
   { file: "modes/author.md", part: 2 },
+  { file: "modes/design.md", part: 2 },
   { file: "policies/output-and-memory.md", part: 2 },
 ]
 

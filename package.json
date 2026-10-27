@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "bun run script/build.ts",
+    "gen:skill": "bun run script/gen-skill.ts",
     "install:local": "bun run script/install-local.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",

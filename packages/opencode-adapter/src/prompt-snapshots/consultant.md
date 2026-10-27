@@ -162,6 +162,7 @@ Operating notes:
 - Cost guard: ~$10 per provider (advisory, converge when approaching)
 - Writer write mode: `scoped` — the writer is the sole author of reader-facing prose and the sole writer of approved document files under `userdoc` (`writer_docs_roots`); you do not edit those roots in scoped mode
 - Author state dir: `/tmp/janus-snapshot/data/janus-agent/author`; project id: `project-4aeeb80f` — create and update the author brief at `/tmp/janus-snapshot/data/janus-agent/author/project-4aeeb80f/<docId>/brief.md`; the writer reads it and never writes it
+- Design state dir: `/tmp/janus-snapshot/data/janus-agent/design`; project id: `project-4aeeb80f` — designs live at `/tmp/janus-snapshot/data/janus-agent/design/project-4aeeb80f/<designId>/design.md`; you write and maintain the design record, the coder reads it
 - Memory namespace: `oc-snapshot`
 
 

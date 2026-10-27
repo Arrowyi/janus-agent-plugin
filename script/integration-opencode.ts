@@ -35,6 +35,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { computeProjectId } from "../packages/opencode-adapter/src/agent-registration.ts"
 import { buildCleanRoomEnv } from "./integration-env.ts"
 import { proveDispatchPrimitives } from "./integration-dispatch-primitives.ts"
 import {
@@ -48,6 +49,21 @@ import {
   waitForHealth,
   writerAssetPathForEntry,
 } from "./integration-helpers.ts"
+
+function readAgentPermission(
+  configJson: unknown,
+  agent: string,
+): Record<string, unknown> | undefined {
+  if (typeof configJson !== "object" || configJson === null) return undefined
+  const agentMap = (configJson as Record<string, unknown>)["agent"]
+  if (typeof agentMap !== "object" || agentMap === null) return undefined
+  const entry = (agentMap as Record<string, unknown>)[agent]
+  if (typeof entry !== "object" || entry === null) return undefined
+  const permission = (entry as Record<string, unknown>)["permission"]
+  return typeof permission === "object" && permission !== null
+    ? (permission as Record<string, unknown>)
+    : undefined
+}
 
 function readAgentPrompt(configJson: unknown, agent: string): string | undefined {
   if (typeof configJson !== "object" || configJson === null) return undefined
@@ -200,6 +216,56 @@ async function main(): Promise<void> {
               ? "agent.janus.prompt contains ## Common Operating Principles"
               : "agent.janus.prompt MISSING ## Common Operating Principles",
           })
+
+          const designStateDir = join(sandboxData, "janus-agent", "design")
+          const authorStateDir = join(sandboxData, "janus-agent", "author")
+          const projectId = computeProjectId(sandboxProj)
+          const consultantExternal = readAgentPermission(json, "consultant")?.["external_directory"] as
+            | Record<string, string>
+            | undefined
+          const coderExternal = readAgentPermission(json, "coder")?.["external_directory"] as
+            | Record<string, string>
+            | undefined
+          const consultantPrompt = readAgentPrompt(json, "consultant")
+          const coderPrompt = readAgentPrompt(json, "coder")
+
+          assertions.push({
+            name: "consultant grants external access to the design state dir",
+            pass: consultantExternal?.[`${designStateDir}/**`] === "allow",
+            detail: consultantExternal?.[`${designStateDir}/**`] ?? "design state dir not allowed",
+          })
+          assertions.push({
+            name: "consultant grants external access to the author state dir",
+            pass: consultantExternal?.[`${authorStateDir}/**`] === "allow",
+            detail: consultantExternal?.[`${authorStateDir}/**`] ?? "author state dir not allowed",
+          })
+          assertions.push({
+            name: "coder grants external access to the design state dir",
+            pass: coderExternal?.[`${designStateDir}/**`] === "allow",
+            detail: coderExternal?.[`${designStateDir}/**`] ?? "design state dir not allowed",
+          })
+          assertions.push({
+            name: "design state directory created",
+            pass: existsSync(designStateDir),
+            detail: existsSync(designStateDir) ? designStateDir : `NOT FOUND: ${designStateDir}`,
+          })
+          assertions.push({
+            name: "consultant prompt names the design state dir and project id",
+            pass:
+              consultantPrompt !== undefined &&
+              consultantPrompt.includes(`Design state dir: \`${designStateDir}\``) &&
+              consultantPrompt.includes(`project id: \`${projectId}\``),
+            detail: consultantPrompt?.includes(designStateDir)
+              ? `design dir + project id ${projectId}`
+              : "consultant prompt MISSING design binding",
+          })
+          assertions.push({
+            name: "coder prompt names the project design base dir",
+            pass: coderPrompt !== undefined && coderPrompt.includes(`Design record: \`${designStateDir}/${projectId}\``),
+            detail: coderPrompt?.includes(`${designStateDir}/${projectId}`)
+              ? `design base dir for ${projectId}`
+              : "coder prompt MISSING design binding",
+          })
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err)
@@ -221,6 +287,12 @@ async function main(): Promise<void> {
           name: "installed consultation skill contains author mode",
           pass: hasAuthor,
           detail: hasAuthor ? "skill text contains `author`" : "skill text MISSING `author`",
+        })
+        const hasDesign = skillText.includes("## Design Mode") && skillText.includes("### design: decision record")
+        assertions.push({
+          name: "installed consultation skill contains design mode",
+          pass: hasDesign,
+          detail: hasDesign ? "skill text contains the design method and template" : "skill text MISSING design mode",
         })
         for (const name of ["janus_dispatch_wait", "janus_dispatch_cancel", "janus_dispatch_continue"]) {
           assertions.push({ name: `installed skill names ${name}`, pass: skillText.includes(name), detail: "installed tool-routing token" })

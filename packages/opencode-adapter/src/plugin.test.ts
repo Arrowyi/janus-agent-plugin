@@ -54,6 +54,48 @@ describe("createJanusConfigHook", () => {
     }
   })
 
+  it("registers design-dir permissions and bindings for the consultant and coder", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    process.env.HOME = tmpHome
+    delete process.env.JANUS_CONFIG
+    delete process.env.XDG_CONFIG_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const projectDir = "/tmp/project"
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, projectDir)
+
+    try {
+      // when
+      await hook(config)
+
+      // then
+      const designDir = join(tmpHome, ".local/share/janus-agent/design")
+      const authorDir = join(tmpHome, ".local/share/janus-agent/author")
+      const projectId = computeProjectId(projectDir)
+      const consultant = config.agent?.["consultant"] as {
+        prompt: string
+        permission: Record<string, unknown>
+      }
+      const coder = config.agent?.["coder"] as {
+        prompt: string
+        permission: Record<string, unknown>
+      }
+      const consultantExternal = consultant.permission.external_directory as Record<string, string>
+      const coderExternal = coder.permission.external_directory as Record<string, string>
+
+      expect(consultantExternal[`${designDir}/**`]).toBe("allow")
+      expect(consultantExternal[`${authorDir}/**`]).toBe("allow")
+      expect(coderExternal[`${designDir}/**`]).toBe("allow")
+      expect(consultant.prompt).toContain(`Design state dir: \`${designDir}\``)
+      expect(consultant.prompt).toContain(`project id: \`${projectId}\``)
+      expect(coder.prompt).toContain(`Design record: \`${designDir}/${projectId}\``)
+      expect(existsSync(designDir)).toBe(true)
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true })
+    }
+  })
+
   it("registers the consultation-critic subagent by default", async () => {
     // given
     const tmpHome = makeTempHome()

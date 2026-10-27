@@ -98,7 +98,7 @@ async function assembleAll(): Promise<Map<string, string>> {
     SNAPSHOT_PROJECT_DIR,
     SNAPSHOT_ENV,
   )
-  await registerCoder(config, pluginConfig)
+  await registerCoder(config, pluginConfig, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
   await registerLite(config, pluginConfig, SNAPSHOT_NAMESPACE)
   await registerCoderLite(config, pluginConfig)
   await registerJanus(config, pluginConfig)

@@ -31,8 +31,18 @@ export const SourceStanceSchema = z.enum(["supports", "contradicts", "qualifies"
  *   a single decision or a pure understanding report.
  * - author: produce a structured authored document (tutorial, architecture,
  *   explanation) from a section manifest and verified claims.
+ * - design: decide the future structure of a system (architecture, module
+ *   boundaries, interfaces) and record the decision in a design record.
  */
-export const ConsultationModeSchema = z.enum(["select", "verify", "plan", "research", "guide", "author"])
+export const ConsultationModeSchema = z.enum([
+  "select",
+  "verify",
+  "plan",
+  "research",
+  "guide",
+  "author",
+  "design",
+])
 
 /**
  * Per-atom epistemic status. `inferred` and `unverifiable` must carry a basis

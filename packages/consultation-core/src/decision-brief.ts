@@ -1,6 +1,7 @@
 import { z, ZodError } from "zod"
 
 import { AuthorBriefSchema, assertValidAuthorDelivery, authorTexts } from "./author-brief.ts"
+import { DesignBriefSchema, assertValidDesignEvidence, designTexts } from "./design-brief.ts"
 import { baseBriefShape, basisRefinement } from "./brief-base.ts"
 import {
   ConfidenceSchema,
@@ -139,6 +140,7 @@ export const DecisionBriefSchema = z.discriminatedUnion("mode", [
   ResearchBriefSchema,
   GuideBriefSchema,
   AuthorBriefSchema,
+  DesignBriefSchema,
 ])
 export type DecisionBrief = z.infer<typeof DecisionBriefSchema>
 
@@ -211,6 +213,8 @@ function briefTexts(brief: DecisionBrief): string[] {
     }
   } else if (brief.mode === "author") {
     texts.push(...authorTexts(brief))
+  } else if (brief.mode === "design") {
+    texts.push(...designTexts(brief))
   } else {
     texts.push(...brief.keyPoints, ...brief.disagreements, ...brief.residualUncertainty)
     if (brief.soWhat !== undefined) texts.push(brief.soWhat)
@@ -227,6 +231,7 @@ export function validateDecisionBrief(input: unknown): DecisionBrief {
   try {
     const brief = DecisionBriefSchema.parse(input)
     if (brief.mode === "author") assertValidAuthorDelivery(brief)
+    if (brief.mode === "design") assertValidDesignEvidence(brief)
     if (brief.mode === "guide" && brief.recommendation.length === 0 && brief.procedure.length === 0) {
       throw new ConsultationError(ConsultationErrorCode.VALIDATION_FAILED)
     }

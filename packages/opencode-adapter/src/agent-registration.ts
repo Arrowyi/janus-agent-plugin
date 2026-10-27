@@ -21,6 +21,7 @@ interface ConsultantAgentEntry {
   mode: "primary"
   prompt: string
   model: string
+  permission: Record<string, unknown>
 }
 
 interface SubagentEntry {
@@ -150,6 +151,20 @@ export function resolveAuthorStateDir(env: NodeJS.ProcessEnv = process.env): str
 }
 
 /**
+ * Resolve the fixed design state directory:
+ * `$XDG_DATA_HOME/janus-agent/design` > `$HOME/.local/share/janus-agent/design`.
+ * The consultant writes design records there; the coder only reads them.
+ */
+export function resolveDesignStateDir(env: NodeJS.ProcessEnv = process.env): string {
+  const home = env.HOME !== undefined && env.HOME.length > 0 ? env.HOME : homedir()
+  const dataHome =
+    env.XDG_DATA_HOME !== undefined && env.XDG_DATA_HOME.length > 0
+      ? env.XDG_DATA_HOME
+      : join(home, ".local", "share")
+  return join(dataHome, "janus-agent", "design")
+}
+
+/**
  * Compute the stable per-project id used in author brief paths:
  * sanitized project basename + first 8 hex of a sha256 over the resolved
  * absolute directory, e.g. `my-project-a1b2c3d4`. Same directory always
@@ -264,7 +279,10 @@ const CONSULTANT_WRITER_SESSION_LINE =
  * and the job-tool discipline. No memory namespace (coding sessions use the
  * repo's AGENTS.md, not consultation memory).
  */
-export function buildCoderRuntimeBindings(pluginConfig: JanusPluginConfig): string {
+export function buildCoderRuntimeBindings(
+  pluginConfig: JanusPluginConfig,
+  design?: DesignBinding,
+): string {
   const modelLine = `- Coder model: \`${resolveRoleModel(pluginConfig, "coder")}\``
   const coderLiteLine = pluginConfig.coder_lite_enabled
     ? `- Mechanical lane: \`${pluginConfig.coder_lite_agent}\` (\`${resolveRoleModel(pluginConfig, "coder-lite")}\`) for fully specified mechanical coding and file tasks`
@@ -272,8 +290,15 @@ export function buildCoderRuntimeBindings(pluginConfig: JanusPluginConfig): stri
   const buildLine = pluginConfig.build_enabled
     ? `- Optional stronger-model lane: role \`build\` routes to agent \`${pluginConfig.build_agent}\` (\`${pluginConfig.build_model ?? "host default model"}\`)`
     : "- Optional stronger-model lane: build DISABLED by configuration"
+  const designLine =
+    design !== undefined
+      ? `- Design record: \`${design.designStateDir}/${design.projectId}\` — read \`design.md\` and write \`plan.md\` there; you never edit \`design.md\``
+      : undefined
   const dispatchLine = DISPATCH_JOB_TOOLS_LINE
-  return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${coderLiteLine}\n${buildLine}\n${dispatchLine}`
+  const lines = [modelLine, coderLiteLine, buildLine]
+  if (designLine !== undefined) lines.push(designLine)
+  lines.push(dispatchLine)
+  return `## Runtime Bindings (injected by opencode-adapter)\n${lines.join("\n")}`
 }
 
 /**
@@ -284,14 +309,21 @@ export function buildCoderRuntimeBindings(pluginConfig: JanusPluginConfig): stri
 export async function registerCoder(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
+  directory?: string,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   if (config.agent?.[pluginConfig.coder_agent]) return
 
+  const designStateDir = resolveDesignStateDir(env)
+  const design: DesignBinding | undefined =
+    directory !== undefined
+      ? { designStateDir, projectId: computeProjectId(directory) }
+      : undefined
   const assembledPrompt = await assemblePrompt(pluginConfig, {
     assetFile: "agents/coder.md",
     model: resolveRoleModel(pluginConfig, "coder"),
     fragments: [DISPATCH_HUB_ASSET],
-    runtimeBlock: buildCoderRuntimeBindings(pluginConfig),
+    runtimeBlock: buildCoderRuntimeBindings(pluginConfig, design),
   })
 
   const entry: AllModeAgentEntry = {
@@ -299,7 +331,7 @@ export async function registerCoder(
     description: CODER_DESCRIPTION,
     prompt: assembledPrompt,
     model: resolveRoleModel(pluginConfig, "coder"),
-    permission: {},
+    permission: { external_directory: { [`${designStateDir}/**`]: "allow" } },
   }
 
   if (!config.agent) config.agent = {}
@@ -420,6 +452,16 @@ export interface AuthorBinding {
 }
 
 /**
+ * Design binding lines: the fixed design state dir and the project id whose
+ * directory holds this project's design records. Supplied when the project
+ * directory is known; omitted otherwise.
+ */
+export interface DesignBinding {
+  designStateDir: string
+  projectId: string
+}
+
+/**
  * Build the runtime bindings block that the adapter injects into the
  * consultant agent prompt.
  *
@@ -431,6 +473,7 @@ export function buildRuntimeBindings(
   pluginConfig: JanusPluginConfig,
   namespace: string,
   author?: AuthorBinding,
+  design?: DesignBinding,
 ): string {
   const memoryLine = pluginConfig.memory_enabled
     ? "- Memory MCP server name: `janus-memory` (tools: memory_recall, memory_expand, memory_prepare, memory_commit, memory_manage)"
@@ -490,6 +533,11 @@ export function buildRuntimeBindings(
       ? `- Author state dir: \`${author.authorStateDir}\`; project id: \`${author.projectId}\` — create and update the author brief at \`${author.authorStateDir}/${author.projectId}/<docId>/brief.md\`; the writer reads it and never writes it`
       : undefined
 
+  const designLine =
+    design !== undefined
+      ? `- Design state dir: \`${design.designStateDir}\`; project id: \`${design.projectId}\` — designs live at \`${design.designStateDir}/${design.projectId}/<designId>/design.md\`; you write and maintain the design record, the coder reads it`
+      : undefined
+
   const lines = [
     "## Runtime Bindings (injected by opencode-adapter)",
     memoryLine,
@@ -503,6 +551,7 @@ export function buildRuntimeBindings(
     costLine,
     writerModeLine,
     ...(authorLine !== undefined ? [authorLine] : []),
+    ...(designLine !== undefined ? [designLine] : []),
     namespaceLine,
   ]
   return lines.join("\n")
@@ -653,21 +702,37 @@ export async function registerConsultantAgent(
 ): Promise<void> {
   if (config.agent?.["consultant"]) return
 
+  const authorStateDir = resolveAuthorStateDir(env)
+  const designStateDir = resolveDesignStateDir(env)
+  for (const dir of [authorStateDir, designStateDir]) {
+    try {
+      mkdirSync(dir, { recursive: true })
+    } catch {
+      // Non-fatal: the permission still ships; the write may ask later.
+    }
+  }
+  const projectId = directory !== undefined ? computeProjectId(directory) : undefined
   const author: AuthorBinding | undefined =
-    directory !== undefined
-      ? { authorStateDir: resolveAuthorStateDir(env), projectId: computeProjectId(directory) }
-      : undefined
+    projectId !== undefined ? { authorStateDir, projectId } : undefined
+  const design: DesignBinding | undefined =
+    projectId !== undefined ? { designStateDir, projectId } : undefined
   const assembledPrompt = await assemblePrompt(pluginConfig, {
     assetFile: "agents/consultant.md",
     model: resolveRoleModel(pluginConfig, "consultant"),
     fragments: [DISPATCH_HUB_ASSET],
-    runtimeBlock: buildRuntimeBindings(pluginConfig, namespace, author),
+    runtimeBlock: buildRuntimeBindings(pluginConfig, namespace, author, design),
   })
 
   const entry: ConsultantAgentEntry = {
     mode: "primary",
     prompt: assembledPrompt,
     model: resolveRoleModel(pluginConfig, "consultant"),
+    permission: {
+      external_directory: {
+        [`${authorStateDir}/**`]: "allow",
+        [`${designStateDir}/**`]: "allow",
+      },
+    },
   }
 
   if (!config.agent) config.agent = {}

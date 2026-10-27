@@ -207,6 +207,7 @@ Operating notes:
 - Coder model: `opencode-go/glm-5.3`
 - Mechanical lane: `coder-lite` (`opencode-go/glm-5.3-flash`) for fully specified mechanical coding and file tasks
 - Optional stronger-model lane: role `build` routes to agent `build` (`host default model`)
+- Design record: `/tmp/janus-snapshot/data/janus-agent/design/project-4aeeb80f` — read `design.md` and write `plan.md` there; you never edit `design.md`
 - Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id`, `session_id`, and the success `text`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch a pending job and never continue a pending job — wait on it first.
 
 

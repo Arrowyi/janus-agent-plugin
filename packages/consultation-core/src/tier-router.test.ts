@@ -28,6 +28,40 @@ function expectedTier(input: TierRoutingInput): Tier {
   return "standard"
 }
 
+const fastInput: TierRoutingInput = {
+  risk: "low",
+  hasAuthoritativePrimarySource: true,
+  reliableSourceConflict: false,
+  personalContextDependence: false,
+  synthesisDominated: false,
+}
+
+describe("routeTier mode constraint", () => {
+  test("guide, author, and design never route to fast", () => {
+    for (const mode of ["guide", "author", "design"] as const) {
+      expect(routeTier({ ...fastInput, mode })).toBe("standard")
+    }
+  })
+
+  test("other modes keep the fast branch", () => {
+    for (const mode of ["select", "verify", "plan", "research"] as const) {
+      expect(routeTier({ ...fastInput, mode })).toBe("fast")
+    }
+  })
+
+  test("a mode constraint never lowers the tier", () => {
+    expect(routeTier({ ...fastInput, mode: "design", risk: "high" })).toBe("deep")
+    expect(
+      routeTier({
+        ...fastInput,
+        mode: "author",
+        reliableSourceConflict: true,
+        synthesisDominated: true,
+      }),
+    ).toBe("deep")
+  })
+})
+
 describe("routeTier", () => {
   test("selects the documented tier for every one of the 48 routing-input combinations", () => {
     // given: the full truth table over risk x auth x conflict x personal x synthesis

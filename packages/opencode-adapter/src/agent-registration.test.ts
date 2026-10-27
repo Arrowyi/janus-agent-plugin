@@ -23,6 +23,7 @@ import {
   buildWriterRuntimeBindings,
   computeProjectId,
   resolveAuthorStateDir,
+  resolveDesignStateDir,
   resolveLiteWorkspaceDir as resolveLiteWorkspaceDirLocal,
   injectRuntimeBindings,
   injectModelPrompt,
@@ -495,6 +496,17 @@ describe("resolveModelPrompt", () => {
   })
 })
 
+describe("resolveDesignStateDir", () => {
+  it("resolves to $XDG_DATA_HOME/janus-agent/design with a HOME fallback", () => {
+    expect(resolveDesignStateDir({ XDG_DATA_HOME: "/xdg-data" } as NodeJS.ProcessEnv)).toBe(
+      "/xdg-data/janus-agent/design",
+    )
+    expect(resolveDesignStateDir({ HOME: "/home/test-user" } as NodeJS.ProcessEnv)).toBe(
+      "/home/test-user/.local/share/janus-agent/design",
+    )
+  })
+})
+
 describe("registerConsultantAgent", () => {
   it("registers config.agent.consultant with mode primary and a prompt containing the consultant.md body", async () => {
     // given
@@ -598,6 +610,13 @@ describe("registerConsultantAgent", () => {
     expect(consultant.prompt).toContain(`Author state dir: \`${authorDir}\``)
     expect(consultant.prompt).toContain(`project id: \`${projectId}\``)
     expect(consultant.prompt).toContain(`${authorDir}/${projectId}/<docId>/brief.md`)
+    expect(consultant.prompt).toContain("Design state dir: `/home/test-user/.local/share/janus-agent/design`")
+    expect(consultant.prompt).toContain(`project id: \`${projectId}\``)
+
+    const permission = (consultant as unknown as { permission: Record<string, unknown> }).permission
+    const external = permission.external_directory as Record<string, string>
+    expect(external[`${authorDir}/**`]).toBe("allow")
+    expect(external["/home/test-user/.local/share/janus-agent/design/**"]).toBe("allow")
     expect(consultant.prompt).toContain("the writer reads it and never writes it")
     expect(consultant.prompt).toContain("Writer write mode: `scoped`")
   })
@@ -1411,6 +1430,39 @@ describe("registerCoder", () => {
     // then
     const coder = config.agent?.["coder"] as { model: string }
     expect(coder.model).toBe("test/coder-model")
+  })
+
+  it("grants external access to the design state dir and names the project design dir", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const projectId = computeProjectId("/tmp/my-project")
+    const env = { HOME: "/home/test-user" } as NodeJS.ProcessEnv
+
+    // when
+    await registerCoder(config, makeConfig(), "/tmp/my-project", env)
+
+    // then
+    const coder = config.agent?.["coder"] as {
+      prompt: string
+      permission: Record<string, unknown>
+    }
+    const external = coder.permission.external_directory as Record<string, string>
+    expect(external["/home/test-user/.local/share/janus-agent/design/**"]).toBe("allow")
+    expect(coder.prompt).toContain(
+      `Design record: \`/home/test-user/.local/share/janus-agent/design/${projectId}\``,
+    )
+  })
+
+  it("omits the design binding line when the project directory is unknown", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+
+    // when
+    await registerCoder(config, makeConfig())
+
+    // then
+    const coder = config.agent?.["coder"] as { prompt: string }
+    expect(coder.prompt).not.toContain("Design record:")
   })
 })
 

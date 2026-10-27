@@ -34,11 +34,11 @@ export function createJanusConfigHook(
     const pluginConfig = await loadPluginConfig(env)
     const namespace = computeNamespace(project.id, directory)
 
-    // The directory supplies the consultant's author-brief project id.
-    await registerConsultantAgent(config, pluginConfig, namespace, directory)
+    // The directory supplies the author-brief and design-record project ids.
+    await registerConsultantAgent(config, pluginConfig, namespace, directory, env)
 
     if (pluginConfig.coder_enabled) {
-      await registerCoder(config, pluginConfig)
+      await registerCoder(config, pluginConfig, directory, env)
     }
 
     if (pluginConfig.lite_enabled) {

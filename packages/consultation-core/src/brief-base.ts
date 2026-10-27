@@ -2,7 +2,7 @@ import { z } from "zod"
 
 import { ConfidenceSchema, SourceGradeSchema, StabilitySchema, type EpistemicStatus } from "./enums.ts"
 
-const BriefSourceSchema = z.object({
+export const BriefSourceSchema = z.object({
   title: z.string(),
   url: z.string().optional(),
   grade: SourceGradeSchema,

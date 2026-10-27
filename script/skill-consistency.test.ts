@@ -63,6 +63,20 @@ describe("consultation mode consistency", () => {
     }
   })
 
+  test("every mode appears in at least one eval case's modes array", async () => {
+    const cases = JSON.parse(
+      await readAsset("evals/fixtures/consultation-cases.json"),
+    ) as Array<{ id: string; modes?: string[] }>
+    const covered = new Set(cases.flatMap((entry) => entry.modes ?? []))
+
+    for (const mode of MODES) {
+      expect(covered.has(mode)).toBe(true)
+    }
+    for (const mode of covered) {
+      expect(MODES).toContain(mode as (typeof MODES)[number])
+    }
+  })
+
   test("the installed skill asset is generated from skill-src", async () => {
     const skill = await readAsset("assets/skills/consultation/SKILL.md")
 

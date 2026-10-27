@@ -19,11 +19,11 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 14 cases from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 author-separation (writer/consultant) cases, and C49-C55 writer-session reuse, blueprint-first capture, and generic dispatch continuation cases.
+- `fixtures/consultation-cases.json` - 59 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 author-separation (writer/consultant) cases, C49-C55 writer-session reuse and continuation cases, and C56-C59 design mode (layer gates, design-record handoff to the coder, one-way-door pre-mortem, current-state record rewrite).
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
-Each case has the shape:
+Each case has the shape (`modes` is empty for process/coding cases that exercise no consultation mode; `script/skill-consistency.test.ts` asserts every schema mode appears in at least one case):
 
 ```json
 {
@@ -33,6 +33,7 @@ Each case has the shape:
   "when": "...",
   "then": "...",
   "grading": "deterministic | model",
+  "modes": ["select | verify | plan | research | guide | author | design"],
   "notes": "test file or rubric question"
 }
 ```

@@ -6,7 +6,7 @@ The living architecture specification for the janus-agent plugin, describing the
 
 Build an independent Janus agent plugin with a harness-neutral consultation core, a harness-neutral memory core, a local SQLite store, a local MCP interface, and a thin OpenCode adapter.
 
-The public experience is a small agent family with one default entry and three direct-entry shortcuts: `janus` (default general/routing), `consultant` (evidence-driven advice in six modes: `select`, `verify`, `plan`, `research`, `guide`, `author`), `coder` (coding with adaptive L0/L1/L2/L3 process weight), and `lite` (economical quick answers). The consultant leads the research team (`explorer`, `analyst`, `critic`, `verifier`) and the scoped-write writer; the coder owns the coding lanes (`coder-lite`, optional host `build`). In author mode the consultant and writer are separated: the consultant owns intake, evidence, the outline approval, final review, the author brief, memory, and publishing and writes no reader-facing prose; the `writer` is the sole author of reader-facing prose and, in scoped-write mode, the sole writer of approved document files under `writer_docs_roots`. The consultant produces decision briefs, playbooks, research reports, and durable documents behind one outline-approval gate, and distinguishes verified facts from synthesis. The coder discusses design/architecture before editing for multi-file or correctness-critical work and gates that discussion on user approval.
+The public experience is a small agent family with one default entry and three direct-entry shortcuts: `janus` (default general/routing), `consultant` (evidence-driven advice in seven modes: `select`, `verify`, `plan`, `research`, `guide`, `author`, `design`), `coder` (coding with adaptive L0/L1/L2/L3 process weight), and `lite` (economical quick answers). The consultant leads the research team (`explorer`, `analyst`, `critic`, `verifier`) and the scoped-write writer; the coder owns the coding lanes (`coder-lite`, optional host `build`). In author mode the consultant and writer are separated: the consultant owns intake, evidence, the outline approval, final review, the author brief, memory, and publishing and writes no reader-facing prose; the `writer` is the sole author of reader-facing prose and, in scoped-write mode, the sole writer of approved document files under `writer_docs_roots`. The consultant produces decision briefs, playbooks, research reports, and durable documents behind one outline-approval gate, and distinguishes verified facts from synthesis. The coder discusses design/architecture before editing for multi-file or correctness-critical work and gates that discussion on user approval.
 
 The memory system stores only user-approved experience packages. It does not automatically persist complete conversations. Canonical experience records remain independent of classification schemes, summarization models, embedding models, and storage indexes. Every derived view can be rebuilt.
 
@@ -63,9 +63,11 @@ janus-agent-plugin/
 │   ├── memory-sqlite/
 │   ├── memory-mcp/
 │   └── opencode-adapter/
+├── skill-src/consultation/    # skill sources (never shipped)
 ├── assets/
 │   ├── agents/consultant.md
-│   └── skills/consultation/SKILL.md
+│   ├── principles/*.md        # common principles + shared prompt fragments
+│   └── skills/consultation/SKILL.md   # generated from skill-src/
 ├── evals/
 ├── docs/
 └── package.json
@@ -92,14 +94,15 @@ Core packages must not import OpenCode or the MCP SDK. Adapters translate host a
 
 ### 5.1 Consultant Agent
 
-The `consultant` primary agent owns the evidence workflow and final expression for consultation requests. `janus` is the default general/routing entry; `coder` owns coding; `lite` is the economical quick-answer leaf. The consultant routes every question to one of six modes — `select`, `verify`, `plan`, `research`, `guide`, or `author` — and a tier (fast, standard, or deep; `author` never uses fast). It:
+The `consultant` primary agent owns the evidence workflow and final expression for consultation requests. `janus` is the default general/routing entry; `coder` owns coding; `lite` is the economical quick-answer leaf. The consultant routes every question to one of seven modes — `select`, `verify`, `plan`, `research`, `guide`, `author`, or `design` — and a tier (fast, standard, or deep; `author` and `design` never use fast). It:
 
 - detects the mode from intent and chooses the tier;
 - identifies decision-changing missing information;
 - asks at most one to three initial questions when needed;
 - invokes search, memory, the research team (explorer, analyst, critic, verifier), and the writer (sole author of reader-facing prose);
 - retains final editorial control over delegated research and author-mode artifacts (review, verification, bounded writer fix requests) without writing prose itself;
-- returns a mode-specific decision brief, a readable research report, or an authored document delivery;
+- in `design` mode frames the decision, records it layer by layer with reversibility gates, and writes the self-contained design record;
+- returns a mode-specific decision brief, a readable research report, an authored document delivery, or a design record summary;
 - recognizes natural-language memory intents.
 
 It does not directly implement persistence or source grading rules.
@@ -115,9 +118,10 @@ The reusable `consultation` skill defines the cognitive workflow:
 - decision preference handling;
 - confidence language;
 - short output structure;
+- the design method (admission, layered decisions, quality scenarios, reversibility gates, the design record);
 - memory preview and save behavior.
 
-The skill is reusable by agents other than `consultant`. The agent prompt may preload it, but the skill remains the authoritative workflow source.
+The skill is reusable by agents other than `consultant`. The agent prompt may preload it, but the skill remains the authoritative workflow source. It is modular: `skill-src/consultation/{core.md,modes/*.md,policies/*.md}` is the source of truth and `script/gen-skill.ts` generates `assets/skills/consultation/SKILL.md` (wired into the build); a freshness test fails on drift. `script/skill-consistency.test.ts` checks the seven-mode schema against the consultant prompt, the generated skill, and the eval `modes` metadata, and `script/prompt-lint.test.ts` enforces word budgets and duplicate-sentence discipline.
 
 ### 5.3 Consultation Core
 
@@ -172,20 +176,21 @@ The first adapter:
 
 - registers the `janus` default entry, the `consultant` evidence entry, the `coder` coding entry, and the `lite` economical leaf;
 - registers the research subagents — `explorer`, `analyst`, `critic`, and `verifier` (read-only, shell-denied, and dispatch-denied) and the `writer` scoped-write author executor (edit allowed only under the configured `writer_docs_roots`, default `userdoc`; an empty roots array selects the read-only fallback; shell and dispatch denied; step-capped at 80; the writer is optional via `writer_enabled`);
-- creates the fixed author state directory (`$XDG_DATA_HOME/janus-agent/author`) where the consultant writes per-document briefs;
+- creates the fixed author state directory (`$XDG_DATA_HOME/janus-agent/author`) where the consultant writes per-document briefs, and the design state directory (`$XDG_DATA_HOME/janus-agent/design`); the consultant gets `external_directory` access to both and the coder to the design dir (it reads `design.md`, writes `plan.md`);
 - registers the `coder-lite` mechanical coding lane (leaf, step-capped) and accepts the optional host `build` delegation target;
 - makes the consultation skill available;
 - registers or launches the bundled local memory MCP;
 - maps OpenCode session IDs into namespaced core IDs;
 - exposes model and provider configuration;
 - installs the `janus-memory` browse command;
+- assembles each prompt from the role asset, model block, runtime bindings, shared fragments (`research-leaf`, `dispatch-hub`), and common principles, with a reviewed golden snapshot per role;
 - does not contain evidence, recommendation, or persistence logic.
 
 ## 6. Consultation Workflow
 
 ```mermaid
 flowchart TD
-    Q[User Question] --> MODE[Detect Mode: select / verify / plan / research / guide / author]
+    Q[User Question] --> MODE[Detect Mode: select / verify / plan / research / guide / author / design]
     MODE --> T[Choose Tier: fast / standard / deep]
     T --> M[Recall Memory + Surface Pending Outcomes]
     M --> C{Decision-Changing Info Missing?}
@@ -309,6 +314,16 @@ Each job is a durable host session rooted under the caller's session (`[consulta
 The consultant may do independent preparation within existing permissions and caps while waiting, but must integrate the eventual specialist report before dependent synthesis and cannot silently substitute inline work or claim an independent check that did not return. Execution status comes from host session/message evidence, not from specialist liveness assertions. A verifier's evidence-quality `unknown` is distinct from a dispatch execution `unknown`.
 
 Every role has one configured attempt and every agent resolves to a single model; no failure kind — pending, unknown, non-retryable, or confirmed retryable — triggers a plugin fallback advance. A delegated writer also has one configured attempt, with either a pinned model or host model selection (`null` in the durable spec), and retains host-defined permissions. This describes plugin model resolution, not the external host's internal retry policy. See [the per-role audit matrix and verification levels](../evals/README.md#per-role-audit-matrix).
+
+### 6.5 Design Mode and the Handoff to Coding
+
+`design` decides the future structure of a system — architecture, patterns, module boundaries, external interfaces — at standard or deep tier, never fast. It admits only decisions that change future structure and are not one obvious reversible edit; everything else goes to the coder as L1/L2. The consultant reads the repository and `AGENTS.md` first (at most five questions per round), frames L0 with goal, non-goals, and prioritised six-part quality scenarios, and decides layer by layer (C4 as zoom): L1 system, L2 module, L3 interface.
+
+Every decision carries at least two genuinely different options, a recommendation, what would change it, a one-way/two-way reversibility label, and a deferral trigger where relevant. One-way doors are approved individually and get a critic pre-mortem (the critic's `designReview`: pre-mortem failures, unmet quality scenarios, reversibility problems, missing options); two-way doors get a default value and one batch approval per layer. A read-only cross-layer consistency check runs before each approval and before handoff, and the accepted result is written to `design.md`.
+
+The record lives at `<designStateDir>/<projectId>/<designId>/design.md` (`$XDG_DATA_HOME/janus-agent/design` by default) and is self-contained: MADR-shaped decisions with only proposed/accepted states, one line per rejected option, fitness functions for load-bearing quality attributes, and open questions with triggers. It is a current-state document, rewritten in place at roughly 200–300 lines. The consultant writes it; the coder only reads it.
+
+The handoff to coding is explicit. An accepted `design.md` is the approved spec: the coder skips brainstorming's spec conversation, shrinks the L2 design gate to the implementation details the record does not cover plus the exact file list, and plans a lean ExecPlan (milestones, verification/rollback, decision log, unexpected and findings) at `design/<projectId>/<designId>/plan.md`. Approving the plan confirms its listed files; at L2 the coder self-checks every accepted decision has a task, every interface has a test, and the order is revertible (L3 adds an independent plan review), and after implementation a fresh-context subagent compares the diff with `design.md`. A deviation touching a one-way-door decision returns to the consultant. In dispatched mode the consultant returns only the current layer's decision requests and the dispatcher relays each layer with `janus_dispatch_continue`.
 
 ## 7. Epistemic Model
 
@@ -667,6 +682,7 @@ Use `把握：高 / 中 / 低 — why` when confidence is not high or the top al
 - **research** — bottom line → 3–5 key points → what it means → disagreements/uncertainty. No forced recommendation.
 - **guide** — shortest path → suitability/prerequisites → recommendation (when real choices) → steps → pitfalls → completion check. Carries at least a recommendation or a procedure.
 - **author** — status/location → scope → document map → verification → next action. The chat output is a delivery brief, not the document body.
+- **design** — conclusion/reasons/next step → layer, goal and constraints, options and trade-offs, recommendation, risks and reversibility, open questions, relation to the layer above → evidence (skippable) → bottom anchor. The record's own home is `design.md`.
 
 ### Terminal conventions
 
@@ -691,7 +707,13 @@ The exact templates live in the `consultation` skill. `AuthorBrief` remains the 
 - a composite end-to-end request routes to the guide mode and carries at least a recommendation or a procedure;
 - a durable tutorial or course request routes to the author mode with the correct profile instead of research or guide;
 - a large author request presents an outline and file manifest and waits for exactly one approval before drafting chapters;
-- targeted author verification checks representative code without invoking the critic or verifier by default.
+- targeted author verification checks representative code without invoking the critic or verifier by default;
+- a structural design question routes to `design` (not `select`, author architecture, or `plan`) and returns per-layer decision requests with reversibility labels;
+- a coder with an accepted `design.md` shrinks the L2 gate to uncovered details plus the file list and checks its plan against the record;
+- a one-way-door decision gets a critic pre-mortem (`designReview`) before approval;
+- the design record is rewritten in place, not appended, and old designs get a cleanup proposal.
+
+The fixtures carry an explicit `modes` array per case; `script/skill-consistency.test.ts` asserts every schema mode is exercised by at least one case.
 
 ### 17.2 Memory Evaluation Cases
 
@@ -720,13 +742,14 @@ Run a real isolated OpenCode instance and prove:
 - commit persists and survives restart;
 - repeated commit updates one session package;
 - recall uses progressive disclosure;
-- no data is written into the plugin installation directory.
+- no data is written into the plugin installation directory;
+- the consultant and coder permission maps carry the design state dir, and both prompts name the project design dir.
 
 ## 18. First-Version Scope
 
 The first version includes:
 
-- independent plugin packaging;
+- independent plugin packaging, including the seven-mode consultation skill;
 - the `janus` default entry, `consultant` evidence entry, `coder` coding entry, and `lite` economical leaf;
 - the four read-only research subagents, the scoped-write writer, and the `coder-lite` mechanical lane;
 - the reusable consultation skill;

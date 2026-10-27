@@ -25,6 +25,8 @@ interface EvalCase {
   when: string
   then: string
   grading: Grading
+  /** Consultation modes the case exercises (empty for process/coding cases). */
+  modes?: string[]
   notes?: string
 }
 

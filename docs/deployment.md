@@ -73,13 +73,14 @@ Installed layout:
   dist/memory-mcp-server.js   bundled memory MCP server (self-contained)
   assets/agents/*.md          agent prompts (read at startup)
   assets/model-prompts/*.md   model-adaptation blocks (keyed by model slug)
-  assets/skills/consultation/SKILL.md
+  assets/principles/*.md      common principles + shared prompt fragments
+  assets/skills/consultation/SKILL.md   generated from skill-src/ (not shipped)
   assets/commands/janus-models.md
   package.json                provenance
   build-meta.json             version / git sha / build time
 ```
 
-Re-running `bun run install:local` rebuilds and replaces the installed bundle. Restart OpenCode afterwards to load it.
+Re-running `bun run install:local` rebuilds and replaces the installed bundle. Restart OpenCode afterwards to load it. The skill file in the install is generated from `skill-src/consultation/**`; edit the sources, never the generated asset.
 
 The installed plugin ships every prompt it needs, including `assets/agents/writer.md`, and does not require OMO, an external janus agent, global agent files under `~/.config/opencode/agents/`, external skills, or the source checkout at runtime. A missing writer makes author mode unavailable: the consultant discloses it and offers to enable the writer, configure a `writer_delegate_agent`, or an explicit consultant-prose fallback — it never silently writes reader-facing prose itself.
 
@@ -90,9 +91,9 @@ For iterating on this repo (unit tests, the integration proof, or a throwaway se
 ## Step 3: Restart OpenCode
 
 Restart OpenCode so it picks up the new plugin entry. On startup the plugin's `config` hook runs and:
-1. registers the `consultant` primary agent;
+1. registers the `consultant` primary agent, with `external_directory` access to the author and design state directories so it can write the author brief and `design.md`;
 2. registers the `coder` coding entry (mode `all`: selectable and dispatchable), the `lite` economical leaf (mode `all`, dispatch denied), and the `coder-lite` mechanical lane (mode `subagent`, steps 50, workspace edits allowed without asking, further dispatch denied);
-3. registers the `lite` workspace directory (`$XDG_DATA_HOME/janus-agent/lite`) writable without asking; every other write asks;
+3. registers the `lite` workspace directory (`$XDG_DATA_HOME/janus-agent/lite`) writable without asking; every other write asks. It creates the design state dir `$XDG_DATA_HOME/janus-agent/design` and the `coder` gets `external_directory` access to it (the coder reads `design.md` and writes `plan.md`);
 4. registers the research subagents `consultation-explorer`, `consultation-analyst`, `consultation-critic`, `consultation-verifier` (each read-only, each on its configured model, each with shell and dispatch denied; the verifier reuses the critic's model by default) and the scoped-write author executor `consultation-writer` (edit allowed only under `writer_docs_roots`, default `userdoc/**`; shell and dispatch denied; targeted web lookups allowed; step-capped at 80; an empty `writer_docs_roots` makes it read-only and the consultant publishes its returned prose). It also creates the author state dir `$XDG_DATA_HOME/janus-agent/author` where the consultant writes per-document briefs;
 5. registers the `janus-memory` local MCP server (when memory is enabled, the default);
 6. registers `janus_dispatch{role,prompt,return_handle?}`, `janus_dispatch_wait{job_id,wait_ms?}`, `janus_dispatch_cancel{job_id}`, and `janus_dispatch_continue{session_id,prompt,role?}` for the ten dispatch roles (these do not interfere with the built-in `task` tool or other plugins);
@@ -293,17 +294,20 @@ The consultant routes bounded tasks to its research team: `explorer` gathers mis
 
 The author brief lives at `$XDG_DATA_HOME/janus-agent/author/<projectId>/<docId>/brief.md` (fixed location; `<projectId>` derives from the project directory). The consultant creates and updates it; the writer reads it and never writes it. In scoped-write mode the consultant does not edit files under the writer roots — it reviews the writer's diff and requests bounded writer fixes.
 
-The consultant may route a bounded quick-answer subtask to `lite` and a bounded code example to `coder`; it does not implement production code itself. Coding is owned by `coder`: fully specified mechanical work goes to `coder-lite` (workspace edits allowed, external edits ask, further dispatch denied — its stop-and-report is a legitimate partial outcome the dispatcher integrates); judgment-heavy work stays with `coder` or goes to the optional `build` host escalation. `coder` selects L0/L1/L2/L3 process weight by task complexity and gates L2/L3 on user approval before editing.
+The consultant owns the `design` mode: it decides architecture, module boundaries, and interfaces layer by layer, records the result in `design.md`, and hands the record to `coder` for an implementation plan. The design state lives at `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`; `coder` reads it and writes `plan.md` in the same directory. Both agents have pre-approved `external_directory` access to `<designStateDir>/**`; neither writes design state into the project tree. The consultant may route a bounded quick-answer subtask to `lite` and a bounded code example to `coder`; it does not implement production code itself. Coding is owned by `coder`: fully specified mechanical work goes to `coder-lite` (workspace edits allowed, external edits ask, further dispatch denied — its stop-and-report is a legitimate partial outcome the dispatcher integrates); judgment-heavy work stays with `coder` or goes to the optional `build` host escalation. `coder` selects L0/L1/L2/L3 process weight by task complexity and gates L2/L3 on user approval before editing.
 
 The `janus` agent is the default general entry: it handles general questions and light tasks, and routes consulting to `consultant`, coding to `coder`, quick answers to `lite`, and bounded evidence gathering to `explorer` — all through the same `janus_dispatch` mechanism. When dispatching `consultant`, janus includes `Memory ownership: consultant saves` because janus does not keep consultation memory. It does not do deep research or heavy coding itself. `consultant` and `coder` are therefore also dispatch roles (targeting their agents by name); `consultant` follows `agent_model`, `coder` follows `coder_model`.
 
 ### Model-adaptation prompts
 
-Every plugin-owned agent's prompt assembles in four layers: the role asset
+Every plugin-owned agent's prompt assembles in this order: the role asset
 (`assets/agents/<agent>.md` — identity, scope, workflow, discipline), a
-model-adaptation block, the shared common principles
-(`assets/principles/common.md` — cross-role operating rules such as file-change
-confirmation), and the runtime bindings. The model block is keyed by
+model-adaptation block, the runtime bindings (injected at the asset's
+`RUNTIME-BINDINGS` placeholder), the shared fragments
+(`assets/principles/research-leaf.md` for the four read-only research roles and
+`assets/principles/dispatch-hub.md` for `janus`/`consultant`/`coder`), and the
+common principles (`assets/principles/common.md` — cross-role operating rules
+such as file-change confirmation). The model block is keyed by
 the **model**, not the agent, and matched **provider-agnostically**: swap an
 agent's model in config (even to a different provider serving the same model)
 and its driving notes follow automatically; a model with no block simply gets
@@ -373,6 +377,8 @@ Canonical experience records (user-approved items, claims, evidence, decisions, 
 
 The author state directory lives at `$XDG_DATA_HOME/janus-agent/author` (default `~/.local/share/janus-agent/author`). It holds one consultant-written brief per document at `author/<projectId>/<docId>/brief.md`; the writer has read access to it and never writes it. Removing it discards author-mode state; the consultant can rebuild a brief from a legacy document via the three-option prompt.
 
+The design state directory lives at `$XDG_DATA_HOME/janus-agent/design` (default `~/.local/share/janus-agent/design`). It holds per-project design records at `design/<projectId>/<designId>/design.md` and the coder's `plan.md`; when a plan has no design record it lives at `design/<projectId>/<planId>/plan.md`. `design.md` is a current-state document (rewritten in place, about 200–300 lines); deleting it needs user confirmation, while deleting a folded `plan.md` does not. Removing the directory discards design state.
+
 ## Step 5: Verify the Install
 
 1. **Entries selectable**: start OpenCode and confirm `janus`, `consultant`, `coder`, and `lite` appear in the agent list.
@@ -380,8 +386,9 @@ The author state directory lives at `$XDG_DATA_HOME/janus-agent/author` (default
 3. **coder-lite lane registered**: the `coder-lite` agent appears as a subagent (steps 50, workspace-allow edits, task denied).
 4. **Memory MCP starts**: the `janus-memory` MCP server is registered. Its five tools (`memory_recall`, `memory_expand`, `memory_prepare`, `memory_commit`, `memory_manage`) are available to the consultant agent.
 5. **Research subagents registered**: `consultation-explorer`, `consultation-analyst`, `consultation-critic`, `consultation-verifier` (read-only), and `consultation-writer` (scoped-write: edits allowed only under `userdoc/**` unless `writer_docs_roots` is changed) appear as subagents (mode `subagent`), dispatched by the consultant via the `janus_dispatch` tool.
-6. **Skill present**: the skill file exists at `~/.config/opencode/skills/consultation/SKILL.md` (or your `$OPENCODE_CONFIG_DIR/skills/consultation/SKILL.md`).
-7. **Commands present**: `commands/janus-memory.md` and `commands/janus-models.md` exist under `~/.config/opencode/` (or your `$OPENCODE_CONFIG_DIR/commands/`).
+6. **Skill present**: the skill file exists at `~/.config/opencode/skills/consultation/SKILL.md` (or your `$OPENCODE_CONFIG_DIR/skills/consultation/SKILL.md`) and contains the `design` mode.
+7. **Design state**: `~/.local/share/janus-agent/design` exists; the consultant and coder prompts name the project design dir, and their permission maps allow `<designStateDir>/**`.
+8. **Commands present**: `commands/janus-memory.md` and `commands/janus-models.md` exist under `~/.config/opencode/` (or your `$OPENCODE_CONFIG_DIR/commands/`).
 
 You can also run the automated integration proof:
 
@@ -402,7 +409,8 @@ JANUS_PLUGIN_ENTRY=~/.local/share/janus-agent-plugin/dist/index.js bun run integ
 ```bash
 bun test                     # all unit tests (co-located *.test.ts, bun:test)
 bun run typecheck            # tsc --noEmit across the workspace
-bun run build                # bundle adapter + memory-mcp into dist/
+bun run gen:skill            # regenerate assets/skills/consultation/SKILL.md from skill-src/consultation
+bun run build                # regenerate the skill, then bundle adapter + memory-mcp into dist/
 bun run install:local        # build, then install the bundle into the install prefix
 bun run integration          # isolated OpenCode integration proof (skips if opencode is absent)
 bun run evals/run-evals.ts   # print the evaluation checklist (no live model calls)

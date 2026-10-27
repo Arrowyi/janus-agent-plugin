@@ -7,7 +7,7 @@ Janus is a daily-driver agent family for [OpenCode](https://opencode.ai) — `ja
 | Agent | Default model | What it does |
 |-------|---------------|--------------|
 | `janus` (primary/all) | `opencode-go/glm-5.3` | Default daily entry. Handles general questions, light tasks, and routing: consulting → `consultant`, coding → `coder`, quick answers → `lite`. Does not do deep research or heavy coding itself |
-| `consultant` (primary) | `opencode-go/glm-5.3` | Evidence-driven consultations in six modes: `select`, `verify`, `plan`, `guide`, `research`, `author`. Leads the four read-only research specialists and the scoped-write writer |
+| `consultant` (primary) | `opencode-go/glm-5.3` | Evidence-driven consultations in seven modes: `select`, `verify`, `plan`, `guide`, `research`, `author`, `design`. Leads the four read-only research specialists and the scoped-write writer, and owns design records |
 | `coder` (primary/all) | `opencode-go/glm-5.3` | Coding entry and execution specialist. Selects L0/L1/L2/L3 process weight by task complexity, gates design on user approval for L2/L3, and runs the correctness-critical quality gate |
 | `lite` (primary/all) | `opencode-go/deepseek-v4.1-flash` | Economical quick-answer leaf: facts, concepts, simple how-to. Never dispatches; escalates complex/contested questions to `consultant`, coding to `coder` |
 | `consultation-explorer` | `opencode-go/deepseek-v4.1-flash` | Read-only search specialist returning graded, structured evidence reports |
@@ -25,9 +25,11 @@ Janus is a daily-driver agent family for [OpenCode](https://opencode.ai) — `ja
 ```text
 General question / unsure          -> janus
 Consulting, selection, verify,
-research, plan, durable document   -> consultant
-Coding, debug, refactor, tests     -> coder
-Quick fact / concept / how-to      -> lite
+research, personal plan,
+durable document, system design    -> consultant
+Coding, implementation plan        -> coder
+Quick fact / how-to,
+read-only document Q&A             -> lite
 ```
 
 Start at `janus` when unsure; start directly at the specialist when you already know the task type. `coder-lite` and `build` are normally dispatched by `coder`, not selected directly.
@@ -74,6 +76,7 @@ Restart OpenCode. The plugin registers the agents, the memory MCP, the `consulta
 | `guide` | a composite end-to-end package — 攻略、X入门 | the shortest path, steps, pitfalls, completion check, and a recommendation/alternative only when there are real choices |
 | `research` | understanding a topic deeply — 深度研究、调查一下 | a bottom line, 3–5 plain-language points, what it means for you, and what is still uncertain; no forced recommendation |
 | `author` | a durable document to keep or share — 教程、架构分析文档、write-up | a document delivery brief (status, location, scope, verification, next action); the document itself is the artifact |
+| `design` | deciding the future structure — 架构设计、模块设计、接口设计 | the decision record: layer, goal/constraints, quality scenarios, options and trade-offs, recommendation, risks/reversibility, open questions — written to `design.md` and handed to `coder` for an implementation plan |
 
 Answers are terminal-first: a full answer opens with `结论 / 理由 / 下一步`, ends with `一句话 / 下一步`, and puts evidence under `证据与来源（可跳过）`. Short answers skip the repetition. Facts are separated from inference and labeled with an epistemic status.
 
@@ -84,6 +87,8 @@ Answers are terminal-first: a full answer opens with `结论 / 理由 / 下一�
 **Models.** Run `/janus-models` for an explicit, interactive model-rotation workflow. With no arguments it inventories every suite agent's effective model and prompt source, then offers a menu: model evaluation, `model_prompt` evaluation, a combined recommendation, or execution. Model and prompt changes are written only to the user-level Janus config; the command shows an exact diff and waits for confirmation before writing. `/janus-models 帮助` lists the argument forms.
 
 **Documents.** Author-mode documents are produced by a consultant + writer pair: the consultant owns intake, evidence, the outline approval, the author brief, verification, and publishing; the writer is the sole author of reader-facing prose and (unless `writer_docs_roots` is empty) the sole writer of approved document files under the configured roots (default `userdoc`). With `writer_docs_roots: []` the writer returns prose and the consultant publishes it. A document's writer session is reused across its feedback turns: the first writer dispatch captures a session handle (`return_handle: true`), the brief stores it as `writer_session_id`, and later bounded edits continue that session via `janus_dispatch_continue` — a generic dispatch mechanism (same caller, same workspace, idle target) that works for any role's session, not only the writer's.
+
+**Design.** A structural decision goes to the consultant's `design` mode (architecture, module boundaries, interfaces), not to `select` or an author-mode architecture write-up. It works layer by layer: each decision brings at least two real options, a recommendation, what would change it, and a one-way/two-way reversibility label; one-way doors are approved individually and get a critic pre-mortem, two-way doors get a default and one batch approval per layer. The result is a self-contained `design.md` at `~/.local/share/janus-agent/design/<projectId>/<designId>/design.md` — the consultant writes it, the `coder` only reads it and writes its `plan.md` beside it, then implements with a reduced L2 gate and a plan↔design check. Both agents have pre-approved access to that directory only; nothing is written into your project tree. See [docs/deployment.md](docs/deployment.md#data-state-and-cache-paths).
 
 **Configuration.** Optional JSONC config at `~/.config/janus-agent/config.jsonc` (or `$JANUS_CONFIG` / XDG): per-agent models and model-prompt blocks, agent names, enable flags, `writer_docs_roots`, team caps, memory and embedding settings. The full field reference lives in [docs/deployment.md](docs/deployment.md).
 
@@ -100,13 +105,16 @@ The isolated integration proof spawns a sandboxed OpenCode server and asserts th
 ```bash
 bun test                     # all unit tests
 bun run typecheck            # tsc --noEmit
-bun run build                # bundle adapter + memory MCP into dist/
+bun run build                # regenerate the skill, then bundle adapter + memory MCP into dist/
+bun run gen:skill            # regenerate assets/skills/consultation/SKILL.md from skill-src/consultation
 bun run install:local        # build + install the bundle (replaces the installed one)
 bun run integration          # isolated OpenCode integration proof
 bun run evals/run-evals.ts   # print the evaluation checklist
 ```
 
 TypeScript strict, zod, SQLite FTS5, five-package Bun workspace, no native dependencies. Harness-neutral core packages (`consultation-core`, `memory-core`); host-specific code stays in the adapters.
+
+The consultation skill is generated: edit `skill-src/consultation/**`, run `bun run gen:skill`, and never hand-edit `assets/skills/consultation/SKILL.md` (`gen-skill.test.ts` fails on drift). Shared prompt fragments live in `assets/principles/`; every assembled role prompt has a reviewed golden under `packages/opencode-adapter/src/prompt-snapshots/`, refreshed with `UPDATE_PROMPTS=1 bun test packages/opencode-adapter/src/prompt-snapshots.test.ts` after reviewing the diff.
 
 **Deployment rule:** always deploy the packaged bundle — never point an OpenCode config at the repo source. The installed bundle is self-contained (no `node_modules` required at runtime).
 

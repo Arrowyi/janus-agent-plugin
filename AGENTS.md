@@ -11,10 +11,27 @@ This plugin ships to other users, so a deployment must be reproducible from buil
 
 Full detail: [docs/deployment.md](docs/deployment.md#deployment-rule).
 
+## What changed → which verification
+
+| Change | Run |
+|---|---|
+| `assets/agents/*.md`, `assets/principles/*.md`, or `skill-src/consultation/**` (after `bun run gen:skill`) | Review the prompt-golden diff, then `bun test` (agent-registration, dispatch-prompt, gen-skill, skill-consistency, prompt-lint) |
+| `packages/consultation-core/**` | That package's tests, then full `bun test` + `bun run typecheck` |
+| `packages/opencode-adapter/**` | Full `bun test` + `bun run typecheck` + `bun run install:local` + the installed-artifact integration proof |
+| `packages/memory-*/**` | That package's tests, then the full suite |
+| `script/**`, `evals/**` | `bun test` (the repo-level tests live here) and `bun run typecheck`; run `bun run evals/run-evals.ts` after fixture changes |
+| Docs/README only | No tests |
+
+## Generated artifacts and prompt mutations
+
+- `skill-src/consultation/**` is the source of truth for the consultation skill. Generate `assets/skills/consultation/SKILL.md` with `bun run gen:skill` (wired into `bun run build`); never hand-edit the generated file. `script/gen-skill.test.ts` fails when it is stale.
+- Every assembled role prompt has a reviewed golden under `packages/opencode-adapter/src/prompt-snapshots/`. After an intentional prompt change, review the diff and refresh with `UPDATE_PROMPTS=1 bun test packages/opencode-adapter/src/prompt-snapshots.test.ts`.
+- Shared prompt fragments live in `assets/principles/`: `common.md` (all roles), `research-leaf.md` (explorer/analyst/critic/verifier), `dispatch-hub.md` (janus/consultant/coder). They are injected by the adapter, not duplicated into role assets; `script/prompt-lint.test.ts` enforces budgets and duplicate-sentence discipline.
+
 ## Change checklist
 
-1. Edit source under `packages/` (and `script/`); never edit the generated `dist/` or the install prefix by hand.
-2. Run `bun test` and `bun run typecheck`.
+1. Edit source under `packages/`, `script/`, `skill-src/`, or `assets/`; never edit the generated `dist/`, `assets/skills/consultation/SKILL.md`, prompt goldens by hand, or the install prefix.
+2. Run `bun test` and `bun run typecheck` (plus `bun run gen:skill` after a skill change).
 3. Run `bun run install:local`, then prove the installed artifact:
    `JANUS_PLUGIN_ENTRY=~/.local/share/janus-agent-plugin/dist/index.js bun run integration`.
 4. Restart OpenCode so it loads the new bundle (the `config` hook re-registers agents, the memory MCP, the skill, and the command).
@@ -22,7 +39,7 @@ Full detail: [docs/deployment.md](docs/deployment.md#deployment-rule).
 
 Role model defaults live in `packages/opencode-adapter/src/plugin-config.ts` (`MODEL_DEFAULTS`) and are mirrored in `docs/deployment.md`; update both, plus the assertions in `plugin.test.ts`, `agent-registration.test.ts`, and `dispatch-tool.test.ts`.
 
-The current role family is `janus` (default general entry), `consultant` (evidence and document entry), `coder` (coding entry), `lite` (economical leaf), the four read-only research subagents (`explorer`, `analyst`, `critic`, `verifier`), the scoped-write `writer` (sole author of reader-facing prose; writes only approved files under `writer_docs_roots`, default `["userdoc"]`; `[]` = read-only fallback), and `coder-lite`; `build` is an optional host delegation target. Update the role assets, registration, dispatch roles, install list, and docs together when changing the family.
+The current role family is `janus` (default general entry), `consultant` (evidence and document entry; delivers seven modes — `select`, `verify`, `plan`, `research`, `guide`, `author`, `design`), `coder` (coding entry), `lite` (economical leaf), the four read-only research subagents (`explorer`, `analyst`, `critic`, `verifier`), the scoped-write `writer` (sole author of reader-facing prose; writes only approved files under `writer_docs_roots`, default `["userdoc"]`; `[]` = read-only fallback), and `coder-lite`; `build` is an optional host delegation target. Update the role assets, registration, dispatch roles, install list, and docs together when changing the family.
 
 ## Author separation (writer/consultant)
 
@@ -36,3 +53,16 @@ The current role family is `janus` (default general entry), `consultant` (eviden
 - `janus_dispatch_continue({session_id, prompt, role?})` is role-agnostic: any dispatcher may continue any dispatch role's session. `janus_dispatch({..., return_handle: true})` returns a completed envelope (`job_id`, `session_id`, `text`) on success; plain text stays the default.
 - Reuse bounds enforced in `dispatch-tool.ts` + `dispatch-lifecycle.ts` (see `dispatch-tool.test.ts`, `dispatch-lifecycle.test.ts`): same caller (the target job root's parent is the tool context session), same normalized directory, dispatch-marked target (normal job root or its attempt child — never a continuation job root), idle target, terminal previous job. A continuation job root records `session_id`/`continued_from` in its spec (`dispatch-contract.ts`, `dispatch-journal.ts`); `dispatch-journal-binding.ts` accepts receipts bound to the spec target; wait/cancel work on continuation jobs unchanged.
 - When changing continuation behavior, update together: `dispatch-contract.ts`, `dispatch-journal(-binding).ts`, `dispatch-attempt.ts`, `dispatch-lifecycle.ts`, `dispatch-tool.ts`, the runtime-bindings lines (`buildRuntimeBindings`, `buildCoderRuntimeBindings`, `buildJanusRuntimeBindings` in `agent-registration.ts`), the author assets above, and the continue/return_handle assertions across the dispatch tests, `plugin.test.ts`, and `evals/fixtures/consultation-cases.json` (C49+).
+
+## Design mode (consultant → coder handoff)
+
+`consultant` owns the `design` mode: it decides future structure layer by layer, records accepted decisions in a self-contained `design.md` under `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/`, and hands that record to `coder`, which implements with a reduced L2 gate and writes `plan.md` beside it. The consultant writes the record; the coder only reads it. When changing design mode, update together:
+
+- `skill-src/consultation/modes/design.md`, `core.md`, `policies/{team-orchestration,current-state-docs,output-and-memory}.md`;
+- `assets/agents/{consultant,coder,janus,consultation-critic}.md`;
+- `packages/consultation-core/src/{enums,design-brief,decision-brief,tier-router}.ts` and their tests;
+- `packages/opencode-adapter/src/{agent-registration,plugin}.ts` (design state dir, `external_directory` permissions for consultant and coder, design bindings) and their tests;
+- `script/skill-consistency.test.ts`, `script/prompt-lint.test.ts`, and the affected prompt goldens;
+- `evals/fixtures/consultation-cases.json` (design cases C56+ and each case's `modes` array).
+
+The design directory is created non-fatally at registration. Deleting `design.md` needs user confirmation; deleting a folded `plan.md` is the one persistent-file deletion exempt from the confirmation gate, and writes/updates to it are still listed for confirmation.

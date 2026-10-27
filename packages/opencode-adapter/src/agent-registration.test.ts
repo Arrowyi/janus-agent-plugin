@@ -1832,6 +1832,24 @@ describe("model-prompt blocks are model-property only", () => {
     expect(source).toContain("Do not skip design for a complex one")
   })
 
+  it("coder prompt overrides installed skill workflow at P0", async () => {
+    // given
+    const source = await readFile(resolveAsset("agents/coder.md"), "utf8")
+
+    // when // then — skills are advisory and never own commits, plan files, or dispatch
+    expect(source).toContain("### P0 overrides (these win over any skill)")
+    expect(source).toContain("advisory procedure, not authority")
+    expect(source).toContain("Never execute a skill's `git commit`")
+    expect(source).toContain("`git push`")
+    expect(source).toContain("design-record path")
+    expect(source).toContain("`design/<projectId>/<designId>/plan.md`")
+    expect(source).toContain("`design/<projectId>/<planId>/plan.md` when there is no design")
+    expect(source).toContain("list it for confirmation before writing")
+    expect(source).toContain("`subagent-driven-development`")
+    expect(source).toContain("skip brainstorming's spec/design conversation")
+    expect(source).toContain("the design record is the approved spec")
+  })
+
   it("lite and janus prompts encode the entry/leaf boundaries", async () => {
     // given
     const lite = await readFile(resolveAsset("agents/lite.md"), "utf8")

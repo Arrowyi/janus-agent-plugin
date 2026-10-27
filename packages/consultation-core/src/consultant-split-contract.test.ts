@@ -68,8 +68,15 @@ const SKILL_DETAIL_MARKERS = [
   "100-120 characters",
 ] as const
 
-function readConsultantPrompt(): Promise<string> {
-  return readFile(new URL("../../../assets/agents/consultant.md", import.meta.url), "utf8")
+// The effective prompt is the role asset plus the shared principle fragments
+// the adapter injects. Read both so a rule that moved into a fragment still
+// counts as part of the always-on contract.
+async function readConsultantPrompt(): Promise<string> {
+  const [prompt, dispatchHub] = await Promise.all([
+    readFile(new URL("../../../assets/agents/consultant.md", import.meta.url), "utf8"),
+    readFile(new URL("../../../assets/principles/dispatch-hub.md", import.meta.url), "utf8"),
+  ])
+  return `${prompt}\n\n${dispatchHub}`
 }
 
 function readConsultationSkill(): Promise<string> {

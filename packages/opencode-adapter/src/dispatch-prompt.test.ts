@@ -82,7 +82,7 @@ const statuses = ["pending", "unknown", "cancelling", "cancelled"] as const
 const promptSchema = z.object({ prompt: z.string() })
 
 describe("dispatch prompt routing contract", () => {
-  for (const asset of ["agents/consultant.md", "skills/consultation/SKILL.md"] as const) {
+  for (const asset of ["skills/consultation/SKILL.md"] as const) {
     for (const tool of controls) {
       it(`exposes ${tool} when loading ${asset}`, async () => {
         // given
@@ -143,28 +143,29 @@ describe("dispatch prompt routing contract", () => {
     expect(prompt).not.toContain("<!-- RUNTIME-BINDINGS")
   })
 
-  for (const role of roles) {
-    it(`exposes nonterminal status identifiers when loading ${role.asset}`, async () => {
-      // given
-      const path = resolveAsset(`agents/${role.asset}`)
-      // when
-      const source = await readFile(path, "utf8")
-      // then
-      expect(source).toContain("`pending`")
-      expect(source).toContain("`unknown`")
-    })
+  it("exposes nonterminal status identifiers in the shared research-leaf fragment", async () => {
+    // given
+    const path = resolveAsset("principles/research-leaf.md")
+    // when
+    const source = await readFile(path, "utf8")
+    // then
+    expect(source).toContain("`pending`")
+    expect(source).toContain("`unknown`")
+  })
 
-    it(`passes the complete asset through with its shipped model block when registering ${role.name}`, async () => {
+  for (const role of roles) {
+    it(`passes the complete asset through with its shipped model block and shared rules when registering ${role.name}`, async () => {
       // given
       const config: { agent?: Record<string, unknown> } = {}
       const source = await readFile(resolveAsset(`agents/${role.asset}`), "utf8")
       const block = await readFile(resolveAsset(`model-prompts/${role.block}`), "utf8")
       const common = await loadCommonPrinciples()
+      const fragment = (await readFile(resolveAsset("principles/research-leaf.md"), "utf8")).trim()
       // when
       await role.register(config, pluginConfig)
       // then
       expect(promptSchema.parse(config.agent?.[role.name]).prompt).toBe(
-        injectCommonPrinciples(injectModelPrompt(source, block), common),
+        injectCommonPrinciples(`${injectModelPrompt(source, block)}\n\n${fragment}`, common),
       )
     })
   }

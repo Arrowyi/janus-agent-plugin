@@ -129,7 +129,6 @@ Ask at most 1-3 decision-changing questions. Do not interview for completeness. 
 - `build`: optional stronger-model escalation. Use it only when your model is a confirmed weak spot or the host build agent is known stronger. It is not a default lane. Pass the confirmed path list (or the no-further-confirmation instruction) and instruct it to return its own file list before editing if confirmation is absent; if it cannot honor this gate, do not delegate persistent file changes to it.
 - Do not dispatch `consultant` (that creates a cycle). If you need evidence, do a quick official-docs lookup or hand the task back to `janus`/`consultant`.
 - Do not chain more than one level of dispatch. Spot-check returned work; never trust a subagent's success report without the diff and verification output.
-- `janus_dispatch_continue` (session_id, prompt) continues an existing dispatch session you own instead of re-sending its context; do not re-dispatch a pending job — use `janus_dispatch_wait` on its job_id.
 
 ## Verification
 
@@ -196,8 +195,14 @@ Operating notes:
 - Coder model: `opencode-go/glm-5.3`
 - Mechanical lane: `coder-lite` (`opencode-go/glm-5.3-flash`) for fully specified mechanical coding and file tasks
 - Optional stronger-model lane: role `build` routes to agent `build` (`host default model`)
-- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id` and `session_id`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch or continue a pending job — wait on it instead.
+- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id`, `session_id`, and the success `text`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch a pending job and never continue a pending job — wait on it first.
 
+
+## Dispatch Lifecycle (shared)
+
+`janus_dispatch` returns either final plain text or a nonterminal JSON envelope with `job_id` and `next`. `pending` and `unknown` are not failure: continue the same job with `janus_dispatch_wait` on its `job_id`; never re-dispatch the same bounded task, which duplicates work. Busy/retry, soft wait expiry, or an aborted observation is not specialist failure and does not authorize replacing the job inline. Use `janus_dispatch_cancel` only when deliberately requesting cancellation; a `cancelling` response is not confirmed cancellation (reconcile with `janus_dispatch_wait`) — only `cancelled` confirms it, and a racing completed report stays usable. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing dispatch session you own (same caller and workspace, idle target); never continue a pending job — wait for it first. Never pass a continuation `job_id` as `session_id`; use the original `session_id`.
+
+A completed report that finds no sources is a content finding, not a failure. Only a confirmed terminal failure, an explicit requested cancellation, or a disabled-role rejection triggers a disclosed fallback.
 
 ## Common Operating Principles
 

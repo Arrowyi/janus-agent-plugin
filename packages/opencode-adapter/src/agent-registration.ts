@@ -37,6 +37,10 @@ const MODEL_PROMPT_PLACEHOLDER = /<!--\s*MODEL-PROMPT[\s\S]*?-->/
 
 const COMMON_PRINCIPLES_ASSET = "principles/common.md"
 
+const RESEARCH_LEAF_ASSET = "principles/research-leaf.md"
+
+const DISPATCH_HUB_ASSET = "principles/dispatch-hub.md"
+
 const EXPLORER_DESCRIPTION =
   "Search and information-gathering specialist. Gathers graded sources for specific claims and returns a structured report. Dispatched by the consultant and may fan out to multiple instances."
 
@@ -227,13 +231,11 @@ export async function registerLite(
     // Non-fatal: the permission pattern still ships; writes there may fail.
   }
 
-  const body = await readFile(resolveAsset("agents/lite.md"), "utf8")
-  const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "lite"))
-  const withModelPrompt = injectModelPrompt(body, modelBlock)
-  const commonPrinciples = await loadCommonPrinciples()
-  const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
-  const runtimeBlock = buildLiteRuntimeBindings(pluginConfig, workspaceDir, namespace)
-  const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
+  const assembledPrompt = await assemblePrompt(pluginConfig, {
+    assetFile: "agents/lite.md",
+    model: resolveRoleModel(pluginConfig, "lite"),
+    runtimeBlock: buildLiteRuntimeBindings(pluginConfig, workspaceDir, namespace),
+  })
 
   const entry: AllModeAgentEntry = {
     mode: "all",
@@ -248,6 +250,16 @@ export async function registerLite(
 }
 
 /**
+ * Shared job-tool discipline line for every dispatching role's runtime
+ * bindings. The consultant appends its author-mode writer-session rule.
+ */
+const DISPATCH_JOB_TOOLS_LINE =
+  "- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id`, `session_id`, and the success `text`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch a pending job and never continue a pending job — wait on it first."
+
+const CONSULTANT_WRITER_SESSION_LINE =
+  " In author mode, store the first writer dispatch envelope's `session_id` as `writer_session_id` in the brief and use `janus_dispatch_continue` for that document's maintenance edits (one writer session per document, no cross-document reuse); on a lost, foreign, or busy writer session, wait or make a fresh dispatch with the brief and update the stored id."
+
+/**
  * coder's runtime bindings: its own model, the coding lanes it may dispatch,
  * and the job-tool discipline. No memory namespace (coding sessions use the
  * repo's AGENTS.md, not consultation memory).
@@ -260,8 +272,7 @@ export function buildCoderRuntimeBindings(pluginConfig: JanusPluginConfig): stri
   const buildLine = pluginConfig.build_enabled
     ? `- Optional stronger-model lane: role \`build\` routes to agent \`${pluginConfig.build_agent}\` (\`${pluginConfig.build_model ?? "host default model"}\`)`
     : "- Optional stronger-model lane: build DISABLED by configuration"
-  const dispatchLine =
-    "- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id` and `session_id`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch or continue a pending job — wait on it instead."
+  const dispatchLine = DISPATCH_JOB_TOOLS_LINE
   return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${coderLiteLine}\n${buildLine}\n${dispatchLine}`
 }
 
@@ -276,13 +287,12 @@ export async function registerCoder(
 ): Promise<void> {
   if (config.agent?.[pluginConfig.coder_agent]) return
 
-  const body = await readFile(resolveAsset("agents/coder.md"), "utf8")
-  const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "coder"))
-  const withModelPrompt = injectModelPrompt(body, modelBlock)
-  const commonPrinciples = await loadCommonPrinciples()
-  const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
-  const runtimeBlock = buildCoderRuntimeBindings(pluginConfig)
-  const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
+  const assembledPrompt = await assemblePrompt(pluginConfig, {
+    assetFile: "agents/coder.md",
+    model: resolveRoleModel(pluginConfig, "coder"),
+    fragments: [DISPATCH_HUB_ASSET],
+    runtimeBlock: buildCoderRuntimeBindings(pluginConfig),
+  })
 
   const entry: AllModeAgentEntry = {
     mode: "all",
@@ -326,11 +336,10 @@ export async function registerCoderLite(
   const agentName = pluginConfig.coder_lite_agent
   if (config.agent?.[agentName]) return
 
-  const body = await readFile(resolveAsset("agents/coder-lite.md"), "utf8")
-  const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "coder-lite"))
-  const withModelPrompt = injectModelPrompt(body, modelBlock)
-  const commonPrinciples = await loadCommonPrinciples()
-  const prompt = injectCommonPrinciples(withModelPrompt, commonPrinciples)
+  const prompt = await assemblePrompt(pluginConfig, {
+    assetFile: "agents/coder-lite.md",
+    model: resolveRoleModel(pluginConfig, "coder-lite"),
+  })
 
   const entry: CodingLaneEntry = {
     mode: "subagent",
@@ -363,7 +372,7 @@ export function buildJanusRuntimeBindings(pluginConfig: JanusPluginConfig): stri
     : "- Economical entry: lite DISABLED by configuration"
   const explorerLine = `- \`explorer\` (agent \`${pluginConfig.explorer_agent}\`, \`${resolveRoleModel(pluginConfig, "explorer")}\`) — bounded evidence gathering with a specific claim list and search plan`
 
-  const dispatchLine = "- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id` and `session_id`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch or continue a pending job — wait on it instead."
+  const dispatchLine = DISPATCH_JOB_TOOLS_LINE
 
   return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${consultantLine}\n${coderLine}\n${liteLine}\n${explorerLine}\n${dispatchLine}`
 }
@@ -381,13 +390,12 @@ export async function registerJanus(
 ): Promise<void> {
   if (config.agent?.[pluginConfig.janus_agent]) return
 
-  const body = await readFile(resolveAsset("agents/janus.md"), "utf8")
-  const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "janus"))
-  const withModelPrompt = injectModelPrompt(body, modelBlock)
-  const commonPrinciples = await loadCommonPrinciples()
-  const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
-  const runtimeBlock = buildJanusRuntimeBindings(pluginConfig)
-  const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
+  const assembledPrompt = await assemblePrompt(pluginConfig, {
+    assetFile: "agents/janus.md",
+    model: resolveRoleModel(pluginConfig, "janus"),
+    fragments: [DISPATCH_HUB_ASSET],
+    runtimeBlock: buildJanusRuntimeBindings(pluginConfig),
+  })
 
   const entry: AllModeAgentEntry = {
     mode: "all",
@@ -469,7 +477,7 @@ export function buildRuntimeBindings(
   const costLine = `- Cost guard: ~$${costGuard} per provider (advisory, converge when approaching)`
 
   const namespaceLine = `- Memory namespace: \`${namespace}\``
-  const dispatchLine = "- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id`, `session_id`, and the success `text`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace — never continue a pending job; wait on it first. In author mode, store the first writer dispatch envelope's `session_id` as `writer_session_id` in the brief and use `janus_dispatch_continue` for that document's maintenance edits (one writer session per document, no cross-document reuse); on a lost, foreign, or busy writer session, wait or make a fresh dispatch with the brief and update the stored id."
+  const dispatchLine = DISPATCH_JOB_TOOLS_LINE + CONSULTANT_WRITER_SESSION_LINE
 
   const writerRoots = normalizeWriterDocsRoots(pluginConfig.writer_docs_roots)
   const writerModeLine =
@@ -586,6 +594,48 @@ export function injectCommonPrinciples(body: string, block: string): string {
 }
 
 /**
+ * Load a shared principle fragment (a file under `assets/principles/`).
+ * A missing or empty fragment is a deployment error and propagates.
+ */
+async function loadPrincipleFragment(asset: string): Promise<string> {
+  const text = (await readFile(resolveAsset(asset), "utf8")).trim()
+  if (text.length === 0) throw new Error(`prompt fragment ${asset} is empty`)
+  return text
+}
+
+interface PromptAssembly {
+  assetFile: string
+  model: string
+  fragments?: readonly string[]
+  runtimeBlock?: string
+}
+
+/**
+ * Assemble one role prompt in the fixed layer order:
+ * role asset -> model-adaptation block -> principle fragments -> common
+ * principles -> runtime bindings.
+ *
+ * Fragment-free assemblies are byte-identical to the previous per-register
+ * sequence, so adding the helper does not move existing prompt text.
+ */
+async function assemblePrompt(
+  pluginConfig: JanusPluginConfig,
+  options: PromptAssembly,
+): Promise<string> {
+  let prompt = injectModelPrompt(
+    await readFile(resolveAsset(options.assetFile), "utf8"),
+    await resolveModelPrompt(pluginConfig, options.model),
+  )
+  for (const fragment of options.fragments ?? []) {
+    prompt = `${prompt}\n\n${await loadPrincipleFragment(fragment)}`
+  }
+  prompt = injectCommonPrinciples(prompt, await loadCommonPrinciples())
+  return options.runtimeBlock === undefined
+    ? prompt
+    : injectRuntimeBindings(prompt, options.runtimeBlock)
+}
+
+/**
  * Register the `consultant` primary agent into the OpenCode config.
  *
  * Reads `assets/agents/consultant.md`, injects the runtime bindings block
@@ -603,19 +653,16 @@ export async function registerConsultantAgent(
 ): Promise<void> {
   if (config.agent?.["consultant"]) return
 
-  const consultantPath = resolveAsset("agents/consultant.md")
-  const consultantBody = await readFile(consultantPath, "utf8")
-
-  const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "consultant"))
-  const withModelPrompt = injectModelPrompt(consultantBody, modelBlock)
-  const commonPrinciples = await loadCommonPrinciples()
-  const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
   const author: AuthorBinding | undefined =
     directory !== undefined
       ? { authorStateDir: resolveAuthorStateDir(env), projectId: computeProjectId(directory) }
       : undefined
-  const runtimeBlock = buildRuntimeBindings(pluginConfig, namespace, author)
-  const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
+  const assembledPrompt = await assemblePrompt(pluginConfig, {
+    assetFile: "agents/consultant.md",
+    model: resolveRoleModel(pluginConfig, "consultant"),
+    fragments: [DISPATCH_HUB_ASSET],
+    runtimeBlock: buildRuntimeBindings(pluginConfig, namespace, author),
+  })
 
   const entry: ConsultantAgentEntry = {
     mode: "primary",
@@ -645,18 +692,16 @@ async function registerReadOnlySubagent(
 ): Promise<void> {
   if (config.agent?.[options.name]) return
 
-  const modelBlock = await resolveModelPrompt(options.pluginConfig, options.model)
-  const withModelPrompt = injectModelPrompt(
-    await readFile(resolveAsset(options.assetFile), "utf8"),
-    modelBlock,
-  )
-  const commonPrinciples = await loadCommonPrinciples()
-  const body = injectCommonPrinciples(withModelPrompt, commonPrinciples)
+  const prompt = await assemblePrompt(options.pluginConfig, {
+    assetFile: options.assetFile,
+    model: options.model,
+    fragments: [RESEARCH_LEAF_ASSET],
+  })
 
   const entry: SubagentEntry = {
     mode: "subagent",
     description: options.description,
-    prompt: body,
+    prompt,
     model: options.model,
     permission: { edit: "deny", bash: "deny", task: "deny" },
   }
@@ -852,13 +897,11 @@ export async function registerWriter(
     // reads of the brief path may fail until the directory exists.
   }
 
-  const body = await readFile(resolveAsset("agents/writer.md"), "utf8")
-  const modelBlock = await resolveModelPrompt(pluginConfig, resolveRoleModel(pluginConfig, "writer"))
-  const withModelPrompt = injectModelPrompt(body, modelBlock)
-  const commonPrinciples = await loadCommonPrinciples()
-  const withCommonPrinciples = injectCommonPrinciples(withModelPrompt, commonPrinciples)
-  const runtimeBlock = buildWriterRuntimeBindings(pluginConfig, authorStateDir)
-  const assembledPrompt = injectRuntimeBindings(withCommonPrinciples, runtimeBlock)
+  const assembledPrompt = await assemblePrompt(pluginConfig, {
+    assetFile: "agents/writer.md",
+    model: resolveRoleModel(pluginConfig, "writer"),
+    runtimeBlock: buildWriterRuntimeBindings(pluginConfig, authorStateDir),
+  })
 
   const entry: CodingLaneEntry = {
     mode: "subagent",

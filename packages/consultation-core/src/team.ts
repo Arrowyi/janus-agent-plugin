@@ -80,6 +80,36 @@ export const AnalysisDraftBaseSchema = z.object({
   confidence: ConfidenceSchema,
   basis: z.string().optional(),
   synthesisNote: z.string().optional(),
+  assumptions: z
+    .array(
+      z.object({
+        assumption: z.string(),
+        confidence: ConfidenceSchema,
+        ifFalse: z.string(),
+        test: z.string(),
+      }),
+    )
+    .default([]),
+  outsideView: z
+    .object({
+      referenceClass: z.string(),
+      baseRate: z.string(),
+      caseAdjustment: z.string(),
+    })
+    .nullable()
+    .optional(),
+  hypotheses: z
+    .array(
+      z.object({
+        hypothesis: z.string(),
+        confidence: ConfidenceSchema,
+        supports: z.array(z.string()).default([]),
+        contradicts: z.array(z.string()).default([]),
+        verdict: z.string(),
+      }),
+    )
+    .optional(),
+  discriminatingEvidence: z.array(z.string()).optional(),
   whatWouldChange: z.array(z.string()).default([]),
   qualityFlags: z.array(z.string()).default([]),
   gaps: z.array(z.string()).default([]),

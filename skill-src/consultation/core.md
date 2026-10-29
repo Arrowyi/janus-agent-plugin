@@ -14,17 +14,23 @@ Load this skill for any mode and whenever evidence quality, source reliability, 
 
 ## Two-Axis Routing: Mode and Tier
 
+<!-- MODE-ROUTING -->
+
 Two independent decisions shape every consultation:
 
-- **Mode** (what to deliver) — detected from the question:
-  - `select`: choose among candidates (shopping, comparisons, picking a tool, a course, a city).
-  - `verify`: render a verdict on a proposition (a claim, rumor, or argument is true, false, or unverifiable).
-  - `plan`: produce an actionable plan (fitness, body care, interpersonal, learning).
-  - `research`: understand a topic deeply (open-ended investigation, "深度研究", "调查一下", surveys) — a readable report, not a decision.
-  - `guide`: produce a composite operational package — recommendation, procedure, and background — for an end-to-end goal (攻略, "X入门", "guide to X"). Use it only when the request needs at least a recommendation or a procedure; a pure "which one" is `select`, a pure "how to" is `plan`, a pure "understand X" is `research`.
-  - `author`: create a durable technical document for later reading or sharing. Select exactly one primary profile: `tutorial`, `architecture`, or `explanation`. A chat-only request remains `research`; an operational package remains `guide`.
-  - `design`: decide the future structure of a system — architecture, patterns, module boundaries, or an external interface. `select` chooses among known candidates, `author` with the `architecture` profile describes existing code, `plan` is a personal action plan, and `research` explains; `design` decides what to build next.
-  If the mode is ambiguous, ask one clarifying question. For a non-trivial answer, you may add a one-line mode note after the conclusion (e.g. "模式：select（购买决策）"); never put it before the conclusion. Skip the note for simple answers.
+- **Mode** (what to deliver) — use the card above:
+
+| Mode | Delivers |
+|---|---|
+| `select` | pick among known candidates |
+| `verify` | verdict on a proposition |
+| `plan` | actionable personal plan |
+| `research` | readable deep-dive, not a decision |
+| `guide` | a composite end-to-end package; pure "which one" is `select`, pure "how to" is `plan` |
+| `author` | durable document; one profile: `tutorial`, `architecture`, or `explanation` |
+| `design` | future structure: architecture, boundaries, interfaces |
+
+A non-trivial answer may carry a one-line mode note after the conclusion (e.g. "模式：select（购买决策）"), never before it; skip it for simple answers.
 - **Tier** (how deep to go) — `fast`, `standard`, or `deep`, from risk and complexity. Tier is orthogonal to mode: a `verify` can be fast (check one primary source) or deep (multi-channel plus intent audit). An `author` or `design` consultation routes to standard or deep, never fast.
 
 ### Tier Selection
@@ -62,7 +68,7 @@ Tier decision dimensions: potential harm, availability of authoritative primary 
 
 - **Direct user turn:** ask up to three decision-changing questions, present approval gates, and use the status block.
 - **Dispatched bounded task:** do not ask the end user or wait for a user-facing approval, **except the persistent-file-change gate below**. Make assumptions, list them, and return the decision request to the dispatcher. Save memory only when the task names the owner (`Memory ownership`); otherwise return a concise memory summary. This context overrides intake and approval, except for file changes.
-- **Existing project commands:** run existing non-destructive commands yourself (build, test, lint, read-only git, inspection); ask first for destructive commands, dependency installs, or writes outside the approved scope.
+- **Existing project commands:** run non-destructive commands yourself (build, test, lint, read-only git); ask first for destructive commands, dependency installs, or writes outside approved scope.
 - **Persistent file changes:** `assets/principles/common-write.md` (`### File Change Confirmation`) is the authoritative gate wherever it is injected; otherwise apply the same rule. A dispatched task returns the exact paths to the dispatcher and edits only when the prompt confirms them; after the change it reports the exact paths actually changed. The author outline gate satisfies this only when its manifest lists the file paths.
 
 ## Workflow
@@ -72,7 +78,7 @@ Tier decision dimensions: potential harm, availability of authoritative primary 
 3. Recall memory by tier, and surface any pending outcome for the topic.
 4. Ask at most one to three questions only if decision-changing information is missing.
 5. Decompose the question into claims by claim type.
-6. Identify missing evidence; use explorers for bounded searches when you can name the gap that could change the answer, what would close it, and the stop criteria.
+6. Identify missing evidence; use explorers for bounded searches when you can name the gap, what would close it, and the stop criteria. The value-of-information rule: stop when the next source cannot change the decision; put `停止理由：...；未查：...` in the evidence section; cheap and reversible choices get a trial, irreversible or expensive ones depth.
 7. Assess whether source intent or independence needs an audit; use the role-specific trigger below.
 8. Use the analyst for material interpretation or uncertainty over an evidence packet, and the critic to challenge a consequential draft conclusion or uncertain plan step. Honor dependency order and the round cap.
 9. Synthesize, keeping verified facts separate from inference and labeling every atom with an epistemic status.

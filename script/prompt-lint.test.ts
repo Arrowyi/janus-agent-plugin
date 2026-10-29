@@ -35,7 +35,9 @@ const AGENT_BUDGETS: Record<string, number> = {
 
 const FRAGMENT_BUDGET = 500
 const SKILL_MODULE_BUDGET = 2000
-const SKILL_TOTAL_BUDGET = 9500
+// 9500 -> 9600 for the batch-2 shared mode card + GRADE-lite paragraph; the
+// seven-bullet mode rewrite is the donor (design §3.5).
+const SKILL_TOTAL_BUDGET = 9600
 
 /**
  * Sentences intentionally mirrored across role prompts. Each entry names why
@@ -88,7 +90,13 @@ describe("prompt word budgets", () => {
   })
 
   test("shared principle fragments stay within the fragment budget", async () => {
-    for (const file of ["research-leaf.md", "dispatch-hub.md", "reasoning-failures.md"]) {
+    for (const file of [
+      "research-leaf.md",
+      "dispatch-hub.md",
+      "reasoning-failures.md",
+      "mode-routing.md",
+      "claim-types.md",
+    ]) {
       const count = words(await readText(join(ASSETS, "principles", file)))
       if (count > FRAGMENT_BUDGET) {
         throw new Error(`assets/principles/${file} has ${count} words, over ${FRAGMENT_BUDGET}`)
@@ -120,6 +128,29 @@ describe("prompt word budgets", () => {
 })
 
 describe("cross-file duplicate sentences", () => {
+  test("the mode-routing card lives only in the shared fragment", async () => {
+    const cardLine = "Route by **ask**, not by sentence"
+    const fragment = await readText(join(ASSETS, "principles", "mode-routing.md"))
+    expect(fragment).toContain(cardLine)
+    for (const file of ["janus.md", "consultant.md"]) {
+      expect(await readText(join(ASSETS, "agents", file))).not.toContain(cardLine)
+    }
+  })
+
+  test("the claim-type table lives only in the shared fragment", async () => {
+    const header = "| Claim type | Verification method |"
+    const fragment = await readText(join(ASSETS, "principles", "claim-types.md"))
+    expect(fragment).toContain(header)
+    for (const path of [
+      join(ASSETS, "agents", "analyst.md"),
+      join(REPO_ROOT, "skill-src/consultation/policies/evidence-and-sources.md"),
+    ]) {
+      expect(await readText(path)).not.toContain(header)
+    }
+    const skill = await readText(join(ASSETS, "skills/consultation/SKILL.md"))
+    expect(skill.split(header).length - 1).toBe(1)
+  })
+
   test("only allowlisted sentences repeat across prompts and skill modules", async () => {
     const files = [
       ...walk(join(ASSETS, "agents")),

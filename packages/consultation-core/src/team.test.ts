@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
 import {
+  AnalysisDraftBaseSchema,
   AnalysisDraftSchema,
   CritiqueDraftSchema,
   DEFAULT_TEAM_CAPS,
@@ -58,6 +59,87 @@ describe("AnalysisDraftSchema", () => {
       basis: "inferred X from two independent reports plus the documented mechanism",
     })
     expect(parsed.basis).toContain("inferred X")
+  })
+
+  it("accepts optional load-bearing assumptions and an outside view", () => {
+    const parsed = AnalysisDraftBaseSchema.parse({
+      claimId: "c1",
+      status: "inferred",
+      finding: "the platform team will stay for the paid tier",
+      confidence: "medium",
+      basis: "inferred from two retention reports",
+      assumptions: [
+        {
+          assumption: "the free tier continues",
+          confidence: "medium",
+          ifFalse: "the migration cost reverses the recommendation",
+          test: "check the published pricing page each quarter",
+        },
+      ],
+      outsideView: {
+        referenceClass: "similar platform migrations",
+        baseRate: "5 of 7 took 6-12 months (2020-2024 migrations)",
+        caseAdjustment: "the smaller scope shortens it",
+      },
+    })
+
+    expect(parsed.assumptions[0]?.ifFalse).toContain("migration cost")
+    expect(parsed.outsideView?.baseRate).toContain("5 of 7")
+  })
+
+  it("defaults assumptions to empty and outsideView to undefined", () => {
+    const parsed = AnalysisDraftBaseSchema.parse({
+      claimId: "c1",
+      status: "verified",
+      finding: "the source says X",
+      confidence: "high",
+    })
+
+    expect(parsed.assumptions).toEqual([])
+    expect(parsed.outsideView).toBeUndefined()
+  })
+
+  it("accepts competing hypotheses and the evidence that discriminates them", () => {
+    const parsed = AnalysisDraftBaseSchema.parse({
+      claimId: "c1",
+      status: "inferred",
+      finding: "the outage started in the queue",
+      confidence: "medium",
+      basis: "inferred from the restart timeline",
+      hypotheses: [
+        {
+          hypothesis: "the database connection pool exhausted",
+          confidence: "low",
+          supports: ["s1"],
+          contradicts: ["s2"],
+          verdict: "unresolved",
+        },
+        {
+          hypothesis: "the queue backed up after the retry storm",
+          confidence: "medium",
+          supports: ["s2", "s3"],
+          contradicts: [],
+          verdict: "leading",
+        },
+      ],
+      discriminatingEvidence: ["s2", "queue depth after the restart"],
+    })
+
+    expect(parsed.hypotheses?.[0]?.verdict).toBe("unresolved")
+    expect(parsed.hypotheses?.[1]?.supports).toEqual(["s2", "s3"])
+    expect(parsed.discriminatingEvidence).toEqual(["s2", "queue depth after the restart"])
+  })
+
+  it("keeps hypotheses and discriminatingEvidence optional", () => {
+    const parsed = AnalysisDraftBaseSchema.parse({
+      claimId: "c1",
+      status: "verified",
+      finding: "the source says X",
+      confidence: "high",
+    })
+
+    expect(parsed.hypotheses).toBeUndefined()
+    expect(parsed.discriminatingEvidence).toBeUndefined()
   })
 })
 

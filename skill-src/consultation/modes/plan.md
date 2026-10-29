@@ -2,7 +2,7 @@
 
 `plan` is a personal action plan. An implementation plan for a codebase belongs to the coder's ExecPlan, and a future-structure decision is `design`.
 
-Before the steps, check the planning fallacy and optimism bias (the typical project runs longer and costs more than its plan), sunk cost (past spending is not a reason to continue), and the base rate for similar projects. Run a short pre-mortem: name the top three failure modes and the early signal that each is starting.
+Before the steps, check the planning fallacy and optimism bias (projects run longer and cost more than planned), sunk cost (past spending is not a reason to continue), and the base rate for similar projects. Pre-mortem: name the top three failure modes and each one's early signal.
 
 Short:
 
@@ -21,6 +21,10 @@ Full:
 理由：...
 可行性与约束：
 - 时间/成本/能力/风险...
+失败模式与早期信号（按可能性排序）：
+- <failure mode>: <observable early signal>
+- <failure mode>: <observable early signal>
+- <failure mode>: <observable early signal>
 步骤：
 1. ...
 2. ...

@@ -1,14 +1,8 @@
 ## Claim Decomposition
 
-Decompose every consultation at the claim level. The domain determines relevant sources. The claim type determines the verification method.
+Decompose every consultation at the claim level. The domain determines relevant sources.
 
-| Claim type | Verification method |
-|---|---|
-| Verifiable fact | Check a primary authoritative source. Confirm measurement, date, and applicability. |
-| Causal or efficacy claim | Require a mechanism plus independent support. Distinguish correlation from causation. |
-| Experiential judgment | Treat as a lead, not proof. Weight by number of independent reports and context match. |
-| Future prediction | State assumptions explicitly. Mark as provisional. Never present as fact. |
-| Value preference and decision | Do not verify. Elicit from the user or use explicit defaults. Separate from evidence. |
+<!-- CLAIM-TYPES -->
 
 ## Source Evaluation
 
@@ -30,6 +24,10 @@ Grades:
 - `lead_only`: useful as a lead, counterexample, or experience report, not as evidence.
 
 Niche sources and forums are leads, not evidence; obscurity is never credibility. Correlated reposts count as one source chain. Grading assumes honest but flawed sources; deliberate deception is the intent audit's job.
+
+### Claim Confidence Adjustments
+
+Grade the evidence body, not just each source. Downgrade to at most `medium` (name the flaw or gap) for inconsistency (reliable sources conflict), indirectness (different population, period, region, or method), imprecision (too-wide estimate or too-small sample; `low` if severe), or bias in a load-bearing source from selection, measurement, or conflict (one level lower, `low` if severe). Upgrade to `high` when independent chains agree, even from medium sources, or a large, consistent dose-response effect has a plausible mechanism (name it). Output stays `high`/`medium`/`low`; no percentages or second scale.
 
 ## Intent Audit: Deliberate Deception
 

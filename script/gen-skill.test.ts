@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
+import { join } from "node:path"
 
-import { GENERATED_MARKER, renderSkill, SKILL_OUTPUT_PATH } from "./gen-skill.ts"
+import {
+  GENERATED_MARKER,
+  injectMarkers,
+  renderSkill,
+  SKILL_FRAGMENTS,
+  SKILL_OUTPUT_PATH,
+} from "./gen-skill.ts"
 
 describe("gen-skill", () => {
   test("assets/skills/consultation/SKILL.md is the current generated output", async () => {
@@ -29,6 +36,40 @@ describe("gen-skill", () => {
         `${GENERATED_MARKER}\n\n# Consultation Skill`,
       ),
     ).toBe(true)
+  })
+
+  test("renders every shared fragment once and leaves no marker", async () => {
+    // given
+    const rendered = await renderSkill()
+
+    // when // then — each fragment is inserted from its single source
+    for (const fragment of SKILL_FRAGMENTS) {
+      const text = (await readFile(fragment.assetPath, "utf8")).trim()
+      expect(rendered).toContain(text)
+      expect(rendered.split(text).length - 1).toBe(1)
+      expect(rendered).not.toContain(fragment.marker)
+    }
+  })
+
+  test("fails loudly when a fragment marker is missing or repeated", async () => {
+    // given
+    const body = "## Two-Axis Routing\n\nno marker here"
+
+    // when // then — every fragment enforces its own marker
+    for (const fragment of SKILL_FRAGMENTS) {
+      await expect(injectMarkers(body, [fragment])).rejects.toThrow(fragment.marker)
+      await expect(
+        injectMarkers(`${fragment.marker}\n${fragment.marker}`, [fragment]),
+      ).rejects.toThrow("repeats")
+    }
+  })
+
+  test("fails loudly when a fragment asset is missing or empty", async () => {
+    // given
+    const fragment = { name: "missing", marker: "<!-- MISSING -->", assetPath: join(SKILL_FRAGMENTS[0]!.assetPath, "nope.md") }
+
+    // when // then
+    await expect(injectMarkers(fragment.marker, [fragment])).rejects.toThrow("<!-- MISSING -->")
   })
 
   test("emits modules in the declared order", async () => {

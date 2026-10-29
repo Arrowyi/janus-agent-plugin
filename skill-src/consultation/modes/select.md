@@ -2,7 +2,7 @@
 
 Not for choosing a future structure: an architecture, module boundary, or interface decision is `design`.
 
-Before recommending, check reversibility and switch cost — how hard the pick is to undo — and the base rate: what usually happens to people who choose each option. A cheap-to-reverse pick can carry more uncertainty; a one-way choice needs the stronger base rate. Keep the tie-break when the top two are close.
+Before recommending, check reversibility and switch cost — how hard the pick is to undo — and the base rate: what usually happens to people who choose each option. Keep the tie-break when the top two are close.
 
 Short:
 

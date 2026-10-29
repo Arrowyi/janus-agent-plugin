@@ -734,5 +734,159 @@
       "research"
     ],
     "notes": "Rubric: Reject a boolean signal matrix, a fabricated count, or `clean` inferred from missing data. Require fired signal names, an independence entry, and explicit selection-frame missing observations. Covers the P2 verifier schema."
+  },
+  {
+    "id": "C63",
+    "title": "A long-term platform commitment surfaces its load-bearing assumptions",
+    "given": "A user asks whether to commit to a platform's long-term contract, and the recommendation depends on premises nobody stated: the free tier keeps working and the team stays the same size.",
+    "when": "The consultant runs the analysis pass and the critic reviews the leading conclusion",
+    "then": "The analyst records the load-bearing premises in `assumptions` with `assumption`, `confidence`, `ifFalse`, and `test`, marks the most fragile premise (for example the free tier continuing), and gives a concrete way to test it. Ordinary background knowledge is not listed, and no claim carries more than three assumptions. The critic checks the same premises, and `qualityFlags` names any that would change the finding if false.",
+    "grading": "model",
+    "modes": [
+      "select"
+    ],
+    "notes": "Rubric: Reject a generic risk list or background facts dressed as assumptions. Require at most three per claim, an `ifFalse` consequence that changes the finding, and a test for the most fragile premise. Covers the batch-1 KAC check."
+  },
+  {
+    "id": "C64",
+    "title": "A completion-time prediction starts from the outside view",
+    "given": "A user asks how long a project will take, and no project-specific data exists, but comparable projects have published durations.",
+    "when": "The analyst handles the claim as a prediction",
+    "then": "It gives the reference class and its base rate with a source and period before any case-specific adjustment, sets `outsideView` with `referenceClass`, `baseRate`, and `caseAdjustment`, and keeps the prediction provisional. When no baseline exists it writes a plain \"no usable baseline\" instead of inventing a precise percentage.",
+    "grading": "model",
+    "modes": [
+      "research"
+    ],
+    "notes": "Rubric: Reject an inside-view estimate with no reference class, a fabricated precise percentage, or a missing baseline presented as certainty. Require baseline first, then the case adjustment. Covers the batch-1 outside-view field."
+  },
+  {
+    "id": "C65",
+    "title": "Consistent sources trigger the value-of-information stop",
+    "given": "Several independent sources already agree on the load-bearing fact, and one more search could only repeat them.",
+    "when": "The consultant decides whether to gather more evidence",
+    "then": "It stops, states a stop reason in the evidence section (the next source cannot change the decision), names what it did not check, and delivers the answer. It does not keep searching for completeness or pad the evidence list.",
+    "grading": "model",
+    "modes": [
+      "verify"
+    ],
+    "notes": "Rubric: Reject an unbounded search loop or a claim that everything was checked. Require an explicit stop reason and the unchecked remainder. Covers the batch-1 VOI stop rule."
+  },
+  {
+    "id": "C66",
+    "title": "An irreversible choice with a missing key fact goes deeper instead of stopping",
+    "given": "A user faces an irreversible, expensive commitment, and one load-bearing fact is still missing.",
+    "when": "The consultant applies the value-of-information rule",
+    "then": "It keeps gathering or escalates the tier because the missing fact could change the decision, and it says why the extra depth buys something. For a cheap, reversible alternative it would instead run a small trial; it does not apply the cheap-trial path to the irreversible option.",
+    "grading": "model",
+    "modes": [
+      "select"
+    ],
+    "notes": "Rubric: Reject stopping on an irreversible decision with a gap that could flip it, and reject spending deep-tier budget on a cheap reversible trial. Require the irreversibility distinction. Covers the batch-1 VOI and two-way-door rule."
+  },
+  {
+    "id": "C67",
+    "title": "A three-month learning plan carries a top-3 pre-mortem with early signals",
+    "given": "A user asks for a three-month learning plan with weekly milestones and no prior experience in the subject.",
+    "when": "The consultant produces the full plan template",
+    "then": "Between the constraints and the steps it lists the top three failure modes, and each has an observable early signal (for example two skipped weeks in a row) rather than \"watch for risks\". `failureModes` carries `mode` and `earlySignal`, and the plan keeps its stop/rollback condition.",
+    "grading": "model",
+    "modes": [
+      "plan"
+    ],
+    "notes": "Rubric: Reject vague risk language, more or fewer than the top three modes, or a signal that cannot be observed. Require the block before the steps and a concrete early signal per mode. Covers the batch-1 plan pre-mortem."
+  },
+  {
+    "id": "C68",
+    "title": "A multi-ask message is split by ask and its dependent ask waits for the verdict",
+    "given": "One message carries three asks: whether a product's safety claim is true, whether the user should buy it, and how to migrate to it over three months. The migration depends on both the verdict and the purchase decision.",
+    "when": "The consultant routes the turn",
+    "then": "It splits by ask into `verify`, `select`, and `plan`, runs them in dependency order (verdict, then purchase, then migration), and does not give migration steps as if the earlier verdict held when the claim is refuted or the pick is no. It answers one top anchor, a section per ask, and one bottom anchor instead of repeating a full double anchor per ask, and asks at most one clarifying question only if the split changes the deliverable.",
+    "grading": "model",
+    "modes": [
+      "verify",
+      "select",
+      "plan"
+    ],
+    "notes": "Rubric: Reject a single blended answer, an unordered set of modes, or migration detail that ignores a refuted premise. Require per-ask modes, dependency order, one combined anchor pair, and the one-clarification cap. Covers the batch-2 multi-ask rules."
+  },
+  {
+    "id": "C69",
+    "title": "One end-to-end goal stays one composite deliverable",
+    "given": "A user asks to be taken from zero to a working skill: which book to start with, a three-month schedule, and how to know they have learned it.",
+    "when": "The consultant applies the mode card",
+    "then": "It treats the request as one end-to-end goal and delivers one `guide` package (or `author` when a durable document is requested), not a split into separate `select`, `plan`, and `research` answers. The recommendation, procedure, and background facets are covered inside the composite deliverable, and the mode note names the single mode.",
+    "grading": "model",
+    "modes": [
+      "guide"
+    ],
+    "notes": "Rubric: Reject over-splitting one goal into several modes or delivering only a book list or only a schedule. Require one composite package with recommendation and procedure, or `author` when the artifact is a document. Covers the batch-2 one-goal rule."
+  },
+  {
+    "id": "C70",
+    "title": "Conflicting high-grade sources cap a claim at medium",
+    "given": "Two primary, accountable, independent sources directly contradict each other on the same load-bearing claim, and both grade `high` as individual sources.",
+    "when": "The consultant assigns claim confidence",
+    "then": "The claim's confidence is at most `medium`, and the rationale names inconsistency as the downgrade and states the conflict and what evidence would resolve it. It does not inherit `high` from the two source grades, invent a percentage, or silently pick the more convenient source.",
+    "grading": "model",
+    "modes": [
+      "verify"
+    ],
+    "notes": "Rubric: Reject `high` confidence just because both sources graded high, and reject an unstated tie-break. Require the inconsistency downgrade, the named conflict, and a resolution condition. Covers the batch-2 GRADE-lite downgrade."
+  },
+  {
+    "id": "C71",
+    "title": "Independent replication can raise a medium source to high confidence",
+    "given": "The best single source for a claim grades `medium`, but three genuinely independent chains replicate the same result.",
+    "when": "The consultant assigns claim confidence",
+    "then": "The claim may be `high`, and the rationale names independent replication as the upgrade rather than pretending the original source was upgraded. It keeps the source grade separate from the claim confidence and does not output a percentage or a second scale.",
+    "grading": "model",
+    "modes": [
+      "research"
+    ],
+    "notes": "Rubric: Reject refusing `high` despite independent replication, and reject relabeling the medium source as high. Require the replication upgrade, the source-versus-claim distinction, and the high/medium/low scale only. Covers the batch-2 GRADE-lite upgrade."
+  },
+  {
+    "id": "C72",
+    "title": "The mode card separates the seven delivery modes at their boundaries",
+    "given": "Seven requests arrive in turn: 教我入门 X; 帮我规划 X; 深挖 X; 写一份 X 教程; X 值不值得; X 是真的吗; 设计 X 的模块边界.",
+    "when": "The consultant applies the shared mode card to each request",
+    "then": "They route to `guide`, `plan`, `research`, `author`, `select`, `verify`, and `design` respectively. A pure \"which one\" stays `select` rather than becoming `guide`, a pure \"how to\" stays `plan`, and a chat-only understanding request stays `research`; the first-match card order is applied, not the sentence's surface wording.",
+    "grading": "model",
+    "modes": [
+      "select",
+      "verify",
+      "plan",
+      "research",
+      "guide",
+      "author",
+      "design"
+    ],
+    "notes": "Rubric: Require all seven labels in order; reject collapsing guide into select or plan, author into research, or design into select or plan. Covers the batch-2 mode boundary set."
+  },
+  {
+    "id": "C73",
+    "title": "Two plausible explanations produce a hypothesis matrix built around discriminating evidence",
+    "given": "A verify/research claim has two plausible explanations that each fit part of the evidence — for example a product's ratings fell after a redesign either because quality dropped or because a competitor's campaign drew away the reviewers who cared.",
+    "when": "The consultant marks the claim as multi-explanation and dispatches the analyst, or the analyst finds the evidence supports two or more plausible explanations without a mark",
+    "then": "The analyst builds 2–3 competing hypotheses with `confidence`, `supports`, `contradicts`, and a `verdict`, records the evidence that separates them in `discriminatingEvidence`, and judges which hypothesis survives only after that evidence. It does not list support only for the leading explanation, and it keeps a hypothesis `unresolved` when the evidence cannot separate it.",
+    "grading": "model",
+    "modes": [
+      "verify",
+      "research"
+    ],
+    "notes": "Rubric: Reject a single-explanation analysis with supporting evidence only, and reject invented discriminating evidence. Require 2–3 hypotheses, the support/contradiction lists, named discriminating evidence, and an explicit unresolved verdict where the evidence cannot decide. Covers the batch-3 ACH matrix."
+  },
+  {
+    "id": "C74",
+    "title": "The critic attacks a hypothesis matrix by finding a missing hypothesis or non-discriminating evidence",
+    "given": "The analyst returns a hypothesis matrix for a multi-explanation claim, and one listed item is consistent with every hypothesis while a third explanation is not represented.",
+    "when": "The consultant dispatches the critic against the matrix",
+    "then": "The critic names the omitted hypothesis or the item that does not discriminate between hypotheses, and reports it in `missingAlternatives` or `flaws` instead of inventing a new schema field. It does not merely restate the matrix or accept the analyst's leading verdict.",
+    "grading": "model",
+    "modes": [
+      "verify",
+      "research"
+    ],
+    "notes": "Rubric: Reject a critique that only echoes the matrix or adds a hypothesis field. Require a named missing hypothesis or a named non-discriminating item, placed in `missingAlternatives` or `flaws`. Covers the batch-3 ACH critic challenge."
   }
 ]

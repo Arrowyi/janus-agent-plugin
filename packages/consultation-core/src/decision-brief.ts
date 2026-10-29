@@ -75,6 +75,9 @@ export const PlanBriefSchema = z.object({
   suitedFor: z.string().optional(),
   steps: z.array(PlanStepSchema).min(1),
   assumptions: z.array(z.string()).default([]),
+  failureModes: z
+    .array(z.object({ mode: z.string(), earlySignal: z.string() }))
+    .default([]),
   healthNote: z.string().optional(),
   residualUncertainty: z.string().optional(),
   alternatives: z.array(z.object({ option: z.string(), switchCondition: z.string() })).default([]),
@@ -191,6 +194,9 @@ function briefTexts(brief: DecisionBrief): string[] {
     }
     for (const alternative of brief.alternatives) {
       texts.push(alternative.option, alternative.switchCondition)
+    }
+    for (const failureMode of brief.failureModes) {
+      texts.push(failureMode.mode, failureMode.earlySignal)
     }
   } else if (brief.mode === "guide") {
     texts.push(brief.goal, ...brief.assumptions, ...brief.prerequisites)

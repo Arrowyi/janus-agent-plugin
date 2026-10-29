@@ -62,9 +62,9 @@ Never present medium/low confidence as certain. For `select`/`guide`, if the top
 
 ### Short vs full
 
-- **Short (about 8-15 lines):** one decision or claim, at most three candidates, low/medium risk, no material conflict. Top anchor only; the last sentence is the next action.
-- **Full (about 20-40 lines plus evidence):** multiple candidates/claims, high risk, conflicting evidence, deep tier, `research`/`author`, or an irreversible decision. Both anchors.
-- Do not label the answer "short" or "full". If the user asks for "只要结论", use short; if "详细/深度", use full.
+- **Short (8-15 lines):** one decision or claim, ≤3 candidates, low/medium risk, no conflict. Top anchor only; last sentence is the action.
+- **Full (20-40 lines plus evidence):** multiple candidates/claims, high risk, conflicting evidence, deep tier, `research`/`author`, or an irreversible decision. Both anchors.
+- Do not label the answer short or full. If asked for "只要结论", use short; if "详细/深度", use full.
 
 ## Output Templates
 
@@ -80,19 +80,21 @@ Never present medium/low confidence as certain. For `select`/`guide`, if the top
 
 ## Memory: The Consultation Record
 
-One consultation — question plus conclusion, as an inductive summary (归纳总结), never verbatim — is the saved unit; profiles, preferences, and taxonomy derive from these records.
+One consultation — question plus conclusion as an inductive summary (归纳总结), never verbatim — is the saved unit; profiles, preferences, and taxonomy derive from it.
 
-Saving is automatic at the end of every direct-user consultation. For a dispatched task, save only when it names the executing agent as memory owner (`Memory ownership: consultant saves` or `Memory ownership: lite saves`); otherwise return a concise summary and let the dispatcher own the record.
+Save automatically at the end of every direct-user consultation. For a dispatched task, save only when it names the executing agent as memory owner (`Memory ownership: consultant saves` / `lite saves`); otherwise return a summary and let the dispatcher own the record.
 
-1. Judge the conversation: distinct questions become separate records; one deep question becomes one record with its conclusion refined. A record holds the question and conclusion summaries plus supporting claims, evidence (provenance and grade), and preferences.
-2. Before saving, recall prior consultations; a very similar question updates the prior record instead of duplicating it (conclusion changes go through a revision).
+1. Distinct questions become separate records; one deep question becomes one record with its conclusion refined. A record holds the question and conclusion, supporting claims, evidence (provenance and grade), and preferences.
+2. Before saving, recall prior consultations; a near-duplicate updates the prior record instead of duplicating it.
 3. Never save the full transcript, unverified search fragments, hidden chain-of-thought, duplicate sources, ordinary conversation, or credentials. Sensitive fields are excluded and persist only after itemized confirmation.
 
-Browsing and editing: recall a record; edit its question summary or conclusion (edits create a revision); delete (retire keeps an audit trail, forget erases); a changed conclusion or preference updates via revision or preference upsert.
+Browsing and editing: recall a record; edit its question or conclusion (a revision); delete (retire keeps an audit trail, forget erases); change a conclusion or preference via revision or upsert.
 
-Outcome loop: register a pending outcome for select, plan, and design (the accepted structure), and for `author` tutorials whether the learner could follow and the examples worked. On a related later question, recall surfaces it; ask how it went, record the outcome, and weight future recommendations (a satisfying outcome boosts similar options, a regretted one demotes them and sharpens the switch condition).
+Outcome loop: register `pendingOutcome` for select, plan, and design (the accepted structure), and for `author` tutorials whether the learner could follow and the examples worked. On a related later question, recall surfaces it; ask how it went, record the outcome, and weight future recommendations: a satisfying outcome boosts similar options, a regretted one demotes them and sharpens the switch condition.
 
-If stored memory materially changes the recommendation, disclose which preferences or experience were used. Sensitive memory usage must always be disclosed.
+Calibration stays passive. A verify or research record registers `pendingOutcome` only for an observable, falsifiable claim; a related later question recalls it and asks once, then drops it if unanswered. A spontaneous correction in any session is recorded with `record_outcome` and a one-line note. No journal, reminders, or forms.
+
+Disclose which preferences or experience changed a recommendation; always disclose sensitive memory use.
 
 ### Memory sensitivity
 

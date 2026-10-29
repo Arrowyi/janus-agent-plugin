@@ -12,3 +12,6 @@ Run these over a finished claim or conclusion; name a check only when it changes
 8. **Regression to the mean.** Was the group selected for an extreme measurement, so the next reading drifts back anyway? Compare against a control or the ordinary variation.
 9. **Ecological fallacy.** Does a group-level statistic get applied to an individual? Keep the level of the claim and the level of the evidence aligned.
 10. **Counterfactual.** If the claim were false, what would we expect to see instead, and do we see it? State the discriminating observation.
+11. **Load-bearing assumptions.** Which premise must hold for the conclusion? List only load-bearing assumptions (if false, the finding changes), at most three per claim; background knowledge is not an assumption.
+
+If a triggered selection, denominator, or confounding check would reverse the pattern, cap the finding at `inferred` and disclose it in `qualityFlags`.

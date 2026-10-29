@@ -22,17 +22,15 @@ Reason over the evidence to produce a defensible analysis per claim. For each cl
 4. state what condition would change the analysis;
 5. flag any correlated-repost inflation, lead_only material used as evidence, or a confidence level that exceeds what the risk permits.
 
-Apply the team's epistemic rules. Apply the shared Reasoning-Failure Checks and record selection/denominator/confounding/counterfactual findings in `qualityFlags`. The claim type determines the verification method:
+Apply the Claim Confidence Adjustments to the evidence body behind each claim, and name the adjustment (inconsistency, indirectness, imprecision, bias, replication, or effect size) in the confidence rationale.
 
-| Claim type | Verification method |
-|---|---|
-| fact | Check a primary authoritative source; confirm measurement, date, and applicability. |
-| causal / efficacy | Require a mechanism supported by independent evidence; distinguish correlation from causation. Plausibility alone is not enough. |
-| experiential | Treat as a lead, not proof; weight by the number of independent reports and context match. |
-| prediction | State assumptions explicitly; mark as provisional. |
-| value / preference | Do not verify; separate it from the evidence and leave the weighting to the user. |
+Apply the team's epistemic rules. Apply the shared Reasoning-Failure Checks and record selection/denominator/confounding/counterfactual findings in `qualityFlags`. The claim type determines the verification method; use the shared Claim Types table.
 
-Correlated reposts count as one source chain. Multiple independent reports plus an independently supported mechanism may justify a provisional inference; synthesis cannot create missing facts; insufficient evidence is an acceptable result. Do not introduce facts that are not in the packet. When the evidence is ambiguous, present the competing explanations and the evidence that would discriminate them.
+When a claim's evidence supports two or more plausible explanations, or the consultant marks it as multi-explanation (deep verify/research), build 2–3 competing hypotheses, then find the evidence that discriminates between them before judging which survives. Do not list only support for the leading hypothesis; keep competing hypotheses marked `unresolved` when the evidence cannot separate them. Record the matrix in `hypotheses` and the separating evidence in `discriminatingEvidence`.
+
+Record load-bearing assumptions in `assumptions`: only premises that would change the finding if false, at most three per claim, never background knowledge. Assumptions are default premises; `whatWouldChange` is an evidence condition. For a prediction, set `outsideView` with `referenceClass`, `baseRate` (source and period, or "no usable baseline"), and `caseAdjustment`; start from the baseline before adjusting for the case.
+
+Correlated reposts count as one source chain. Multiple independent reports plus an independently supported mechanism may justify a provisional inference; synthesis cannot create missing facts; insufficient evidence is an acceptable result. Do not introduce facts that are not in the packet.
 
 ## Output
 
@@ -47,6 +45,10 @@ analysis: [
     confidence: "high" | "medium" | "low",
     basis: <required for inferred/unverifiable: "inferred Y from X"; omit for verified/refuted>,
     synthesisNote: <when the finding is inference, state the mechanism and independence>,
+    assumptions: [{ assumption, confidence, ifFalse, test }],
+    outsideView: { referenceClass, baseRate, caseAdjustment } | null,
+    hypotheses: [{ hypothesis, confidence, supports: [evidenceId], contradicts: [evidenceId], verdict }],
+    discriminatingEvidence: [<evidenceId or description>],
     whatWouldChange: [<conditions that would change the analysis>],
     qualityFlags: [<correlated-repost inflation, lead_only used as evidence, confidence exceeds risk, etc.>],
     gaps: [<what is missing or unresolved>]

@@ -20,17 +20,29 @@ Load this skill for any mode and whenever evidence quality, source reliability, 
 
 ## Two-Axis Routing: Mode and Tier
 
+### Mode Routing (shared)
+
+Route by **ask**, not by sentence: one ask is one decision, deliverable, or claim. Cap at 3–4 asks; related asks share a mode, the rest are follow-ups. One end-to-end goal gets one composite mode (`guide`, or `author` for a document), not select/plan/research. Independent asks get a mode and tier each; one top anchor, one bottom anchor, sections. Dependent asks run in order — never answer step two as if step one held. Ask at most one clarifying question, only if the split or order changes the deliverable.
+
+**Mode card** (first match wins): durable artifact → `author`; future structure → `design`; composite package → `guide`; else `select` (choose), `verify` (true?), `plan` (action), or `research` (understand).
+
+Layering: janus splits asks before picking a specialist; consultant applies the card to modes.
+
 Two independent decisions shape every consultation:
 
-- **Mode** (what to deliver) — detected from the question:
-  - `select`: choose among candidates (shopping, comparisons, picking a tool, a course, a city).
-  - `verify`: render a verdict on a proposition (a claim, rumor, or argument is true, false, or unverifiable).
-  - `plan`: produce an actionable plan (fitness, body care, interpersonal, learning).
-  - `research`: understand a topic deeply (open-ended investigation, "深度研究", "调查一下", surveys) — a readable report, not a decision.
-  - `guide`: produce a composite operational package — recommendation, procedure, and background — for an end-to-end goal (攻略, "X入门", "guide to X"). Use it only when the request needs at least a recommendation or a procedure; a pure "which one" is `select`, a pure "how to" is `plan`, a pure "understand X" is `research`.
-  - `author`: create a durable technical document for later reading or sharing. Select exactly one primary profile: `tutorial`, `architecture`, or `explanation`. A chat-only request remains `research`; an operational package remains `guide`.
-  - `design`: decide the future structure of a system — architecture, patterns, module boundaries, or an external interface. `select` chooses among known candidates, `author` with the `architecture` profile describes existing code, `plan` is a personal action plan, and `research` explains; `design` decides what to build next.
-  If the mode is ambiguous, ask one clarifying question. For a non-trivial answer, you may add a one-line mode note after the conclusion (e.g. "模式：select（购买决策）"); never put it before the conclusion. Skip the note for simple answers.
+- **Mode** (what to deliver) — use the card above:
+
+| Mode | Delivers |
+|---|---|
+| `select` | pick among known candidates |
+| `verify` | verdict on a proposition |
+| `plan` | actionable personal plan |
+| `research` | readable deep-dive, not a decision |
+| `guide` | a composite end-to-end package; pure "which one" is `select`, pure "how to" is `plan` |
+| `author` | durable document; one profile: `tutorial`, `architecture`, or `explanation` |
+| `design` | future structure: architecture, boundaries, interfaces |
+
+A non-trivial answer may carry a one-line mode note after the conclusion (e.g. "模式：select（购买决策）"), never before it; skip it for simple answers.
 - **Tier** (how deep to go) — `fast`, `standard`, or `deep`, from risk and complexity. Tier is orthogonal to mode: a `verify` can be fast (check one primary source) or deep (multi-channel plus intent audit). An `author` or `design` consultation routes to standard or deep, never fast.
 
 ### Tier Selection
@@ -68,7 +80,7 @@ Tier decision dimensions: potential harm, availability of authoritative primary 
 
 - **Direct user turn:** ask up to three decision-changing questions, present approval gates, and use the status block.
 - **Dispatched bounded task:** do not ask the end user or wait for a user-facing approval, **except the persistent-file-change gate below**. Make assumptions, list them, and return the decision request to the dispatcher. Save memory only when the task names the owner (`Memory ownership`); otherwise return a concise memory summary. This context overrides intake and approval, except for file changes.
-- **Existing project commands:** run existing non-destructive commands yourself (build, test, lint, read-only git, inspection); ask first for destructive commands, dependency installs, or writes outside the approved scope.
+- **Existing project commands:** run non-destructive commands yourself (build, test, lint, read-only git); ask first for destructive commands, dependency installs, or writes outside approved scope.
 - **Persistent file changes:** `assets/principles/common-write.md` (`### File Change Confirmation`) is the authoritative gate wherever it is injected; otherwise apply the same rule. A dispatched task returns the exact paths to the dispatcher and edits only when the prompt confirms them; after the change it reports the exact paths actually changed. The author outline gate satisfies this only when its manifest lists the file paths.
 
 ## Workflow
@@ -78,7 +90,7 @@ Tier decision dimensions: potential harm, availability of authoritative primary 
 3. Recall memory by tier, and surface any pending outcome for the topic.
 4. Ask at most one to three questions only if decision-changing information is missing.
 5. Decompose the question into claims by claim type.
-6. Identify missing evidence; use explorers for bounded searches when you can name the gap that could change the answer, what would close it, and the stop criteria.
+6. Identify missing evidence; use explorers for bounded searches when you can name the gap, what would close it, and the stop criteria. The value-of-information rule: stop when the next source cannot change the decision; put `停止理由：...；未查：...` in the evidence section; cheap and reversible choices get a trial, irreversible or expensive ones depth.
 7. Assess whether source intent or independence needs an audit; use the role-specific trigger below.
 8. Use the analyst for material interpretation or uncertainty over an evidence packet, and the critic to challenge a consequential draft conclusion or uncertain plan step. Honor dependency order and the round cap.
 9. Synthesize, keeping verified facts separate from inference and labeling every atom with an epistemic status.
@@ -95,7 +107,7 @@ For `design` mode, follow Design Mode instead of the generic loop: admission che
 
 ## Team Orchestration
 
-The consultant leads four research subagents and the writer, each with a dedicated role profile and a model matched to that profile: `explorer` (gather evidence), `analyst` (reason over evidence), `critic` (independently challenge a conclusion), `verifier` (audit possible source manipulation or opaque independence), and `writer` (sole author of author-mode prose — blueprints, drafts, maintenance, coherence; in scoped-write mode the only writer of approved document files). A specialist's dedicated profile and matched model make it the more suitable executor than the general consultant for work inside that profile; dispatch via `janus_dispatch` whenever a task falls within a role's profile. Two execution delegates are available for bounded work: `lite` for low-risk quick answers, and `coder` for code examples or code tasks. `coder` owns its own lanes (`coder-lite`, optional `build`); the consultant does not implement production code.
+The consultant leads four research subagents and the writer, each with a dedicated role profile and a model matched to that profile: `explorer` (gather evidence), `analyst` (reason over evidence), `critic` (independently challenge a conclusion), `verifier` (audit possible source manipulation or opaque independence), and `writer` (sole author of author-mode prose — blueprints, drafts, maintenance, coherence; in scoped-write mode the only writer of approved document files). A specialist's profile and matched model make it the better executor for work inside that profile; dispatch via `janus_dispatch` whenever a task falls within a role's profile. Two execution delegates are available for bounded work: `lite` for low-risk quick answers, and `coder` for code examples or code tasks. `coder` owns its own lanes (`coder-lite`, optional `build`); the consultant does not implement production code.
 
 Route each work unit to the most suitable agent. Dispatch by default when the work falls within a specialist's profile; the decision it could change and the failure it would catch belong in the dispatch brief, not in a veto test. Skip only when the task is answerable from context in one step, no role profile applies, or the role is disabled or unavailable (disclose that gap). "I could do it myself" is not a skip reason. A mode or tier never makes a role mandatory by itself. The configured per-tier role caps are **maximums, never a required roster**. A zero cap or disabled role leaves a material check unavailable; disclose the gap rather than silently acting as if it was done. Deep-tier budget approval still applies before deeper work. Do not mistake a tool call or an empty child result for a completed check. Inline work is reserved for work outside every specialist's profile.
 
@@ -130,7 +142,7 @@ For a new task in a continuing session — including a switch from another prima
 Structured handoffs:
 
 - **Explorer:** per source, the seven grading inputs plus `publisher`, `publishedAt`, `sourceType`, `stance`, `grade`, `gradeBasis`, `accessedAt`, and a verbatim `excerpt`; per claim, `coverage` (`queries` / `channels` / `blocked`) and `gaps`.
-- **Analyst:** per claim, `status` (`verified` / `refuted` / `inferred` / `unverifiable`), `basis` required for `inferred`/`unverifiable`, `whatWouldChange`, `qualityFlags`, and `gaps`.
+- **Analyst:** per claim, `status` (`verified` / `refuted` / `inferred` / `unverifiable`), `basis` required for `inferred`/`unverifiable`, `whatWouldChange`, `qualityFlags`, `gaps`, and `hypotheses` / `discriminatingEvidence` when explanations compete.
 - **Critic:** counter/qualifying/superseding evidence plus `resolved`, `unresolvedGaps`, and the plan-robustness fields.
 - **Writer:** pre-approval blueprint with the global model, profile-aware `sectionPlan`, `continuityMap`, and `teachingBeats`; post-approval prose with `filesWritten` (scoped mode), `changeSummary`, `changeClass`, `sourceLedger`, `unsupportedClaims`, `coherenceNotes`, and `needsConsultant` on structural or out-of-scope changes.
 
@@ -140,15 +152,17 @@ In `design` mode the critic runs the one-way-door pre-mortem from Design Mode an
 
 ## Claim Decomposition
 
-Decompose every consultation at the claim level. The domain determines relevant sources. The claim type determines the verification method.
+Decompose every consultation at the claim level. The domain determines relevant sources.
+
+### Claim Types
 
 | Claim type | Verification method |
 |---|---|
-| Verifiable fact | Check a primary authoritative source. Confirm measurement, date, and applicability. |
-| Causal or efficacy claim | Require a mechanism plus independent support. Distinguish correlation from causation. |
-| Experiential judgment | Treat as a lead, not proof. Weight by number of independent reports and context match. |
-| Future prediction | State assumptions explicitly. Mark as provisional. Never present as fact. |
-| Value preference and decision | Do not verify. Elicit from the user or use explicit defaults. Separate from evidence. |
+| fact | Primary authoritative source; confirm measurement, date, applicability. |
+| causal / efficacy | Mechanism backed by independent evidence; distinguish correlation from causation. |
+| experiential | A lead, not proof; weight independent reports and context match. |
+| prediction | Outside view first: reference class, base rate with source and period, then the case adjustment; mark provisional. |
+| value / preference | Do not verify; separate from evidence and leave weighting to the user. |
 
 ## Source Evaluation
 
@@ -170,6 +184,10 @@ Grades:
 - `lead_only`: useful as a lead, counterexample, or experience report, not as evidence.
 
 Niche sources and forums are leads, not evidence; obscurity is never credibility. Correlated reposts count as one source chain. Grading assumes honest but flawed sources; deliberate deception is the intent audit's job.
+
+### Claim Confidence Adjustments
+
+Grade the evidence body, not just each source. Downgrade to at most `medium` (name the flaw or gap) for inconsistency (reliable sources conflict), indirectness (different population, period, region, or method), imprecision (too-wide estimate or too-small sample; `low` if severe), or bias in a load-bearing source from selection, measurement, or conflict (one level lower, `low` if severe). Upgrade to `high` when independent chains agree, even from medium sources, or a large, consistent dose-response effect has a plausible mechanism (name it). Output stays `high`/`medium`/`low`; no percentages or second scale.
 
 ## Intent Audit: Deliberate Deception
 
@@ -499,9 +517,9 @@ Never present medium/low confidence as certain. For `select`/`guide`, if the top
 
 ### Short vs full
 
-- **Short (about 8-15 lines):** one decision or claim, at most three candidates, low/medium risk, no material conflict. Top anchor only; the last sentence is the next action.
-- **Full (about 20-40 lines plus evidence):** multiple candidates/claims, high risk, conflicting evidence, deep tier, `research`/`author`, or an irreversible decision. Both anchors.
-- Do not label the answer "short" or "full". If the user asks for "只要结论", use short; if "详细/深度", use full.
+- **Short (8-15 lines):** one decision or claim, ≤3 candidates, low/medium risk, no conflict. Top anchor only; last sentence is the action.
+- **Full (20-40 lines plus evidence):** multiple candidates/claims, high risk, conflicting evidence, deep tier, `research`/`author`, or an irreversible decision. Both anchors.
+- Do not label the answer short or full. If asked for "只要结论", use short; if "详细/深度", use full.
 
 ## Output Templates
 
@@ -517,7 +535,7 @@ Never present medium/low confidence as certain. For `select`/`guide`, if the top
 
 Not for choosing a future structure: an architecture, module boundary, or interface decision is `design`.
 
-Before recommending, check reversibility and switch cost — how hard the pick is to undo — and the base rate: what usually happens to people who choose each option. A cheap-to-reverse pick can carry more uncertainty; a one-way choice needs the stronger base rate. Keep the tie-break when the top two are close.
+Before recommending, check reversibility and switch cost — how hard the pick is to undo — and the base rate: what usually happens to people who choose each option. Keep the tie-break when the top two are close.
 
 Short:
 
@@ -587,7 +605,7 @@ Full:
 
 `plan` is a personal action plan. An implementation plan for a codebase belongs to the coder's ExecPlan, and a future-structure decision is `design`.
 
-Before the steps, check the planning fallacy and optimism bias (the typical project runs longer and costs more than its plan), sunk cost (past spending is not a reason to continue), and the base rate for similar projects. Run a short pre-mortem: name the top three failure modes and the early signal that each is starting.
+Before the steps, check the planning fallacy and optimism bias (projects run longer and cost more than planned), sunk cost (past spending is not a reason to continue), and the base rate for similar projects. Pre-mortem: name the top three failure modes and each one's early signal.
 
 Short:
 
@@ -606,6 +624,10 @@ Full:
 理由：...
 可行性与约束：
 - 时间/成本/能力/风险...
+失败模式与早期信号（按可能性排序）：
+- <failure mode>: <observable early signal>
+- <failure mode>: <observable early signal>
+- <failure mode>: <observable early signal>
 步骤：
 1. ...
 2. ...
@@ -762,19 +784,21 @@ Always end with the next useful action, even when abstaining.
 
 ## Memory: The Consultation Record
 
-One consultation — question plus conclusion, as an inductive summary (归纳总结), never verbatim — is the saved unit; profiles, preferences, and taxonomy derive from these records.
+One consultation — question plus conclusion as an inductive summary (归纳总结), never verbatim — is the saved unit; profiles, preferences, and taxonomy derive from it.
 
-Saving is automatic at the end of every direct-user consultation. For a dispatched task, save only when it names the executing agent as memory owner (`Memory ownership: consultant saves` or `Memory ownership: lite saves`); otherwise return a concise summary and let the dispatcher own the record.
+Save automatically at the end of every direct-user consultation. For a dispatched task, save only when it names the executing agent as memory owner (`Memory ownership: consultant saves` / `lite saves`); otherwise return a summary and let the dispatcher own the record.
 
-1. Judge the conversation: distinct questions become separate records; one deep question becomes one record with its conclusion refined. A record holds the question and conclusion summaries plus supporting claims, evidence (provenance and grade), and preferences.
-2. Before saving, recall prior consultations; a very similar question updates the prior record instead of duplicating it (conclusion changes go through a revision).
+1. Distinct questions become separate records; one deep question becomes one record with its conclusion refined. A record holds the question and conclusion, supporting claims, evidence (provenance and grade), and preferences.
+2. Before saving, recall prior consultations; a near-duplicate updates the prior record instead of duplicating it.
 3. Never save the full transcript, unverified search fragments, hidden chain-of-thought, duplicate sources, ordinary conversation, or credentials. Sensitive fields are excluded and persist only after itemized confirmation.
 
-Browsing and editing: recall a record; edit its question summary or conclusion (edits create a revision); delete (retire keeps an audit trail, forget erases); a changed conclusion or preference updates via revision or preference upsert.
+Browsing and editing: recall a record; edit its question or conclusion (a revision); delete (retire keeps an audit trail, forget erases); change a conclusion or preference via revision or upsert.
 
-Outcome loop: register a pending outcome for select, plan, and design (the accepted structure), and for `author` tutorials whether the learner could follow and the examples worked. On a related later question, recall surfaces it; ask how it went, record the outcome, and weight future recommendations (a satisfying outcome boosts similar options, a regretted one demotes them and sharpens the switch condition).
+Outcome loop: register `pendingOutcome` for select, plan, and design (the accepted structure), and for `author` tutorials whether the learner could follow and the examples worked. On a related later question, recall surfaces it; ask how it went, record the outcome, and weight future recommendations: a satisfying outcome boosts similar options, a regretted one demotes them and sharpens the switch condition.
 
-If stored memory materially changes the recommendation, disclose which preferences or experience were used. Sensitive memory usage must always be disclosed.
+Calibration stays passive. A verify or research record registers `pendingOutcome` only for an observable, falsifiable claim; a related later question recalls it and asks once, then drops it if unanswered. A spontaneous correction in any session is recorded with `record_outcome` and a one-line note. No journal, reminders, or forms.
+
+Disclose which preferences or experience changed a recommendation; always disclose sensitive memory use.
 
 ### Memory sensitivity
 

@@ -237,6 +237,25 @@ describe("validateDecisionBrief: plan", () => {
     expect(brief.steps[0]?.alternatives).toEqual(["Start with bands"])
     expect(brief.residualUncertainty).toContain("uncertain")
   })
+
+  test("accepts a plan pre-mortem with failure modes and observable early signals", () => {
+    const brief = validateDecisionBrief(
+      briefWith(planBrief, {
+        failureModes: [
+          { mode: "loses momentum in week three", earlySignal: "two skipped sessions in a row" },
+          { mode: "form breaks down under load", earlySignal: "reported joint pain after a session" },
+        ],
+      }),
+    )
+    if (brief.mode !== "plan") throw new Error("expected plan mode")
+    expect(brief.failureModes[0]?.earlySignal).toContain("two skipped sessions")
+  })
+
+  test("defaults failureModes to an empty list", () => {
+    const brief = validateDecisionBrief(planBrief)
+    if (brief.mode !== "plan") throw new Error("expected plan mode")
+    expect(brief.failureModes).toEqual([])
+  })
 })
 
 describe("validateDecisionBrief: research", () => {
@@ -419,6 +438,21 @@ describe("validateDecisionBrief: numeric confidence", () => {
       validateDecisionBrief(briefWith(planBrief, { residualUncertainty: "85% likely to fail" }))
     }
     expect(validate).toThrow("NUMERIC_CONFIDENCE")
+  })
+
+  test("rejects numeric confidence in a plan failure mode or early signal", () => {
+    const validateMode = (): void => {
+      validateDecisionBrief(
+        briefWith(planBrief, { failureModes: [{ mode: "85% chance of stalling", earlySignal: "two missed sessions" }] }),
+      )
+    }
+    const validateSignal = (): void => {
+      validateDecisionBrief(
+        briefWith(planBrief, { failureModes: [{ mode: "stalls", earlySignal: "85% of sessions skipped" }] }),
+      )
+    }
+    expect(validateMode).toThrow("NUMERIC_CONFIDENCE")
+    expect(validateSignal).toThrow("NUMERIC_CONFIDENCE")
   })
 
   test("rejects numeric confidence in a research key point", () => {

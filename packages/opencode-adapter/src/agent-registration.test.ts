@@ -538,6 +538,25 @@ describe("registerConsultantAgent", () => {
     expect(consultant.prompt).toContain("## Role")
   })
 
+  it("injects the shared mode-routing card and keeps the mode-note example", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+
+    // when
+    await registerConsultantAgent(config, pluginConfig, "oc-testnamespace")
+
+    // then
+    const consultant = config.agent?.["consultant"] as { prompt: string }
+    expect(consultant.prompt).toContain("shared Mode Routing card")
+    expect(consultant.prompt).toContain("Route by **ask**, not by sentence")
+    expect(consultant.prompt).toContain("模式：select（购买决策）")
+    expect(consultant.prompt).not.toContain("- **select** —")
+    expect(consultant.prompt.indexOf("### Mode Routing (shared)")).toBeGreaterThan(
+      consultant.prompt.indexOf("## Dispatch Lifecycle (shared)"),
+    )
+  })
+
   it("includes the runtime bindings block in the assembled prompt", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
@@ -1658,6 +1677,24 @@ describe("registerJanus", () => {
     expect(janus.prompt).not.toContain("janus-memory")
   })
 
+  it("injects the shared mode-routing card after the dispatch-hub fragment", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+
+    // when
+    await registerJanus(config, pluginConfig)
+
+    // then
+    const janus = config.agent?.["janus"] as { prompt: string }
+    expect(janus.prompt).toContain("Route by **ask**, not by sentence")
+    expect(janus.prompt).toContain("durable artifact → `author`")
+    expect(janus.prompt).toContain("Layering: janus splits asks before picking a specialist")
+    expect(janus.prompt.indexOf("### Mode Routing (shared)")).toBeGreaterThan(
+      janus.prompt.indexOf("## Dispatch Lifecycle (shared)"),
+    )
+  })
+
   it("overrides the model from janus_model", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
@@ -1781,6 +1818,31 @@ describe("common operating principles injection", () => {
     for (const key of ["consultation-explorer", "consultation-verifier"]) {
       const prompt = (config.agent?.[key] as { prompt: string }).prompt
       expect(prompt).not.toContain(failures)
+    }
+  })
+
+  it("injects the shared claim types into the analyst only", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+    const claimTypes = (await readFile(resolveAsset("principles/claim-types.md"), "utf8")).trim()
+    const failures = (await readFile(resolveAsset("principles/reasoning-failures.md"), "utf8")).trim()
+    const leaf = (await readFile(resolveAsset("principles/research-leaf.md"), "utf8")).trim()
+
+    // when
+    await registerExplorer(config, pluginConfig)
+    await registerAnalyst(config, pluginConfig)
+    await registerConsultationCritic(config, pluginConfig)
+    await registerVerifier(config, pluginConfig)
+
+    // then — one table, in the analyst prompt, after the research-leaf rules
+    const analyst = (config.agent?.["consultation-analyst"] as { prompt: string }).prompt
+    expect(analyst).toContain(claimTypes)
+    expect(analyst.indexOf(claimTypes)).toBeGreaterThan(analyst.indexOf(leaf))
+    expect(analyst.indexOf(claimTypes)).toBeGreaterThan(analyst.indexOf(failures))
+    for (const key of ["consultation-explorer", "consultation-critic", "consultation-verifier"]) {
+      const prompt = (config.agent?.[key] as { prompt: string }).prompt
+      expect(prompt).not.toContain(claimTypes)
     }
   })
 })
@@ -1980,8 +2042,8 @@ describe("model-prompt blocks are model-property only", () => {
     expect(janus).toContain("except document tasks")
     expect(janus).toContain("never an edit to a document file")
     expect(janus).toContain("Do not run your own design gate")
-    expect(janus).toContain("`consultant` (`design` mode)")
-    expect(janus).toContain("An implementation plan for a codebase -> `coder`")
+    expect(janus).toContain("the consultant's `design` mode")
+    expect(janus).toContain("An implementation plan for a codebase is `coder`")
     expect(janus).toContain("Reading, summarizing, or explaining an existing document")
     expect(janus).toContain("The dispatch tool still exposes `coder-lite` and `build`")
     expect(lite).toContain("read-only document Q&A")

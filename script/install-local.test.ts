@@ -50,6 +50,8 @@ describe("REQUIRED_INSTALLED_FILES", () => {
   test("requires the shared prompt fragments", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/research-leaf.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/dispatch-hub.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/mode-routing.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/claim-types.md")
   })
 
   test("requires the janus-models command asset", () => {

@@ -123,6 +123,13 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("Memory ownership")
   })
 
+  it("consultant keeps a deliverable-shape conflict in two lanes", async () => {
+    const prompt = await readAgentPrompt("consultant.md")
+
+    expect(prompt).toContain("put the document in `author` and answer the fact inline")
+    expect(prompt).toContain("do not force one mode to swallow the other")
+  })
+
   it("consultant dispatches specialist-profile work by default and mirrors the user's language", async () => {
     const prompt = await readAgentPrompt("consultant.md")
 
@@ -145,7 +152,7 @@ describe("agent prompt contracts", () => {
     const janus = await readAgentPrompt("janus.md")
     const writer = await readAgentPrompt("writer.md")
 
-    expect(janus).toContain("README/AGENTS updates are code-adjacent maintenance -> `coder`")
+    expect(janus).toContain("repo work, and README/AGENTS maintenance -> `coder`")
     expect(writer).toContain("those changes route to `coder`")
     expect(writer).toContain("do not teach from survivors only")
   })
@@ -272,5 +279,97 @@ describe("agent prompt contracts", () => {
     ]) {
       expect(skill).toContain(text)
     }
+  })
+
+  it("shared reasoning-failure checks carry KAC and the selection-effect rider", async () => {
+    const failures = await readFile(
+      new URL("../../../assets/principles/reasoning-failures.md", import.meta.url),
+      "utf8",
+    )
+
+    expect(failures).toContain("**Load-bearing assumptions.**")
+    expect(failures).toContain("cap the finding at `inferred`")
+    expect(failures).toContain("`qualityFlags`")
+  })
+
+  it("analyst carries the load-bearing-assumption and outside-view rules", async () => {
+    const prompt = await readAgentPrompt("analyst.md")
+
+    expect(prompt).toContain("assumptions")
+    expect(prompt).toContain("outsideView")
+    expect(prompt).toContain("referenceClass")
+    expect(prompt).toContain("baseRate")
+    expect(prompt).toContain("caseAdjustment")
+    expect(prompt).toContain("load-bearing")
+  })
+
+  it("critic checks assumptions, selection reversals, and plan failure modes", async () => {
+    const prompt = await readAgentPrompt("consultation-critic.md")
+
+    expect(prompt).toContain("load-bearing")
+    expect(prompt).toContain("confidenceAdjustment")
+    expect(prompt).toContain("cap the finding at `inferred`")
+    expect(prompt).toContain("early signal")
+    expect(prompt).toContain("failure mode")
+  })
+
+  it("consultant states the deep-tier stop/trial/depth rule", async () => {
+    const prompt = await readAgentPrompt("consultant.md")
+
+    expect(prompt).toContain("cannot change the decision")
+    expect(prompt).toContain("say what you did not check")
+    expect(prompt).toContain("cheap and reversible")
+  })
+
+  it("analyst builds competing hypotheses and names the discriminating evidence", async () => {
+    const prompt = await readAgentPrompt("analyst.md")
+
+    expect(prompt).toContain("hypotheses")
+    expect(prompt).toContain("discriminatingEvidence")
+    expect(prompt).toContain("two or more plausible explanations")
+    expect(prompt).toContain("multi-explanation")
+    expect(prompt).toContain("competing hypotheses")
+    expect(prompt).toContain("discriminating")
+    expect(prompt).toContain("unresolved")
+  })
+
+  it("consultant puts the hypothesis matrix in the analyst brief and hands it to the critic", async () => {
+    const prompt = await readAgentPrompt("consultant.md")
+
+    expect(prompt).toContain("build a hypothesis matrix with discriminating evidence")
+    expect(prompt).toContain("give the resulting matrix to the critic")
+    expect(prompt).toContain("hypothesis matrix")
+  })
+
+  it("critic challenges a hypothesis matrix without adding a schema field", async () => {
+    const prompt = await readAgentPrompt("consultation-critic.md")
+
+    expect(prompt).toContain("missing hypothesis")
+    expect(prompt).toContain("does not discriminate")
+    expect(prompt).toContain("`missingAlternatives`")
+    expect(prompt).toContain("`flaws`")
+    expect(prompt).not.toContain("hypotheses: [{")
+  })
+
+  it("consultant sends competing explanations to the analyst and the critic", async () => {
+    const prompt = await readAgentPrompt("consultant.md")
+
+    expect(prompt).toContain("hypothesis matrix")
+    expect(prompt).toContain("competing explanations")
+  })
+
+  it("skill keeps calibration passive and records outcomes without a journal", async () => {
+    const skill = await readFile(
+      new URL("../../../assets/skills/consultation/SKILL.md", import.meta.url),
+      "utf8",
+    )
+    const prompt = await readAgentPrompt("consultant.md")
+
+    expect(skill).toContain("pendingOutcome")
+    expect(skill).toContain("record_outcome")
+    expect(skill).toContain("observable, falsifiable")
+    expect(skill).toContain("asks once")
+    expect(skill).toContain("No journal, reminders, or forms")
+    expect(prompt).toContain("Calibration is passive")
   })
 })

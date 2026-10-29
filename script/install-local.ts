@@ -47,6 +47,8 @@ export const REQUIRED_INSTALLED_FILES = [
   "assets/principles/research-leaf.md",
   "assets/principles/dispatch-hub.md",
   "assets/principles/reasoning-failures.md",
+  "assets/principles/mode-routing.md",
+  "assets/principles/claim-types.md",
   "assets/commands/janus-models.md",
   "assets/skills/consultation/SKILL.md",
 ]

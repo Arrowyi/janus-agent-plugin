@@ -44,7 +44,11 @@ const RESEARCH_LEAF_ASSET = "principles/research-leaf.md"
 
 const DISPATCH_HUB_ASSET = "principles/dispatch-hub.md"
 
+const MODE_ROUTING_ASSET = "principles/mode-routing.md"
+
 const REASONING_FAILURES_ASSET = "principles/reasoning-failures.md"
+
+const CLAIM_TYPES_ASSET = "principles/claim-types.md"
 
 const EXPLORER_DESCRIPTION =
   "Search and information-gathering specialist. Gathers graded sources for specific claims and returns a structured report. Dispatched by the consultant and may fan out to multiple instances."
@@ -429,7 +433,7 @@ export async function registerJanus(
   const assembledPrompt = await assemblePrompt(pluginConfig, {
     assetFile: "agents/janus.md",
     model: resolveRoleModel(pluginConfig, "janus"),
-    fragments: [DISPATCH_HUB_ASSET],
+    fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET],
     runtimeBlock: buildJanusRuntimeBindings(pluginConfig),
   })
 
@@ -742,7 +746,7 @@ export async function registerConsultantAgent(
   const assembledPrompt = await assemblePrompt(pluginConfig, {
     assetFile: "agents/consultant.md",
     model: resolveRoleModel(pluginConfig, "consultant"),
-    fragments: [DISPATCH_HUB_ASSET],
+    fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET],
     runtimeBlock: buildRuntimeBindings(pluginConfig, namespace, author, design),
   })
 
@@ -825,7 +829,7 @@ export async function registerAnalyst(
     assetFile: "agents/analyst.md",
     model: resolveRoleModel(pluginConfig, "analyst"),
     pluginConfig,
-    extraFragments: [REASONING_FAILURES_ASSET],
+    extraFragments: [REASONING_FAILURES_ASSET, CLAIM_TYPES_ASSET],
   })
 }
 

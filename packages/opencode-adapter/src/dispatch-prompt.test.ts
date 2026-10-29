@@ -63,14 +63,14 @@ const roles = [
     name: "consultation-analyst",
     block: "qwen38max.md",
     register: registerAnalyst,
-    extra: "principles/reasoning-failures.md",
+    extras: ["principles/reasoning-failures.md", "principles/claim-types.md"],
   },
   {
     asset: "consultation-critic.md",
     name: "consultation-critic",
     block: "gemini38flash.md",
     register: registerConsultationCritic,
-    extra: "principles/reasoning-failures.md",
+    extras: ["principles/reasoning-failures.md"],
   },
   {
     asset: "consultation-verifier.md",
@@ -168,8 +168,10 @@ describe("dispatch prompt routing contract", () => {
       await role.register(config, pluginConfig)
       // then — read-only roles keep the common base but skip the common write gate
       let body = `${injectModelPrompt(source, block)}\n\n${fragment}`
-      if ("extra" in role) {
-        body += `\n\n${(await readFile(resolveAsset(role.extra), "utf8")).trim()}`
+      if ("extras" in role) {
+        for (const extra of role.extras) {
+          body += `\n\n${(await readFile(resolveAsset(extra), "utf8")).trim()}`
+        }
       }
       expect(promptSchema.parse(config.agent?.[role.name]).prompt).toBe(
         injectCommonPrinciples(body, base),

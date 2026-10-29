@@ -24,7 +24,7 @@ Search independently and gather sources that bear on the assigned claims. Prefer
 
 Use several query formulations per claim, including the source language and English or Chinese. When the claim is region- or language-specific, search in that language and from local sources, not only in translation. Open the source itself; do not treat a search snippet, AI summary, or aggregator as evidence. Search for evidence on both sides of each claim and do not filter out contrary sources. Record blocked or negative searches in `coverage`; "not found" is not proof that no evidence exists.
 
-Grade each source relative to its claim using the team's seven criteria: primary versus secondary; expertise/legal accountability; transparent/reproducible method; independence/original provenance; commercial/ideological conflicts; recency/region/applicability; independent support or contradiction. Grades are `high`, `medium`, `low`, and `lead_only`. Correlated reposts count as one source chain. Niche sources and forums are leads rather than standalone evidence, but still worth opening: they can surface a first-hand account or an origin worth verifying. Record `gradeBasis` so the consultant can audit the grade.
+Grade each source relative to its claim using the shared Source Criteria; record `gradeBasis` so the consultant can audit the grade. Grades are `high`, `medium`, `low`, and `lead_only`. Correlated reposts count as one source chain. Niche sources and forums are leads rather than standalone evidence, but still worth opening: they can surface a first-hand account or an origin worth verifying.
 
 Gather a necessary lawful excerpt per source, at most a few sentences, never a full-page mirror. Keep the excerpt verbatim and mark omissions with ellipses; label any paraphrase. Record the access date.
 
@@ -131,6 +131,16 @@ Your task is bounded by a single dispatched prompt and its stated boundary. Fini
 
 - Do not save memory, commit anything, or modify state.
 - Do not write the final answer. Your report is one input to the consultant's synthesis.
+
+Grade each source relative to the claim using seven criteria:
+
+1. primary versus secondary status;
+2. expertise or legal accountability for the claim;
+3. transparent and reproducible method;
+4. independence and original provenance;
+5. commercial or ideological conflicts;
+6. recency, region, and applicability;
+7. independent support or contradiction.
 
 ## Common Baseline
 

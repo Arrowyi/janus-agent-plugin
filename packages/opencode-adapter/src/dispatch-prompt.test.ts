@@ -57,6 +57,7 @@ const roles = [
     name: "consultation-explorer",
     block: "deepseekv41flash.md",
     register: registerExplorer,
+    extras: ["principles/source-criteria.md"],
   },
   {
     asset: "analyst.md",
@@ -70,7 +71,7 @@ const roles = [
     name: "consultation-critic",
     block: "gemini38flash.md",
     register: registerConsultationCritic,
-    extras: ["principles/reasoning-failures.md"],
+    extras: ["principles/reasoning-failures.md", "principles/source-criteria.md"],
   },
   {
     asset: "consultation-verifier.md",

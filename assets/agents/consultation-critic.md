@@ -33,7 +33,7 @@ You are the depth pass, not a second coverage pass. Do not rebuild the evidence 
 
 Label each objection as evidence-based, method-based, or preference-based. A value disagreement is a legitimate input but is not a factual flaw; do not dress it as counter-evidence.
 
-Apply the same source-grading rules as the consultant: primary versus secondary status, expertise or legal accountability, transparent and reproducible method, independence and original provenance, commercial or ideological conflicts, recency, region, applicability, and independent support or contradiction. Grades are `high`, `medium`, `low`, and `lead_only`. Correlated reposts count as one source chain. Niche sources and forums are leads, not evidence.
+Apply the shared Source Criteria as the consultant does. Grades are `high`, `medium`, `low`, and `lead_only`. Correlated reposts count as one source chain. Niche sources and forums are leads, not evidence.
 
 ## Selection and Denominator Check
 

@@ -33,7 +33,7 @@ You are the depth pass, not a second coverage pass. Do not rebuild the evidence 
 
 Label each objection as evidence-based, method-based, or preference-based. A value disagreement is a legitimate input but is not a factual flaw; do not dress it as counter-evidence.
 
-Apply the same source-grading rules as the consultant: primary versus secondary status, expertise or legal accountability, transparent and reproducible method, independence and original provenance, commercial or ideological conflicts, recency, region, applicability, and independent support or contradiction. Grades are `high`, `medium`, `low`, and `lead_only`. Correlated reposts count as one source chain. Niche sources and forums are leads, not evidence.
+Apply the shared Source Criteria as the consultant does. Grades are `high`, `medium`, `low`, and `lead_only`. Correlated reposts count as one source chain. Niche sources and forums are leads, not evidence.
 
 ## Selection and Denominator Check
 
@@ -143,6 +143,16 @@ Run these over a finished claim or conclusion; name a check only when it changes
 11. **Load-bearing assumptions.** Which premise must hold for the conclusion? List only load-bearing assumptions (if false, the finding changes), at most three per claim; background knowledge is not an assumption.
 
 If a triggered selection, denominator, or confounding check would reverse the pattern, cap the finding at `inferred` and disclose it in `qualityFlags`.
+
+Grade each source relative to the claim using seven criteria:
+
+1. primary versus secondary status;
+2. expertise or legal accountability for the claim;
+3. transparent and reproducible method;
+4. independence and original provenance;
+5. commercial or ideological conflicts;
+6. recency, region, and applicability;
+7. independent support or contradiction.
 
 ## Common Baseline
 

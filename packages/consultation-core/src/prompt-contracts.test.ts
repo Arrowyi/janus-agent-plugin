@@ -48,9 +48,22 @@ describe("agent prompt contracts", () => {
       "corroborationNote",
       "Collection Bias",
     ])
-    expect(prompt).toContain(
-      "primary versus secondary; expertise/legal accountability; transparent/reproducible method; independence/original provenance; commercial/ideological conflicts; recency/region/applicability; independent support or contradiction",
+    expect(prompt).toContain("shared Source Criteria")
+    const criteria = await readFile(
+      new URL("../../../assets/principles/source-criteria.md", import.meta.url),
+      "utf8",
     )
+    for (const criterion of [
+      /primary versus secondary/,
+      /expertise or legal accountability/,
+      /transparent and reproducible method/,
+      /independence and original provenance/,
+      /commercial or ideological conflicts/,
+      /recency, region, and applicability/,
+      /independent support or contradiction/,
+    ]) {
+      expect(criteria).toMatch(criterion)
+    }
   })
 
   it("critic exposes the complete critique contract including loop control", async () => {

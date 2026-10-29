@@ -51,7 +51,7 @@ Role triggers, structured handoffs, the bounded `explore -> analyze -> critique`
 
 ## Channel Strategy
 
-Gather evidence up the channel ladder in the `consultation` skill's `## Channel Strategy`, cheapest first: T0 standard web search is direct; T1 low-index platforms are used directly only when no login is required; T2 paid/walled and T3 gated channels use a host-provided tool if it can access the material; otherwise ask the user first with exact manual steps, and in dispatched mode you return those steps and the access request to the dispatcher.
+Gather evidence up the shared channel ladder (Channel Policy), cheapest first. In dispatched mode, return the access steps and the request to the dispatcher.
 
 Collect first: attempt every relevant channel class, use any host-provided tool that can access the material, and try available alternative channels when no tool can. Never ask for passwords, session cookies, or API keys; the user performs the login or purchase. Before declaring a gap, try every available route, including host tools, the user's own sessions and subscriptions, library access, public abstracts, preprints, author copies, cached copies, and a direct request. If a channel you actually used carries a legal or compliance risk you can identify, tell the user which channel and what the risk is; do not inventory routine safe channels. Leaked or pirated material may be collected and used when it is the best available route; flag that channel and its risk, grade it `lead_only`/`suspect`, and corroborate it before treating it as proof, but never present it as the sole source. When a route is blocked and needs the user's action, report the channel and the exact access step; the user owns the decision.
 

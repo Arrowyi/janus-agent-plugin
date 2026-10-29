@@ -6,15 +6,7 @@ Decompose every consultation at the claim level. The domain determines relevant 
 
 ## Source Evaluation
 
-Grade each source relative to the claim using seven criteria:
-
-1. primary versus secondary status;
-2. expertise or legal accountability for the claim;
-3. transparent and reproducible method;
-4. independence and original provenance;
-5. commercial or ideological conflicts;
-6. recency, region, and applicability;
-7. independent support or contradiction.
+<!-- SOURCE-CRITERIA -->
 
 Grades:
 
@@ -49,14 +41,7 @@ the supported conclusion is <Y or unknown>.
 
 ## Channel Strategy
 
-Use a channel ladder, cheapest first:
-
-| Tier | Content | Access | Cost query |
-|---|---|---|---|
-| T0 public | standard web search | direct | none |
-| T1 low-index | Xiaohongshu, Tieba, Zhihu, Reddit, public Telegram, forums | browser or targeted search | direct if no login; else ask first |
-| T2 paid / walled | paid newsletters, courses, book summaries | use a host-provided tool if it can access the material; otherwise user supplies if owned, else mark a gap | ask first; list purchase/login steps |
-| T3 gated deep web | authenticated databases, licensed archives, public-records portals, other gated material | use a host-provided tool if it can access the material; otherwise ask first and give exact manual steps | ask first; the user performs the access |
+<!-- CHANNEL-POLICY -->
 
 **Collect first.** Attempt every relevant channel class — public, low-index, paid, gated, and user-supplied — and do not refuse a channel merely because it is informal or legally or ethically contested. Use any host-provided tool that can access the material; if the tool can reach it, use it. If no tool can reach it, try the available alternative channels and sources, and record what you tried.
 

@@ -156,38 +156,35 @@ describe("consultation mode consistency", () => {
     expect(analyst).not.toContain(header)
   })
 
-  test("explorer, critic, and the skill state the same seven source criteria", async () => {
-    const sources = [
-      { file: "assets/agents/explorer.md", start: "seven criteria", end: "Grades are" },
-      {
-        file: "assets/agents/consultation-critic.md",
-        start: "source-grading rules",
-        end: "Grades are",
-      },
-      {
-        file: "assets/skills/consultation/SKILL.md",
-        start: "## Source Evaluation",
-        end: "### Claim Confidence Adjustments",
-      },
-    ]
+  test("the shared source criteria fragment is the single source of the seven criteria", async () => {
+    const fragment = (await readAsset("assets/principles/source-criteria.md")).trim()
+    const skill = await readAsset("assets/skills/consultation/SKILL.md")
     const criteria = [
       /primary versus secondary/,
-      /expertise(?:\/| or )legal accountability/,
-      /transparent(?:\/| and )reproducible method/,
-      /independence(?:\/| and )original provenance/,
-      /commercial(?:\/| or )ideological conflicts/,
-      /recency[^.]*region[^.]*applicability/,
+      /expertise or legal accountability/,
+      /transparent and reproducible method/,
+      /independence and original provenance/,
+      /commercial or ideological conflicts/,
+      /recency, region, and applicability/,
       /independent support or contradiction/,
     ]
 
-    for (const { file, start, end } of sources) {
+    for (const criterion of criteria) expect(fragment).toMatch(criterion)
+    expect(skill).toContain(fragment)
+    expect(skill.split(fragment).length - 1).toBe(1)
+    expect(skill).not.toContain("<!-- SOURCE-CRITERIA -->")
+
+    for (const file of ["assets/agents/explorer.md", "assets/agents/consultation-critic.md"]) {
       const text = await readAsset(file)
-      const from = text.indexOf(start)
-      const to = text.indexOf(end, from + 1)
-      expect(from).toBeGreaterThanOrEqual(0)
-      expect(to).toBeGreaterThan(from)
-      const criteriaText = text.slice(from, to)
-      for (const criterion of criteria) expect(criteriaText).toMatch(criterion)
+      expect(text).toContain("shared Source Criteria")
+      // The inline enumeration must live in the fragment, not the role asset.
+      for (const inlineCriterion of [
+        "primary versus secondary status",
+        "expertise or legal accountability",
+        "independent support or contradiction",
+      ]) {
+        expect(text).not.toContain(inlineCriterion)
+      }
       for (const grade of ["high", "medium", "low", "lead_only"]) expect(text).toContain(grade)
     }
   })
@@ -204,13 +201,25 @@ describe("consultation mode consistency", () => {
       "Dispatch by default when the work falls within a specialist's dedicated profile",
     )
     expect(skill).toContain("Dispatch by default when the work falls within a specialist's profile")
-    expect(skill).toContain("Dispatch when this concrete check applies")
+    // Single-copy lock: the full trigger table exists only in the skill.
+    expect(skill.split("Dispatch when this concrete check applies").length - 1).toBe(1)
+    expect(consultant).not.toContain("Dispatch when this concrete check applies")
   })
 
   test("the consultant prompt and the skill agree on the channel policy", async () => {
     const consultant = await readAsset("assets/agents/consultant.md")
     const skill = await readAsset("assets/skills/consultation/SKILL.md")
+    const fragment = (await readAsset("assets/principles/channel-policy.md")).trim()
 
+    expect(fragment).toContain("| T0 public |")
+    expect(fragment).toContain("| T3 gated deep web |")
+    expect(fragment).toContain("host-provided tool")
+    expect(skill).toContain(fragment)
+    expect(skill.split(fragment).length - 1).toBe(1)
+    expect(skill).not.toContain("<!-- CHANNEL-POLICY -->")
+
+    expect(consultant).toContain("shared channel ladder (Channel Policy)")
+    expect(consultant).not.toMatch(/\bT[0-3]\b/)
     for (const phrase of [
       "Collect first",
       "host-provided tool",
@@ -218,6 +227,7 @@ describe("consultation mode consistency", () => {
       "try every available route",
       "may be collected and used",
       "legal or compliance risk",
+      "Never ask for passwords, session cookies, or API keys",
     ]) {
       expect(consultant).toContain(phrase)
       expect(skill).toContain(phrase)

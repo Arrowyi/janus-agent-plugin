@@ -27,6 +27,14 @@ export const CLAIM_TYPES_MARKER = "<!-- CLAIM-TYPES -->"
 
 export const CLAIM_TYPES_ASSET = join(REPO_ROOT, "assets/principles/claim-types.md")
 
+export const SOURCE_CRITERIA_MARKER = "<!-- SOURCE-CRITERIA -->"
+
+export const SOURCE_CRITERIA_ASSET = join(REPO_ROOT, "assets/principles/source-criteria.md")
+
+export const CHANNEL_POLICY_MARKER = "<!-- CHANNEL-POLICY -->"
+
+export const CHANNEL_POLICY_ASSET = join(REPO_ROOT, "assets/principles/channel-policy.md")
+
 export interface SkillFragment {
   readonly name: string
   /** The placeholder left in a skill-src module, replaced at generation. */
@@ -43,6 +51,8 @@ export interface SkillFragment {
 export const SKILL_FRAGMENTS: readonly SkillFragment[] = [
   { name: "mode-routing", marker: MODE_ROUTING_MARKER, assetPath: MODE_ROUTING_ASSET },
   { name: "claim-types", marker: CLAIM_TYPES_MARKER, assetPath: CLAIM_TYPES_ASSET },
+  { name: "source-criteria", marker: SOURCE_CRITERIA_MARKER, assetPath: SOURCE_CRITERIA_ASSET },
+  { name: "channel-policy", marker: CHANNEL_POLICY_MARKER, assetPath: CHANNEL_POLICY_ASSET },
 ]
 
 const PART_SEPARATOR = /\n\s*<!-- part -->\s*\n/

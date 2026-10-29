@@ -50,6 +50,10 @@ const REASONING_FAILURES_ASSET = "principles/reasoning-failures.md"
 
 const CLAIM_TYPES_ASSET = "principles/claim-types.md"
 
+const SOURCE_CRITERIA_ASSET = "principles/source-criteria.md"
+
+const CHANNEL_POLICY_ASSET = "principles/channel-policy.md"
+
 const EXPLORER_DESCRIPTION =
   "Search and information-gathering specialist. Gathers graded sources for specific claims and returns a structured report. Dispatched by the consultant and may fan out to multiple instances."
 
@@ -746,7 +750,7 @@ export async function registerConsultantAgent(
   const assembledPrompt = await assemblePrompt(pluginConfig, {
     assetFile: "agents/consultant.md",
     model: resolveRoleModel(pluginConfig, "consultant"),
-    fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET],
+    fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET, CHANNEL_POLICY_ASSET],
     runtimeBlock: buildRuntimeBindings(pluginConfig, namespace, author, design),
   })
 
@@ -816,6 +820,7 @@ export async function registerExplorer(
     assetFile: "agents/explorer.md",
     model: resolveRoleModel(pluginConfig, "explorer"),
     pluginConfig,
+    extraFragments: [SOURCE_CRITERIA_ASSET],
   })
 }
 
@@ -843,7 +848,7 @@ export async function registerConsultationCritic(
     assetFile: "agents/consultation-critic.md",
     model: resolveRoleModel(pluginConfig, "critic"),
     pluginConfig,
-    extraFragments: [REASONING_FAILURES_ASSET],
+    extraFragments: [REASONING_FAILURES_ASSET, SOURCE_CRITERIA_ASSET],
   })
 }
 

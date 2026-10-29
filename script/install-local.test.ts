@@ -52,6 +52,8 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/dispatch-hub.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/mode-routing.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/claim-types.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/source-criteria.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/channel-policy.md")
   })
 
   test("requires the janus-models command asset", () => {

@@ -1845,6 +1845,60 @@ describe("common operating principles injection", () => {
       expect(prompt).not.toContain(claimTypes)
     }
   })
+
+  it("injects the shared source criteria into the explorer and critic only, after research-leaf", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+    const criteria = (await readFile(resolveAsset("principles/source-criteria.md"), "utf8")).trim()
+    const leaf = (await readFile(resolveAsset("principles/research-leaf.md"), "utf8")).trim()
+
+    // when
+    await registerExplorer(config, pluginConfig)
+    await registerAnalyst(config, pluginConfig)
+    await registerConsultationCritic(config, pluginConfig)
+    await registerVerifier(config, pluginConfig)
+
+    // then — one copy, in the explorer and critic prompts, after the research-leaf rules
+    for (const key of ["consultation-explorer", "consultation-critic"]) {
+      const prompt = (config.agent?.[key] as { prompt: string }).prompt
+      expect(prompt).toContain(criteria)
+      expect(prompt.split(criteria).length - 1).toBe(1)
+      expect(prompt.indexOf(criteria)).toBeGreaterThan(prompt.indexOf(leaf))
+    }
+    for (const key of ["consultation-analyst", "consultation-verifier"]) {
+      const prompt = (config.agent?.[key] as { prompt: string }).prompt
+      expect(prompt).not.toContain(criteria)
+    }
+  })
+
+  it("injects the shared channel policy into the consultant only", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+    const policy = (await readFile(resolveAsset("principles/channel-policy.md"), "utf8")).trim()
+
+    // when
+    await registerConsultantAgent(config, pluginConfig, "oc-ns")
+    await registerExplorer(config, pluginConfig)
+    await registerAnalyst(config, pluginConfig)
+    await registerConsultationCritic(config, pluginConfig)
+    await registerVerifier(config, pluginConfig)
+
+    // then
+    const consultant = (config.agent?.["consultant"] as { prompt: string }).prompt
+    expect(consultant).toContain(policy)
+    expect(consultant.split(policy).length - 1).toBe(1)
+    for (const key of [
+      "consultation-explorer",
+      "consultation-analyst",
+      "consultation-critic",
+      "consultation-verifier",
+    ]) {
+      const prompt = (config.agent?.[key] as { prompt: string }).prompt
+      expect(prompt).not.toContain(policy)
+    }
+  })
 })
 
 describe("existing agents carry the inert MODEL-PROMPT placeholder", () => {

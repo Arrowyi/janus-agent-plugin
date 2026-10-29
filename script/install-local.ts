@@ -42,9 +42,11 @@ export const REQUIRED_INSTALLED_FILES = [
   "assets/model-prompts/glm53flash.md",
   "assets/model-prompts/glm53.md",
   "assets/model-prompts/qwen38max.md",
-  "assets/principles/common.md",
+  "assets/principles/common-base.md",
+  "assets/principles/common-write.md",
   "assets/principles/research-leaf.md",
   "assets/principles/dispatch-hub.md",
+  "assets/principles/reasoning-failures.md",
   "assets/commands/janus-models.md",
   "assets/skills/consultation/SKILL.md",
 ]

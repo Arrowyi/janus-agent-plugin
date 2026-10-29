@@ -2,6 +2,8 @@
 
 `plan` is a personal action plan. An implementation plan for a codebase belongs to the coder's ExecPlan, and a future-structure decision is `design`.
 
+Before the steps, check the planning fallacy and optimism bias (the typical project runs longer and costs more than its plan), sunk cost (past spending is not a reason to continue), and the base rate for similar projects. Run a short pre-mortem: name the top three failure modes and the early signal that each is starting.
+
 Short:
 
 ```text

@@ -24,7 +24,7 @@ A user who already knows the task type can start at `consultant`, `coder`, or `l
 | `coder` | entry | all | coding, debugging, refactoring, tests, repo work, quality gate; implements from an accepted design record | consulting/selection, source grading, research reports, editing the design record (consultant-owned) |
 | `lite` | entry | all | quick facts, concepts, simple how-to | multi-source evidence, coding, complex planning |
 | `explorer` | research | subagent | source gathering, metadata, initial grade | interpretation, final recommendation |
-| `analyst` | research | subagent | independent interpretation, cross-model review | gathering, final answer |
+| `analyst` | research | subagent | independent interpretation pass | gathering, final answer |
 | `critic` | research | subagent | counter-evidence, alternatives, conclusion challenge | source-intent audit, final answer |
 | `verifier` | research | subagent | source intent and independence audit | fact-checking, final answer |
 | `writer` | authoring | subagent | all reader-facing prose: blueprints, drafts, maintenance, coherence; writes approved document files under `writer_docs_roots` (scoped) | evidence gathering, outline approval, the brief, memory, publishing (consultant-owned); broad research |
@@ -72,9 +72,10 @@ Every plugin-owned agent prompt is assembled in this order:
 
 1. **Role asset** — `assets/agents/<agent>.md`: identity, ownership, process, interaction, failure behavior.
 2. **Model-adaptation block** — `assets/model-prompts/<normalized-model-key>.md`: model traits and operating notes. The block is keyed by model, not role, and is provider-agnostic. A model with no block gets none.
-3. **Runtime bindings** — injected at the role asset's `RUNTIME-BINDINGS` placeholder: the agent's model, dispatch targets, job-tool discipline, memory availability, caps, namespace, and the author/design state bindings where relevant.
-4. **Shared fragments** — `assets/principles/research-leaf.md` for the four read-only research roles, and `assets/principles/dispatch-hub.md` for the dispatching hubs (`janus`, `consultant`, `coder`).
-5. **Common principles** — `assets/principles/common.md`: the persistent file-change confirmation gate, its dispatched-mode rule, and the post-change file summary.
+3. **Shared fragments** — `assets/principles/research-leaf.md` for the four read-only research roles, `assets/principles/reasoning-failures.md` for the analyst and critic after the leaf fragment, and `assets/principles/dispatch-hub.md` for the dispatching hubs (`janus`, `consultant`, `coder`).
+4. **Common base** — `assets/principles/common-base.md`: epistemic honesty, untrusted input and secrets, and scope/conflict rules, injected into every role.
+5. **Common write** — `assets/principles/common-write.md`: the persistent file-change confirmation gate, its dispatched-mode rule, and the post-change file summary. Read-only roles omit this layer.
+6. **Runtime bindings** — injected at the role asset's `RUNTIME-BINDINGS` placeholder: the agent's model, dispatch targets, job-tool discipline, memory availability, caps, namespace, and the author/design state bindings where relevant.
 
 Role assets are model-agnostic and fragment-free; model-specific traits never live in a role asset, and role rules never live in a model block. Role-specific exceptions and deltas stay in the role asset.
 

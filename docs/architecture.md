@@ -66,7 +66,7 @@ janus-agent-plugin/
 ├── skill-src/consultation/    # skill sources (never shipped)
 ├── assets/
 │   ├── agents/consultant.md
-│   ├── principles/*.md        # common principles + shared prompt fragments
+│   ├── principles/*.md        # common base/write + shared prompt fragments
 │   └── skills/consultation/SKILL.md   # generated from skill-src/
 ├── evals/
 ├── docs/
@@ -183,7 +183,7 @@ The first adapter:
 - maps OpenCode session IDs into namespaced core IDs;
 - exposes model and provider configuration;
 - installs the `janus-memory` browse command;
-- assembles each prompt from the role asset, model block, runtime bindings, shared fragments (`research-leaf`, `dispatch-hub`), and common principles, with a reviewed golden snapshot per role;
+- assembles each prompt from the role asset, model block, shared fragments (`research-leaf`, `reasoning-failures`, `dispatch-hub`), the common base, the common write gate (skipped for read-only roles), and runtime bindings, with a reviewed golden snapshot per role;
 - does not contain evidence, recommendation, or persistence logic.
 
 ## 6. Consultation Workflow
@@ -277,7 +277,7 @@ Entry roles and execution delegates are separate from this research roster: `jan
 | Role | Purpose |
 |---|---|
 | `explorer` | gather and grade evidence (fan-out up to 5 instances) |
-| `analyst` | independent cross-model reasoning over evidence |
+| `analyst` | independent reasoning pass over evidence (model diversity is a runtime property) |
 | `critic` | adversarial counter-evidence pass; hard gate over research hypotheses |
 | `verifier` | bounded audit of manipulation or opaque independence in user/third-party/promotional evidence; missing observations produce `unknown` |
 | `writer` | sole author of reader-facing prose for `author` — blueprint before approval, section/chapter prose and maintenance after approval, coherence passes; targeted web lookups with a source ledger. Plugin-owned: shell and dispatch denied; edit allowed only under `writer_docs_roots` (read-only fallback when empty) |

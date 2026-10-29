@@ -36,17 +36,21 @@ const RUNTIME_BINDINGS_PLACEHOLDER = /<!--\s*RUNTIME-BINDINGS[\s\S]*?-->/
 
 const MODEL_PROMPT_PLACEHOLDER = /<!--\s*MODEL-PROMPT[\s\S]*?-->/
 
-const COMMON_PRINCIPLES_ASSET = "principles/common.md"
+const COMMON_BASE_ASSET = "principles/common-base.md"
+
+const COMMON_WRITE_ASSET = "principles/common-write.md"
 
 const RESEARCH_LEAF_ASSET = "principles/research-leaf.md"
 
 const DISPATCH_HUB_ASSET = "principles/dispatch-hub.md"
 
+const REASONING_FAILURES_ASSET = "principles/reasoning-failures.md"
+
 const EXPLORER_DESCRIPTION =
   "Search and information-gathering specialist. Gathers graded sources for specific claims and returns a structured report. Dispatched by the consultant and may fan out to multiple instances."
 
 const ANALYST_DESCRIPTION =
-  "Independent cross-model analyst. Reasons over gathered evidence when interpretation, conflicting sources, or important trade-offs could change the conclusion; returns a structured analysis."
+  "Independent analysis pass. Reasons over gathered evidence when interpretation, conflicting sources, or important trade-offs could change the conclusion; returns a structured analysis. Model diversity is a runtime property reported in bindings, not a role guarantee."
 
 const CRITIC_DESCRIPTION =
   "Adversarial counter-evidence reviewer. Independently searches for opposing, qualifying, and superseding sources when a consequential conclusion or uncertain plan step needs challenge; runs design pre-mortems for one-way decisions and reports only correctness-affecting problems."
@@ -412,7 +416,7 @@ export function buildJanusRuntimeBindings(pluginConfig: JanusPluginConfig): stri
 /**
  * Register the `janus` daily-driver primary agent: mode "all" (user-selectable
  * primary AND dispatchable), no memory attachment, a layered prompt (role
- * asset + model-adaptation block + common principles + runtime bindings), and
+ * asset + model-adaptation block + common base + common write + runtime bindings), and
  * the resolved janus model. A pre-existing user-defined entry under the same
  * name is left untouched.
  */
@@ -624,18 +628,27 @@ export function injectModelPrompt(body: string, block: string): string {
 }
 
 /**
- * Load the shared common-principles block injected into every plugin-owned
- * agent prompt. Reads `assets/principles/common.md`; a missing asset is a
+ * Load the shared baseline block injected into every plugin-owned agent
+ * prompt. Reads `assets/principles/common-base.md`; a missing asset is a
  * deployment error and propagates.
  */
-export async function loadCommonPrinciples(): Promise<string> {
-  return readFile(resolveAsset(COMMON_PRINCIPLES_ASSET), "utf8")
+export async function loadCommonBase(): Promise<string> {
+  return readFile(resolveAsset(COMMON_BASE_ASSET), "utf8")
 }
 
 /**
- * Inject the common-principles block into an assembled prompt body, after the
- * model-adaptation block and before the runtime bindings. An empty block
- * returns the body unchanged.
+ * Load the shared write-discipline block (persistent file-change
+ * confirmation). Reads `assets/principles/common-write.md`; read-only roles
+ * omit it.
+ */
+export async function loadCommonWrite(): Promise<string> {
+  return readFile(resolveAsset(COMMON_WRITE_ASSET), "utf8")
+}
+
+/**
+ * Append one shared principle block to an assembled prompt body. An empty
+ * block returns the body unchanged. Used for the common-base and
+ * common-write layers in assembly order.
  */
 export function injectCommonPrinciples(body: string, block: string): string {
   if (block.trim().length === 0) return body
@@ -656,16 +669,21 @@ interface PromptAssembly {
   assetFile: string
   model: string
   fragments?: readonly string[]
+  /** Shared baseline block; defaults to true. */
+  includeCommonBase?: boolean
+  /** Persistent file-change gate; defaults to true, false for read-only roles. */
+  includeCommonWrite?: boolean
   runtimeBlock?: string
 }
 
 /**
  * Assemble one role prompt in the fixed layer order:
- * role asset -> model-adaptation block -> principle fragments -> common
- * principles -> runtime bindings.
+ * role asset -> model-adaptation block -> principle fragments -> common-base
+ * -> common-write -> runtime bindings.
  *
- * Fragment-free assemblies are byte-identical to the previous per-register
- * sequence, so adding the helper does not move existing prompt text.
+ * Read-only roles omit only the common-write layer, which they can never act
+ * on. Fragment-free assemblies stay byte-identical to the previous
+ * per-register sequence, so adding the helper does not move existing text.
  */
 async function assemblePrompt(
   pluginConfig: JanusPluginConfig,
@@ -678,7 +696,12 @@ async function assemblePrompt(
   for (const fragment of options.fragments ?? []) {
     prompt = `${prompt}\n\n${await loadPrincipleFragment(fragment)}`
   }
-  prompt = injectCommonPrinciples(prompt, await loadCommonPrinciples())
+  if (options.includeCommonBase !== false) {
+    prompt = injectCommonPrinciples(prompt, await loadCommonBase())
+  }
+  if (options.includeCommonWrite !== false) {
+    prompt = injectCommonPrinciples(prompt, await loadCommonWrite())
+  }
   return options.runtimeBlock === undefined
     ? prompt
     : injectRuntimeBindings(prompt, options.runtimeBlock)
@@ -742,7 +765,8 @@ export async function registerConsultantAgent(
 /**
  * Register a read-only team subagent. Reads the role asset, sets
  * `mode: "subagent"`, a fixed model, a description, and a `permission.edit`
- * of "deny" so the role can gather and critique but never edit. A
+ * of "deny" so the role can gather and critique but never edit. Read-only
+ * roles keep the common baseline but skip the common-write gate. A
  * pre-existing user-defined entry under the same name is left untouched.
  */
 async function registerReadOnlySubagent(
@@ -753,6 +777,8 @@ async function registerReadOnlySubagent(
     assetFile: string
     model: string
     pluginConfig: JanusPluginConfig
+    /** Extra principle fragments appended after the research-leaf fragment. */
+    extraFragments?: readonly string[]
   },
 ): Promise<void> {
   if (config.agent?.[options.name]) return
@@ -760,7 +786,8 @@ async function registerReadOnlySubagent(
   const prompt = await assemblePrompt(options.pluginConfig, {
     assetFile: options.assetFile,
     model: options.model,
-    fragments: [RESEARCH_LEAF_ASSET],
+    fragments: [RESEARCH_LEAF_ASSET, ...(options.extraFragments ?? [])],
+    includeCommonWrite: false,
   })
 
   const entry: SubagentEntry = {
@@ -798,6 +825,7 @@ export async function registerAnalyst(
     assetFile: "agents/analyst.md",
     model: resolveRoleModel(pluginConfig, "analyst"),
     pluginConfig,
+    extraFragments: [REASONING_FAILURES_ASSET],
   })
 }
 
@@ -811,6 +839,7 @@ export async function registerConsultationCritic(
     assetFile: "agents/consultation-critic.md",
     model: resolveRoleModel(pluginConfig, "critic"),
     pluginConfig,
+    extraFragments: [REASONING_FAILURES_ASSET],
   })
 }
 
@@ -936,7 +965,7 @@ export function buildWriterRuntimeBindings(
 
 /**
  * Register the `writer` author executor: mode "subagent", a step cap of 80,
- * the layered prompt (role asset + model block + common principles + writer
+ * the layered prompt (role asset + model block + common base/write + writer
  * runtime bindings), scoped-write permissions over the configured writer
  * roots (anchored to the project `directory` when supplied), and the fixed
  * author state dir created (non-fatal) so briefs are readable. A

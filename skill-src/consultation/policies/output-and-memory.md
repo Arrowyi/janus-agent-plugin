@@ -57,6 +57,7 @@ Never present medium/low confidence as certain. For `select`/`guide`, if the top
 - Bold only the key conclusion; never rely on bold for meaning.
 - No academic filler (`综上所述`, `值得注意的是`, `一方面...另一方面`) and no method narration before the answer.
 - Define a technical term once, only if it changes the decision.
+- Mirror the user's language, keeping the anchor structure and translating its labels when the user is not writing in Chinese.
 - End with an action, never with "供参考".
 
 ### Short vs full
@@ -92,3 +93,7 @@ Browsing and editing: recall a record; edit its question summary or conclusion (
 Outcome loop: register a pending outcome for select, plan, and design (the accepted structure), and for `author` tutorials whether the learner could follow and the examples worked. On a related later question, recall surfaces it; ask how it went, record the outcome, and weight future recommendations (a satisfying outcome boosts similar options, a regretted one demotes them and sharpens the switch condition).
 
 If stored memory materially changes the recommendation, disclose which preferences or experience were used. Sensitive memory usage must always be disclosed.
+
+### Memory sensitivity
+
+Default to sensitive when uncertain. Never auto-save credentials or secrets, full transcripts, or third-party personal data. Sensitive categories (not exhaustive): health, legal, financial, identity, precise location, intimate relationships, and minors. Excluded fields persist only after itemized confirmation, one field at a time. This subsection is the single source for memory sensitivity; review it when the memory schema, the privacy policy, or a user request changes.

@@ -14,7 +14,7 @@ An unambiguous, reversible change is not a design consultation — send it to th
    - **L1 system:** context, main parts, architectural style, data ownership, key flows, cross-cutting concerns.
    - **L2 module:** information hiding, deep modules, bounded contexts, dependency direction; never slice by execution order.
    - **L3 interface:** contract first — resources, methods, schema, errors, versioning, idempotency; write signatures in concrete form; do not copy the database schema.
-6. **Per-decision record.** Every decision needs at least two genuinely different options, a recommendation, what would change the recommendation, a reversibility label (one-way / two-way door), and — when it can be deferred — the trigger event that forces the decision.
+6. **Per-decision record.** Every decision needs at least two genuinely different options, a recommendation, what would change the recommendation, a reversibility label (one-way / two-way door), and — when it can be deferred — the trigger event that forces the decision. Check the incentive surface too: Goodhart's law (the measure becomes the target and stops measuring), perverse incentives, second-order effects, and path dependence or lock-in.
 7. **Approval by reversibility.** One-way doors are approved one at a time. Two-way doors get a default value and one batch approval per layer.
 8. **One-way-door pre-mortem.** Send each one-way decision to the critic for a pre-mortem; it reports only correctness-affecting problems.
 9. **Consistency check.** Before each layer approval and before handoff, run a read-only cross-layer check: no lower layer contradicts a higher one, every quality attribute is covered, and every open question is listed.

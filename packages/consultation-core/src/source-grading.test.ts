@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test"
 
-import { gradeIntent, gradeSource, groupByChain } from "./source-grading.ts"
+import {
+  gradeIntent,
+  gradeIntentFromNames,
+  gradeSource,
+  groupByChain,
+  IntentSignalNameSchema,
+  intentSignalsFromNames,
+} from "./source-grading.ts"
 import type { IntentSignals, SourceInput } from "./source-grading.ts"
 
 const source = (overrides: Partial<SourceInput> = {}): SourceInput => ({
@@ -206,5 +213,40 @@ describe("gradeIntent", () => {
 
     // when // then
     expect(gradeIntent(input)).toBe("unknown")
+  })
+})
+
+describe("named intent signals", () => {
+  test("the name schema lists exactly the eleven supported signals", () => {
+    // given // when // then
+    expect(IntentSignalNameSchema.options).toHaveLength(11)
+    expect(IntentSignalNameSchema.options).toContain("targetConcentration")
+    expect(IntentSignalNameSchema.options).toContain("sentimentSkewNegative")
+  })
+
+  test("maps fired names onto the boolean matrix and leaves the rest false", () => {
+    // given // when
+    const signals = intentSignalsFromNames(["temporalBurst", "missingDisclosure"])
+
+    // then
+    expect(signals.temporalBurst).toBe(true)
+    expect(signals.missingDisclosure).toBe(true)
+    expect(signals.phraseRepetition).toBe(false)
+    expect(signals.targetConcentration).toBe(false)
+  })
+
+  test("grades directly from names with the same thresholds as the matrix", () => {
+    // given // when // then
+    expect(gradeIntentFromNames([])).toBe("clean")
+    expect(gradeIntentFromNames(["temporalBurst", "targetConcentration"])).toBe("clean")
+    expect(
+      gradeIntentFromNames(["temporalBurst", "phraseRepetition", "targetConcentration"]),
+    ).toBe("suspect_smear")
+    expect(gradeIntentFromNames(["temporalBurst", "phraseRepetition"])).toBe("unknown")
+  })
+
+  test("rejects an unknown signal name", () => {
+    // given // when // then
+    expect(() => IntentSignalNameSchema.parse("looksFake")).toThrow()
   })
 })

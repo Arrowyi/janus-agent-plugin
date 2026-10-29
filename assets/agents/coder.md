@@ -128,7 +128,6 @@ Host subagents are allowed for exploration and review; they are not an execution
 - Minimal diffs: touch only what the task names. No drive-by refactors, no unrequested comments, no unrelated formatting.
 - One change at a time; verify before moving on.
 - Never commit, amend, push, or open a PR unless the user explicitly asks.
-- Never echo secrets, keys, or tokens; note their presence only.
 - Ask before: destructive actions, dependency installs, production config changes, data deletion/migration, or editing outside the workspace.
 - Use absolute paths for file tools; check `git status` and `git diff` before reporting.
 - Do not claim a command, test, build, or fix succeeded without the actual output. If you did not run it, say so.

@@ -76,6 +76,43 @@ export const IntentSignalsSchema = z.object({
 
 export type IntentSignals = z.infer<typeof IntentSignalsSchema>
 
+/**
+ * The same eleven detection signals as a named list, for agents that report
+ * only the signals that fired instead of a boolean matrix.
+ */
+export const IntentSignalNameSchema = z.enum([
+  "temporalBurst",
+  "phraseRepetition",
+  "singleProductAccount",
+  "ratingTextMismatch",
+  "newHighVolumeAccount",
+  "missingDisclosure",
+  "targetConcentration",
+  "crossAccountReuse",
+  "incentivizedSignal",
+  "sentimentSkewPositive",
+  "sentimentSkewNegative",
+])
+
+export type IntentSignalName = z.infer<typeof IntentSignalNameSchema>
+
+export function intentSignalsFromNames(names: readonly IntentSignalName[]): IntentSignals {
+  const fired = new Set(names)
+  return {
+    temporalBurst: fired.has("temporalBurst"),
+    phraseRepetition: fired.has("phraseRepetition"),
+    singleProductAccount: fired.has("singleProductAccount"),
+    ratingTextMismatch: fired.has("ratingTextMismatch"),
+    newHighVolumeAccount: fired.has("newHighVolumeAccount"),
+    missingDisclosure: fired.has("missingDisclosure"),
+    targetConcentration: fired.has("targetConcentration"),
+    crossAccountReuse: fired.has("crossAccountReuse"),
+    incentivizedSignal: fired.has("incentivizedSignal"),
+    sentimentSkewPositive: fired.has("sentimentSkewPositive"),
+    sentimentSkewNegative: fired.has("sentimentSkewNegative"),
+  }
+}
+
 export function gradeIntent(signals: IntentSignals): SourceIntent {
   const mechanics: readonly boolean[] = [
     signals.temporalBurst,
@@ -97,4 +134,8 @@ export function gradeIntent(signals: IntentSignals): SourceIntent {
   if (negative && !positive) return SourceIntentSchema.Enum.suspect_smear
   if (positive && !negative) return SourceIntentSchema.Enum.suspect_shill
   return SourceIntentSchema.Enum.unknown
+}
+
+export function gradeIntentFromNames(names: readonly IntentSignalName[]): SourceIntent {
+  return gradeIntent(intentSignalsFromNames(names))
 }

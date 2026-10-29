@@ -302,12 +302,15 @@ The `janus` agent is the default general entry: it handles general questions and
 
 Every plugin-owned agent's prompt assembles in this order: the role asset
 (`assets/agents/<agent>.md` — identity, scope, workflow, discipline), a
-model-adaptation block, the runtime bindings (injected at the asset's
-`RUNTIME-BINDINGS` placeholder), the shared fragments
-(`assets/principles/research-leaf.md` for the four read-only research roles and
-`assets/principles/dispatch-hub.md` for `janus`/`consultant`/`coder`), and the
-common principles (`assets/principles/common.md` — cross-role operating rules
-such as file-change confirmation). The model block is keyed by
+model-adaptation block, the shared fragments
+(`assets/principles/research-leaf.md` for the four read-only research roles,
+`assets/principles/reasoning-failures.md` for the analyst and critic, and
+`assets/principles/dispatch-hub.md` for `janus`/`consultant`/`coder`), the
+common base (`assets/principles/common-base.md` — epistemic honesty, untrusted
+input, secrets, and scope/conflict rules for every role), the common write gate
+(`assets/principles/common-write.md` — persistent file-change confirmation,
+omitted for read-only roles), and finally the runtime bindings (injected at the
+asset's `RUNTIME-BINDINGS` placeholder). The model block is keyed by
 the **model**, not the agent, and matched **provider-agnostically**: swap an
 agent's model in config (even to a different provider serving the same model)
 and its driving notes follow automatically; a model with no block simply gets

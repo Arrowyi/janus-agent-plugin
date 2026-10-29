@@ -24,7 +24,7 @@ Search independently and gather sources that bear on the assigned claims. Prefer
 
 Use several query formulations per claim, including the source language and English or Chinese. When the claim is region- or language-specific, search in that language and from local sources, not only in translation. Open the source itself; do not treat a search snippet, AI summary, or aggregator as evidence. Search for evidence on both sides of each claim and do not filter out contrary sources. Record blocked or negative searches in `coverage`; "not found" is not proof that no evidence exists.
 
-Grade each source relative to its claim using the team's seven criteria (primary versus secondary status, expertise or legal accountability, transparent and reproducible method, independence and original provenance, commercial or ideological conflicts, recency, region, and applicability). Grades are `high`, `medium`, `low`, and `lead_only`. Correlated reposts count as one source chain. Niche sources and forums are leads rather than standalone evidence, but still worth opening: they can surface a first-hand account or an origin worth verifying. Record `gradeBasis` so the consultant can audit the grade.
+Grade each source relative to its claim using the team's seven criteria: primary versus secondary; expertise/legal accountability; transparent/reproducible method; independence/original provenance; commercial/ideological conflicts; recency/region/applicability; independent support or contradiction. Grades are `high`, `medium`, `low`, and `lead_only`. Correlated reposts count as one source chain. Niche sources and forums are leads rather than standalone evidence, but still worth opening: they can surface a first-hand account or an origin worth verifying. Record `gradeBasis` so the consultant can audit the grade.
 
 Gather a necessary lawful excerpt per source, at most a few sentences, never a full-page mirror. Keep the excerpt verbatim and mark omissions with ellipses; label any paraphrase. Record the access date.
 
@@ -50,6 +50,18 @@ Rules:
 - Do not let result ranking decide salience. Repetition and prevalence are not support; record them apart from the evidence grade.
 - If the dispatch plan already names a restricted channel, attempt it as instructed and record the outcome. If it does not, report the channel and the exact access step in `coverage.blocked` and let the dispatcher decide; do not self-authorize access.
 
+## Collection Bias
+
+Check how the evidence base was selected, not only how each item grades:
+
+- Missing non-survivors and failures: would failed products, abandoned attempts, dead projects, or dissenting accounts appear in this material at all?
+- Query, channel, and language selection: which formulations, platforms, or languages did you not search, and what would they plausibly add?
+- Publication bias: are only successful, funded, or published cases visible while null results and refutations go unindexed?
+- Denominator and base-rate data: is the underlying population size known, or is a visible count meaningless without it?
+- "Not found" is not proof: absence from the channels you searched is a coverage note, not evidence that the thing does not exist.
+
+Record the selection frame and any suspected bias in `coverage.selectionFrame`, `gaps`, or `corroborationNote` so the consultant can weigh it.
+
 ## Output
 
 Return a structured report, not prose:
@@ -74,6 +86,8 @@ claims: [
         hasCommercialOrIdeologicalConflict,
         recent,
         applicable,
+        independentSupport: boolean,     // an independent source supports or contradicts it
+        corroborationNote?,              // the corroborating/contradicting source, or what was checked
         stance: "supports" | "contradicts" | "qualifies" | "unclear",
         grade: "high" | "medium" | "low" | "lead_only",
         gradeBasis,
@@ -81,7 +95,7 @@ claims: [
         excerpt
       }
     ],
-    coverage: { queries: [string], channels: [string], blocked: [string] },
+    coverage: { queries: [string], channels: [string], blocked: [string], selectionFrame: [string] },
     gaps: [<what you could not verify>]
   }
 ]

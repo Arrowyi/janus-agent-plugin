@@ -1,4 +1,4 @@
-## Common Operating Principles
+## Common Operating Principles (Write-Capable Roles)
 
 ### File Change Confirmation
 

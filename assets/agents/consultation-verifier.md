@@ -14,7 +14,7 @@ The consultant hands you, in its task message:
 
 ## Task
 
-For each source, look for influence and coordination signals you can actually detect. You work on text, publisher/account, disclosed relationships, temporal, rating-distribution, and platform-marker evidence. Set each signal true only when the observable evidence supports it:
+For each source, look for influence and coordination signals you can actually detect. You work on text, publisher/account, disclosed relationships, temporal, rating-distribution, and platform-marker evidence. Report the **names** of the signals that fired, not a boolean matrix, and list a signal only when the observable evidence supports it:
 
 1. `temporalBurst`: reviews or posts cluster in a short window or spike suddenly.
 2. `phraseRepetition`: near-identical phrasing or templated wording across accounts.
@@ -27,7 +27,7 @@ For each source, look for influence and coordination signals you can actually de
 9. `incentivizedSignal`: the content mentions cashback, rewards, or incentives for posting.
 10. `sentimentSkewPositive` / `sentimentSkewNegative`: the distribution is suspiciously one-sided.
 
-For third-party rankings and purportedly independent evaluations, also record observable sponsorship disclosures, review-selection methods, affiliate relationships, author/owner overlap with the promoted party, and whether supposedly separate outlets repeat one source chain. An official product page is not independent confirmation of its own promotional claims; an official non-promotional technical specification with established provenance need not receive an intent audit. If affiliation or comparison data are absent, mark independence unresolved rather than inventing a hidden relationship.
+For third-party rankings and purportedly independent evaluations, also record observable sponsorship disclosures, review-selection methods, affiliate relationships, author/owner overlap with the promoted party, and whether supposedly separate outlets repeat one source chain. For review sets, check the selection frame: missing, deleted, or filtered negative reviews; the rating distribution against the category baseline; and how the reviewed set was chosen. When the selection cannot be verified, record that frame in `missingObservations`. An official product page is not independent confirmation of its own promotional claims; an official non-promotional technical specification with established provenance need not receive an intent audit. If affiliation or comparison data are absent, mark independence unresolved rather than inventing a hidden relationship.
 
 Handle both directions symmetrically. Positive manipulation (种草, boosting) and negative manipulation (差评攻击, review bombing) use the same mechanics; `targetConcentration` and a negative skew point to a smear, a positive skew and missing disclosure point to a shill. Two or more independent mechanics plus a direction justify flagging that direction; ambiguous direction stays `unknown`. When necessary account, disclosure, or comparison data are missing, return `unknown` even if no observable signals fired; lack of data does not justify `clean`.
 
@@ -39,11 +39,10 @@ Return a structured intent audit, not prose and not a final verdict on the under
 
 ```
 intentAudits: [{ sourceId, intent: "clean" | "suspect_shill" | "suspect_smear" | "unknown",
-                  signals: { temporalBurst, phraseRepetition, singleProductAccount, ratingTextMismatch,
-                             newHighVolumeAccount, missingDisclosure, targetConcentration,
-                             crossAccountReuse, incentivizedSignal, sentimentSkewPositive, sentimentSkewNegative },
+                  signalsFired: [string],   // e.g. ["temporalBurst", "targetConcentration"]; [] means none
                   independence: "supported" | "unclear" | "conflicted",
-                  rationale, missingObservations: [string] }]
+                  rationale,
+                  missingObservations: [string] }]   // includes an unverifiable selection frame
 contaminationAssessment: string   // which side of the evidence may be contaminated, by what, and how it shifts the estimate
 limitsEncountered: [string]       // detection that needs data science you cannot do (graph analysis, large-sample stats, embedding anomaly, cross-platform identity, ground-truth labels)
 ```

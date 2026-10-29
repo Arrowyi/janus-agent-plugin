@@ -4,6 +4,7 @@ import {
   AnalysisDraftSchema,
   CritiqueDraftSchema,
   DEFAULT_TEAM_CAPS,
+  ExplorerReportSchema,
   TeamRoleSchema,
   initialState,
   isConverged,
@@ -29,6 +30,7 @@ function crit(resolved: boolean, round: number): CritiqueDraft {
     flaws: [],
     missingAlternatives: [],
     provenanceProblems: [],
+    biasChecks: [],
     riskAssessment: "ok",
     confidenceAdjustment: "keep",
     whatWouldChangeTheRecommendation: [],
@@ -72,6 +74,63 @@ describe("CritiqueDraftSchema design review", () => {
     })
     expect(parsed.designReview?.preMortem).toEqual(["the migration locks the table"])
     expect(CritiqueDraftSchema.parse(crit(true, 1)).designReview).toBeUndefined()
+  })
+})
+
+describe("CritiqueDraftSchema selection checks", () => {
+  it("defaults biasChecks to an empty list and accepts selection findings", () => {
+    expect(CritiqueDraftSchema.parse(crit(true, 1)).biasChecks).toEqual([])
+
+    const parsed = CritiqueDraftSchema.parse({
+      ...crit(true, 1),
+      biasChecks: [
+        {
+          type: "selection",
+          finding: "only successful launches are visible",
+          missingCases: ["failed launches", "withdrawn products"],
+          denominator: "unknown population of attempts",
+          verdict: "material",
+        },
+      ],
+    })
+    expect(parsed.biasChecks[0]?.missingCases).toEqual(["failed launches", "withdrawn products"])
+  })
+})
+
+describe("ExplorerReportSchema selection frame", () => {
+  it("defaults selectionFrame and accepts the source corroboration fields", () => {
+    const graded = {
+      id: "s1",
+      title: "Source",
+      isPrimary: true,
+      accountable: true,
+      methodTransparent: true,
+      independenceChainId: "chain-1",
+      hasCommercialOrIdeologicalConflict: false,
+      recent: true,
+      applicable: true,
+      grade: "high",
+      accessedAt: "2026-10-29",
+      independentSupport: true,
+      corroborationNote: "an independent regulator filing agrees",
+    }
+
+    const parsed = ExplorerReportSchema.parse({
+      claims: [
+        { claimId: "c1", findings: "finding", sources: [graded], coverage: {}, gaps: [] },
+        {
+          claimId: "c2",
+          findings: "finding",
+          sources: [graded],
+          coverage: { selectionFrame: ["only funded cases were indexed"] },
+          gaps: [],
+        },
+      ],
+    })
+
+    expect(parsed.claims[0]?.coverage?.selectionFrame).toEqual([])
+    expect(parsed.claims[1]?.coverage?.selectionFrame).toEqual(["only funded cases were indexed"])
+    expect(parsed.claims[0]?.sources[0]?.independentSupport).toBe(true)
   })
 })
 

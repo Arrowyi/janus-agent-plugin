@@ -38,8 +38,13 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/writer.md")
   })
 
-  test("requires the shared common principles asset", () => {
-    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/common.md")
+  test("requires both shared common principle assets", () => {
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/common-base.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/common-write.md")
+  })
+
+  test("requires the reasoning-failure fragment", () => {
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/reasoning-failures.md")
   })
 
   test("requires the shared prompt fragments", () => {

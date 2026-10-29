@@ -698,5 +698,41 @@
       "design"
     ],
     "notes": "Rubric: Reject an appended changelog, struck-through superseded sections, or silent deletion. Require the in-place rewrite, the size discipline, and the cleanup proposal with confirmation."
+  },
+  {
+    "id": "C60",
+    "title": "Specialist-profile work is dispatched by default, not absorbed inline",
+    "given": "A consultation task needs graded evidence gathering that matches the explorer's profile, and the consultant could technically search the web itself.",
+    "when": "The consultant decides whether to dispatch and drafts the dispatch brief",
+    "then": "It dispatches the explorer by default because the work falls within that profile. The decision the work could change and the specific failure it would catch appear in the brief as context, not as a veto test; 'I could do it myself' is not a skip reason. Inline work happens only when the task is answerable from context in one step, no profile applies, or the role is disabled or unavailable, and an unavailable role is disclosed.",
+    "grading": "model",
+    "modes": [
+      "research"
+    ],
+    "notes": "Rubric: Reject absorbing a profile-matching evidence task inline just because the consultant could do it, and reject a dispatch brief with no decision or failure named. Require the default-dispatch reasoning plus explicit disclosure when a role is unavailable. Covers the P1 team-orchestration change."
+  },
+  {
+    "id": "C61",
+    "title": "The proverb 自古红颜多薄命 is an outcome-selected observation, not a causal law",
+    "given": "A user asks whether the saying 自古红颜多薄命 (beautiful women die young) is true.",
+    "when": "The consultant verifies the claim",
+    "then": "It treats the saying as outcome-based selection with a missing denominator: beautiful people who lived long are non-survivors in the saying's frame, and the population of beautiful people is never counted. It names attention and confirmation effects (memorable early deaths get retold, ordinary long lives do not), states that no base rate supports a causal law, and does not present the proverb as evidence of a mechanism or invent a confidence percentage.",
+    "grading": "model",
+    "modes": [
+      "verify"
+    ],
+    "notes": "Rubric: Reject treating the proverb as a causal law or averaging anecdotal cases. Require selection/missing-denominator, attention or confirmation bias, and an explicit statement that the claim is not established. Covers the P1 Reasoning-Failure Checks."
+  },
+  {
+    "id": "C62",
+    "title": "The verifier reports fired signal names and the missing observations",
+    "given": "A material conclusion depends on a set of user reviews where several signals are observable and part of the account and review-selection data is missing.",
+    "when": "The consultant dispatches the verifier for a review-intent audit",
+    "then": "Each `intentAudits` entry lists `signalsFired` as the names of the signals that actually fired (for example `temporalBurst`, `targetConcentration`) instead of a boolean matrix, names the independence status, and records the unverifiable selection frame — missing, deleted, or filtered negative reviews and the rating distribution against the category baseline — in `missingObservations`. Missing data is reported as a limitation, never converted into `clean`.",
+    "grading": "model",
+    "modes": [
+      "research"
+    ],
+    "notes": "Rubric: Reject a boolean signal matrix, a fabricated count, or `clean` inferred from missing data. Require fired signal names, an independence entry, and explicit selection-frame missing observations. Covers the P2 verifier schema."
   }
 ]

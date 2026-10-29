@@ -9,7 +9,8 @@ import {
   injectCommonPrinciples,
   injectModelPrompt,
   injectRuntimeBindings,
-  loadCommonPrinciples,
+  loadCommonBase,
+  loadCommonWrite,
   registerAnalyst,
   registerConsultantAgent,
   registerConsultationCritic,
@@ -62,12 +63,14 @@ const roles = [
     name: "consultation-analyst",
     block: "qwen38max.md",
     register: registerAnalyst,
+    extra: "principles/reasoning-failures.md",
   },
   {
     asset: "consultation-critic.md",
     name: "consultation-critic",
     block: "gemini38flash.md",
     register: registerConsultationCritic,
+    extra: "principles/reasoning-failures.md",
   },
   {
     asset: "consultation-verifier.md",
@@ -159,13 +162,17 @@ describe("dispatch prompt routing contract", () => {
       const config: { agent?: Record<string, unknown> } = {}
       const source = await readFile(resolveAsset(`agents/${role.asset}`), "utf8")
       const block = await readFile(resolveAsset(`model-prompts/${role.block}`), "utf8")
-      const common = await loadCommonPrinciples()
+      const base = await loadCommonBase()
       const fragment = (await readFile(resolveAsset("principles/research-leaf.md"), "utf8")).trim()
       // when
       await role.register(config, pluginConfig)
-      // then
+      // then — read-only roles keep the common base but skip the common write gate
+      let body = `${injectModelPrompt(source, block)}\n\n${fragment}`
+      if ("extra" in role) {
+        body += `\n\n${(await readFile(resolveAsset(role.extra), "utf8")).trim()}`
+      }
       expect(promptSchema.parse(config.agent?.[role.name]).prompt).toBe(
-        injectCommonPrinciples(`${injectModelPrompt(source, block)}\n\n${fragment}`, common),
+        injectCommonPrinciples(body, base),
       )
     })
   }
@@ -202,15 +209,19 @@ describe("dispatch prompt routing contract", () => {
     const config: { agent?: Record<string, unknown> } = {}
     const source = await readFile(resolveAsset("agents/writer.md"), "utf8")
     const block = await readFile(resolveAsset("model-prompts/claudesonnet55.md"), "utf8")
-    const common = await loadCommonPrinciples()
+    const base = await loadCommonBase()
+    const write = await loadCommonWrite()
 
     try {
       // when
       await registerWriter(config, pluginConfig, env)
 
-      // then
+      // then — the writer keeps the write gate: base then write, then bindings
       const expected = injectRuntimeBindings(
-        injectCommonPrinciples(injectModelPrompt(source, block), common),
+        injectCommonPrinciples(
+          injectCommonPrinciples(injectModelPrompt(source, block), base),
+          write,
+        ),
         buildWriterRuntimeBindings(pluginConfig, resolveAuthorStateDir(env)),
       )
       expect(promptSchema.parse(config.agent?.["consultation-writer"]).prompt).toBe(expected)

@@ -63,6 +63,7 @@ export const ExplorerReportSchema = z.object({
             queries: z.array(z.string()).default([]),
             channels: z.array(z.string()).default([]),
             blocked: z.array(z.string()).default([]),
+            selectionFrame: z.array(z.string()).default([]),
           })
           .optional(),
         gaps: z.array(z.string()).default([]),
@@ -128,6 +129,17 @@ export const CritiqueDraftSchema = z.object({
   flaws: z.array(z.string()),
   missingAlternatives: z.array(z.string()),
   provenanceProblems: z.array(z.string()),
+  biasChecks: z
+    .array(
+      z.object({
+        type: z.string(),
+        finding: z.string(),
+        missingCases: z.array(z.string()).default([]),
+        denominator: z.string().optional(),
+        verdict: z.string(),
+      }),
+    )
+    .default([]),
   riskAssessment: z.string(),
   confidenceAdjustment: ConfidenceAdjustmentSchema,
   whatWouldChangeTheRecommendation: z.array(z.string()),

@@ -77,6 +77,25 @@ describe("consultation mode consistency", () => {
     }
   })
 
+  test("the skill's channel policy is collection-first and reports the risk", async () => {
+    const skill = await readAsset("assets/skills/consultation/SKILL.md")
+
+    expect(skill).toContain("Collect first")
+    expect(skill).toContain("host-provided tool")
+    expect(skill).toContain("user owns the decision")
+    expect(skill).toContain("try every available route")
+    expect(skill).toContain("may be collected and used")
+    expect(skill).toContain("legal or compliance risk")
+    expect(skill).not.toContain("list which channels were used")
+    for (const removed of [
+      "pirated sources and leaked data are allowed",
+      "bypass login and paywalls where possible",
+      "The user owns the legal and compliance risk",
+    ]) {
+      expect(skill).not.toContain(removed)
+    }
+  })
+
   test("the installed skill asset is generated from skill-src", async () => {
     const skill = await readAsset("assets/skills/consultation/SKILL.md")
 

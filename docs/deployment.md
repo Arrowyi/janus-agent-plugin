@@ -306,6 +306,8 @@ model-adaptation block, the shared fragments
 (`assets/principles/research-leaf.md` for the four read-only research roles,
 `assets/principles/reasoning-failures.md` for the analyst and critic, and
 `assets/principles/dispatch-hub.md` for `janus`/`consultant`/`coder`), the
+engineering principles (`assets/principles/engineering-principles.md` for
+`coder` and the consultation skill's design mode), the
 common base (`assets/principles/common-base.md` — epistemic honesty, untrusted
 input, secrets, and scope/conflict rules for every role), the common write gate
 (`assets/principles/common-write.md` — persistent file-change confirmation,

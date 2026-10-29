@@ -35,6 +35,13 @@ export const CHANNEL_POLICY_MARKER = "<!-- CHANNEL-POLICY -->"
 
 export const CHANNEL_POLICY_ASSET = join(REPO_ROOT, "assets/principles/channel-policy.md")
 
+export const ENGINEERING_PRINCIPLES_MARKER = "<!-- ENGINEERING-PRINCIPLES -->"
+
+export const ENGINEERING_PRINCIPLES_ASSET = join(
+  REPO_ROOT,
+  "assets/principles/engineering-principles.md",
+)
+
 export interface SkillFragment {
   readonly name: string
   /** The placeholder left in a skill-src module, replaced at generation. */
@@ -53,6 +60,11 @@ export const SKILL_FRAGMENTS: readonly SkillFragment[] = [
   { name: "claim-types", marker: CLAIM_TYPES_MARKER, assetPath: CLAIM_TYPES_ASSET },
   { name: "source-criteria", marker: SOURCE_CRITERIA_MARKER, assetPath: SOURCE_CRITERIA_ASSET },
   { name: "channel-policy", marker: CHANNEL_POLICY_MARKER, assetPath: CHANNEL_POLICY_ASSET },
+  {
+    name: "engineering-principles",
+    marker: ENGINEERING_PRINCIPLES_MARKER,
+    assetPath: ENGINEERING_PRINCIPLES_ASSET,
+  },
 ]
 
 const PART_SEPARATOR = /\n\s*<!-- part -->\s*\n/

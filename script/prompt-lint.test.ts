@@ -35,9 +35,12 @@ const AGENT_BUDGETS: Record<string, number> = {
 
 const FRAGMENT_BUDGET = 500
 const SKILL_MODULE_BUDGET = 2000
-// 9500 -> 9600 for the batch-2 shared mode card + GRADE-lite paragraph; the
-// seven-bullet mode rewrite is the donor (design §3.5).
-const SKILL_TOTAL_BUDGET = 9600
+// 9500 -> 9600 for the batch-2 shared mode card + GRADE-lite paragraph; 9600 ->
+// 9900 for the shared engineering-principles fragment (fragment capped at 255
+// then, 320 after the reader principle; the +300 is explicit and not a free
+// ratchet); 9900 -> 9960 for the "Design for the reader" bullet (+60,
+// explicitly not a free ratchet).
+const SKILL_TOTAL_BUDGET = 9960
 
 /**
  * Sentences intentionally mirrored across role prompts. Each entry names why
@@ -98,6 +101,7 @@ describe("prompt word budgets", () => {
       "claim-types.md",
       "source-criteria.md",
       "channel-policy.md",
+      "engineering-principles.md",
     ]) {
       const count = words(await readText(join(ASSETS, "principles", file)))
       if (count > FRAGMENT_BUDGET) {

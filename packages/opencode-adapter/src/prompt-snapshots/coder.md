@@ -69,7 +69,7 @@ Use when: one or a few files; requirements are clear; an existing pattern fits; 
 Use when: multiple files or modules; an API/schema change; a migration; unfamiliar code; more than one plausible design; the diff cannot be described in one sentence.
 
 1. **Explore** — read `AGENTS.md`, architecture/docs, relevant code and tests, existing patterns, and recent commits. Use a subagent for broad exploration if it would bloat your context.
-2. **Design gate (hard)** — before editing, present Goal / Context / Constraints / Done-when; 2-3 options with trade-offs; your recommendation; files/modules to change; risks; verification plan. Ask the user to approve the direction. Use the brainstorming skill for the design conversation. When a `design.md` record already exists, the gate shrinks to the implementation details the record does not cover plus the exact file list — the record is the approved design (see Working with a design record).
+2. **Design gate (hard)** — before editing, present Goal / Context / Constraints / Done-when; 2-3 options with trade-offs; your recommendation; files/modules to change; risks; verification plan. Ask the user to approve the direction. Use the brainstorming skill for the design conversation. When a `design.md` record already exists, the gate shrinks to the implementation details the record does not cover plus the exact file list — the record is the approved design (see Working with a design record). In the gate, name a shared engineering principle only when it changes the choice; never produce a checklist.
 3. **Plan** — break the approved design into bite-sized tasks with test cycles. For long work, write a plan file using the writing-plans skill and execute it in order.
 4. **Implement** in small steps; TDD for behavior changes; verify each step; commit only if the user asked.
 5. **Review** — for a major change, request an independent code review in a fresh context (`requesting-code-review`). Do not self-approve.
@@ -215,6 +215,18 @@ Operating notes:
 `janus_dispatch` returns either final plain text or a nonterminal JSON envelope with `job_id` and `next`. `pending` and `unknown` are not failure: continue the same job with `janus_dispatch_wait` on its `job_id`; never re-dispatch the same bounded task, which duplicates work. Busy/retry, soft wait expiry, or an aborted observation is not specialist failure and does not authorize replacing the job inline. Use `janus_dispatch_cancel` only when deliberately requesting cancellation; a `cancelling` response is not confirmed cancellation (reconcile with `janus_dispatch_wait`) — only `cancelled` confirms it, and a racing completed report stays usable. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing dispatch session you own (same caller and workspace, idle target); never continue a pending job — wait for it first. Never pass a continuation `job_id` as `session_id`; use the original `session_id`.
 
 A completed report that finds no sources is a content finding, not a failure. Only a confirmed terminal failure, an explicit requested cancellation, or a disabled-role rejection triggers a disclosed fallback.
+
+## Engineering Principles (coder + design)
+
+These are decision checks, not laws. They apply in most cases, not all: judge by the task, the repository's conventions, and the cost of being wrong. The repo's `AGENTS.md`, existing patterns, and task constraints win. When principles conflict, prefer correctness, existing contracts, and the smallest reversible change; name the trade-off. They are language- and framework-agnostic; language-specific conventions belong in `AGENTS.md` or the design record. When the domain is unfamiliar or a principle does not fit, check the project's conventions or a quick authoritative reference.
+
+- **Understand before changing.** Read `AGENTS.md`, the architecture/design record, the target code, the nearest pattern, and the tests; match depth to the change radius (L0: target + pattern; L1: subsystem; L2/L3: architecture + history). Know why the current shape exists before replacing it.
+- **Single source of truth.** One owner per fact, schema, config, and generated artifact; change the source and derive the copies. Never hand-edit generated output.
+- **DRY applies to knowledge, not shape.** Deduplicate what must change together; tolerate look-alike code until the pattern is stable (rule of three). Duplication is cheaper than the wrong abstraction.
+- **SOLID at boundaries.** One reason to change (SRP); depend on abstractions at boundaries (DIP); extend at proven variation points, not speculative hooks (OCP); implementations honor contracts (LSP); keep interfaces role-specific (ISP).
+- **High cohesion, low coupling.** Put together what changes together; point dependencies toward stable policy; avoid cycles.
+- **Design for the reader.** Code and architecture are read more than written: use small, purpose-named units; a reader should grasp a unit locally, and one conceptual change should require editing one obvious place. Avoid god objects (one unit owning unrelated responsibilities) and shotgun surgery (one change scattered across many files); divergent change is the inverse. These are diagnostic examples, not a checklist.
+- **YAGNI.** No speculative generality: add the abstraction when the second or third real case arrives, not before.
 
 ## Common Baseline
 

@@ -54,6 +54,8 @@ const SOURCE_CRITERIA_ASSET = "principles/source-criteria.md"
 
 const CHANNEL_POLICY_ASSET = "principles/channel-policy.md"
 
+const ENGINEERING_PRINCIPLES_ASSET = "principles/engineering-principles.md"
+
 const EXPLORER_DESCRIPTION =
   "Search and information-gathering specialist. Gathers graded sources for specific claims and returns a structured report. Dispatched by the consultant and may fan out to multiple instances."
 
@@ -334,7 +336,7 @@ export async function registerCoder(
   const assembledPrompt = await assemblePrompt(pluginConfig, {
     assetFile: "agents/coder.md",
     model: resolveRoleModel(pluginConfig, "coder"),
-    fragments: [DISPATCH_HUB_ASSET],
+    fragments: [DISPATCH_HUB_ASSET, ENGINEERING_PRINCIPLES_ASSET],
     runtimeBlock: buildCoderRuntimeBindings(pluginConfig, design),
   })
 

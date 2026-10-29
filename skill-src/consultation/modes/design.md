@@ -9,7 +9,7 @@ An unambiguous, reversible change is not a design consultation — send it to th
 1. **Admission.** Confirm the decision changes future structure and cannot be settled by one obvious reversible edit. If it can, hand it to the coder and stop; do not run the ceremony for its own sake.
 2. **Orientation.** If the domain is unfamiliar, run one short explorer pass before framing. Do not turn the design into research mode.
 3. **Read before asking.** Read the repository and its `AGENTS.md` first — directly, or through the host `explore` agent in a large repo. Ask only what the repository cannot answer: at most five questions per round, preferably multiple-choice, and challenge the assumptions inside the question.
-4. **L0 framing.** State context and scope, the goal, the non-goals, and the project principles the design must respect. Write every prioritised quality attribute as a six-part scenario — source, stimulus, environment, artifact, response, response measure (a number) — and rank them. EARS phrasing is optional.
+4. **L0 framing.** State context and scope, the goal, the non-goals, and the project principles the design must respect (the shared engineering principles below are the default set). Write every prioritised quality attribute as a six-part scenario — source, stimulus, environment, artifact, response, response measure (a number) — and rank them. EARS phrasing is optional.
 5. **Layering (C4 as zoom, not a checklist).** Use only the layers the decision needs:
    - **L1 system:** context, main parts, architectural style, data ownership, key flows, cross-cutting concerns.
    - **L2 module:** information hiding, deep modules, bounded contexts, dependency direction; never slice by execution order.
@@ -21,6 +21,8 @@ An unambiguous, reversible change is not a design consultation — send it to th
 10. **Record and register.** Write or update `<designStateDir>/<projectId>/<designId>/design.md`, then register the decision outcome for later recall, as `select` and `plan` do.
 
 In dispatched mode, return only the decision requests for the current layer; the dispatcher relays each layer with `janus_dispatch_continue` after the user answers.
+
+**Applying the principles.** Use the shared engineering principles below as defaults, not a gate; when one changes a decision, name the conflict in that decision's trade-off.
 
 ### The design record
 
@@ -44,6 +46,8 @@ Lifecycle: **in progress**, **implemented** (compress or delete), or **abandoned
 - Magic thinking words, or a "framework", instead of a decision.
 - Letting the last responsible moment pass until the decision is made by default.
 - Letting the design record and the code drift apart.
+
+<!-- ENGINEERING-PRINCIPLES -->
 
 <!-- part -->
 

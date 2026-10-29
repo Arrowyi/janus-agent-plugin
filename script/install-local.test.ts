@@ -54,6 +54,7 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/claim-types.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/source-criteria.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/channel-policy.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/engineering-principles.md")
   })
 
   test("requires the janus-models command asset", () => {

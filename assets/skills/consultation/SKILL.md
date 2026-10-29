@@ -417,7 +417,7 @@ An unambiguous, reversible change is not a design consultation — send it to th
 1. **Admission.** Confirm the decision changes future structure and cannot be settled by one obvious reversible edit. If it can, hand it to the coder and stop; do not run the ceremony for its own sake.
 2. **Orientation.** If the domain is unfamiliar, run one short explorer pass before framing. Do not turn the design into research mode.
 3. **Read before asking.** Read the repository and its `AGENTS.md` first — directly, or through the host `explore` agent in a large repo. Ask only what the repository cannot answer: at most five questions per round, preferably multiple-choice, and challenge the assumptions inside the question.
-4. **L0 framing.** State context and scope, the goal, the non-goals, and the project principles the design must respect. Write every prioritised quality attribute as a six-part scenario — source, stimulus, environment, artifact, response, response measure (a number) — and rank them. EARS phrasing is optional.
+4. **L0 framing.** State context and scope, the goal, the non-goals, and the project principles the design must respect (the shared engineering principles below are the default set). Write every prioritised quality attribute as a six-part scenario — source, stimulus, environment, artifact, response, response measure (a number) — and rank them. EARS phrasing is optional.
 5. **Layering (C4 as zoom, not a checklist).** Use only the layers the decision needs:
    - **L1 system:** context, main parts, architectural style, data ownership, key flows, cross-cutting concerns.
    - **L2 module:** information hiding, deep modules, bounded contexts, dependency direction; never slice by execution order.
@@ -429,6 +429,8 @@ An unambiguous, reversible change is not a design consultation — send it to th
 10. **Record and register.** Write or update `<designStateDir>/<projectId>/<designId>/design.md`, then register the decision outcome for later recall, as `select` and `plan` do.
 
 In dispatched mode, return only the decision requests for the current layer; the dispatcher relays each layer with `janus_dispatch_continue` after the user answers.
+
+**Applying the principles.** Use the shared engineering principles below as defaults, not a gate; when one changes a decision, name the conflict in that decision's trade-off.
 
 ### The design record
 
@@ -452,6 +454,18 @@ Lifecycle: **in progress**, **implemented** (compress or delete), or **abandoned
 - Magic thinking words, or a "framework", instead of a decision.
 - Letting the last responsible moment pass until the decision is made by default.
 - Letting the design record and the code drift apart.
+
+## Engineering Principles (coder + design)
+
+These are decision checks, not laws. They apply in most cases, not all: judge by the task, the repository's conventions, and the cost of being wrong. The repo's `AGENTS.md`, existing patterns, and task constraints win. When principles conflict, prefer correctness, existing contracts, and the smallest reversible change; name the trade-off. They are language- and framework-agnostic; language-specific conventions belong in `AGENTS.md` or the design record. When the domain is unfamiliar or a principle does not fit, check the project's conventions or a quick authoritative reference.
+
+- **Understand before changing.** Read `AGENTS.md`, the architecture/design record, the target code, the nearest pattern, and the tests; match depth to the change radius (L0: target + pattern; L1: subsystem; L2/L3: architecture + history). Know why the current shape exists before replacing it.
+- **Single source of truth.** One owner per fact, schema, config, and generated artifact; change the source and derive the copies. Never hand-edit generated output.
+- **DRY applies to knowledge, not shape.** Deduplicate what must change together; tolerate look-alike code until the pattern is stable (rule of three). Duplication is cheaper than the wrong abstraction.
+- **SOLID at boundaries.** One reason to change (SRP); depend on abstractions at boundaries (DIP); extend at proven variation points, not speculative hooks (OCP); implementations honor contracts (LSP); keep interfaces role-specific (ISP).
+- **High cohesion, low coupling.** Put together what changes together; point dependencies toward stable policy; avoid cycles.
+- **Design for the reader.** Code and architecture are read more than written: use small, purpose-named units; a reader should grasp a unit locally, and one conceptual change should require editing one obvious place. Avoid god objects (one unit owning unrelated responsibilities) and shotgun surgery (one change scattered across many files); divergent change is the inverse. These are diagnostic examples, not a checklist.
+- **YAGNI.** No speculative generality: add the abstraction when the second or third real case arrives, not before.
 
 ## Decision and Preference Handling
 

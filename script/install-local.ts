@@ -51,6 +51,7 @@ export const REQUIRED_INSTALLED_FILES = [
   "assets/principles/claim-types.md",
   "assets/principles/source-criteria.md",
   "assets/principles/channel-policy.md",
+  "assets/principles/engineering-principles.md",
   "assets/commands/janus-models.md",
   "assets/skills/consultation/SKILL.md",
 ]

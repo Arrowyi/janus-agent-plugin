@@ -1452,6 +1452,26 @@ describe("registerCoder", () => {
     expect(coder.prompt).not.toContain("janus-memory")
   })
 
+  it("injects the shared engineering principles into the coder prompt, not the coder asset", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+    const principles = (
+      await readFile(resolveAsset("principles/engineering-principles.md"), "utf8")
+    ).trim()
+    const asset = await readFile(resolveAsset("agents/coder.md"), "utf8")
+
+    // when
+    await registerCoder(config, pluginConfig)
+
+    // then — one copy in the assembled prompt, none duplicated in the role asset
+    const coder = config.agent?.["coder"] as { prompt: string }
+    expect(coder.prompt).toContain(principles)
+    expect(coder.prompt.split(principles).length - 1).toBe(1)
+    expect(asset).not.toContain(principles)
+    expect(asset).toContain("name a shared engineering principle only when it changes the choice")
+  })
+
   it("overrides the coder model from coder_model", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}

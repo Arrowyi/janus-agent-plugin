@@ -72,7 +72,7 @@ Every plugin-owned agent prompt is assembled in this order:
 
 1. **Role asset** — `assets/agents/<agent>.md`: identity, ownership, process, interaction, failure behavior.
 2. **Model-adaptation block** — `assets/model-prompts/<normalized-model-key>.md`: model traits and operating notes. The block is keyed by model, not role, and is provider-agnostic. A model with no block gets none.
-3. **Shared fragments** — `assets/principles/research-leaf.md` for the four read-only research roles, `assets/principles/reasoning-failures.md` for the analyst and critic after the leaf fragment, and `assets/principles/dispatch-hub.md` for the dispatching hubs (`janus`, `consultant`, `coder`).
+3. **Shared fragments** — `assets/principles/research-leaf.md` for the four read-only research roles, `assets/principles/reasoning-failures.md` for the analyst and critic after the leaf fragment, and `assets/principles/dispatch-hub.md` for the dispatching hubs (`janus`, `consultant`, `coder`); `assets/principles/engineering-principles.md` reaches `coder` here and enters the consultation skill at the design mode's marker.
 4. **Common base** — `assets/principles/common-base.md`: epistemic honesty, untrusted input and secrets, and scope/conflict rules, injected into every role.
 5. **Common write** — `assets/principles/common-write.md`: the persistent file-change confirmation gate, its dispatched-mode rule, and the post-change file summary. Read-only roles omit this layer.
 6. **Runtime bindings** — injected at the role asset's `RUNTIME-BINDINGS` placeholder: the agent's model, dispatch targets, job-tool discipline, memory availability, caps, namespace, and the author/design state bindings where relevant.

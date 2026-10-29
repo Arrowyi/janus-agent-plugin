@@ -112,6 +112,15 @@ describe("consultation mode consistency", () => {
     }
   })
 
+  test("the shared engineering principles fragment is generated into design mode once", async () => {
+    const fragment = (await readAsset("assets/principles/engineering-principles.md")).trim()
+    const skill = await readAsset("assets/skills/consultation/SKILL.md")
+
+    expect(skill).toContain(fragment)
+    expect(skill.split(fragment).length - 1).toBe(1)
+    expect(skill).not.toContain("<!-- ENGINEERING-PRINCIPLES -->")
+  })
+
   test("the installed skill asset is generated from skill-src", async () => {
     const skill = await readAsset("assets/skills/consultation/SKILL.md")
 

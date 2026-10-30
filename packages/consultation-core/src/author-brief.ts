@@ -15,7 +15,7 @@ import { ConsultationError, ConsultationErrorCode } from "./errors.ts"
 // assertValidAuthorDelivery. An AuthorBrief is a final-delivery artifact only —
 // an approved outline is not a partially valid AuthorBrief.
 export const AuthorBriefSchema = z.object({
-  mode: z.literal("author"),
+  mode: z.literal("doc"),
   ...baseBriefShape,
   profile: AuthorProfileSchema,
   audience: z.string().min(1),

@@ -5,14 +5,15 @@ import { fileURLToPath } from "node:url"
 
 import {
   registerAnalyst,
+  registerArchCritic,
   registerCoder,
   registerCoderLite,
   registerConsultantAgent,
-  registerConsultationCritic,
+  registerCritic,
   registerExplorer,
   registerJanus,
-  registerLite,
-  registerVerifier,
+  registerAskLite,
+  registerAuditor,
   registerWriter,
 } from "./agent-registration.ts"
 import type { JanusPluginConfig } from "./plugin-config.ts"
@@ -32,7 +33,7 @@ import type { JanusPluginConfig } from "./plugin-config.ts"
 const SNAPSHOT_DIR = new URL("./prompt-snapshots/", import.meta.url)
 const SNAPSHOT_DIR_PATH = fileURLToPath(SNAPSHOT_DIR)
 
-// Fixed paths keep the injected author/design/lite bindings byte-stable across
+// Fixed paths keep the injected author/design/ask-lite bindings byte-stable across
 // machines. They are scratch locations under /tmp, never repo state.
 const SNAPSHOT_HOME = "/tmp/janus-snapshot/home"
 const SNAPSHOT_DATA_HOME = "/tmp/janus-snapshot/data"
@@ -49,14 +50,15 @@ const SNAPSHOT_ENV: NodeJS.ProcessEnv = {
 const ROLE_TARGETS = [
   { golden: "consultant", agent: "consultant" },
   { golden: "coder", agent: "coder" },
-  { golden: "lite", agent: "lite" },
+  { golden: "ask-lite", agent: "ask-lite" },
   { golden: "coder-lite", agent: "coder-lite" },
   { golden: "janus", agent: "janus" },
-  { golden: "explorer", agent: "consultation-explorer" },
-  { golden: "analyst", agent: "consultation-analyst" },
-  { golden: "critic", agent: "consultation-critic" },
-  { golden: "verifier", agent: "consultation-verifier" },
-  { golden: "writer", agent: "consultation-writer" },
+  { golden: "explorer", agent: "explorer" },
+  { golden: "analyst", agent: "analyst" },
+  { golden: "critic", agent: "critic" },
+  { golden: "arch-critic", agent: "arch-critic" },
+  { golden: "auditor", agent: "auditor" },
+  { golden: "writer", agent: "writer" },
 ] as const
 
 function makeConfig(): JanusPluginConfig {
@@ -64,24 +66,27 @@ function makeConfig(): JanusPluginConfig {
     install_skill: true,
     install_commands: true,
     memory_enabled: true,
-    critic_agent: "consultation-critic",
+    consultant_agent: "consultant",
+    critic_agent: "critic",
     critic_enabled: true,
-    explorer_agent: "consultation-explorer",
-    analyst_agent: "consultation-analyst",
-    verifier_agent: "consultation-verifier",
-    verifier_enabled: true,
-    writer_agent: "consultation-writer",
+    auditor_agent: "auditor",
+    auditor_enabled: true,
+    arch_critic_agent: "arch-critic",
+    arch_critic_enabled: true,
+    explorer_agent: "explorer",
+    explorer_enabled: true,
+    analyst_agent: "analyst",
+    analyst_enabled: true,
+    writer_agent: "writer",
     writer_enabled: true,
     writer_docs_roots: ["userdoc"],
     coder_agent: "coder",
     coder_enabled: true,
-    lite_agent: "lite",
-    lite_enabled: true,
-    lite_workspace_dir: SNAPSHOT_LITE_WORKSPACE,
+    ask_lite_agent: "ask-lite",
+    ask_lite_enabled: true,
+    ask_lite_workspace_dir: SNAPSHOT_LITE_WORKSPACE,
     coder_lite_agent: "coder-lite",
     coder_lite_enabled: true,
-    build_agent: "build",
-    build_enabled: true,
     janus_agent: "janus",
     janus_enabled: true,
   }
@@ -99,13 +104,14 @@ async function assembleAll(): Promise<Map<string, string>> {
     SNAPSHOT_ENV,
   )
   await registerCoder(config, pluginConfig, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
-  await registerLite(config, pluginConfig, SNAPSHOT_NAMESPACE)
+  await registerAskLite(config, pluginConfig, SNAPSHOT_NAMESPACE)
   await registerCoderLite(config, pluginConfig)
   await registerJanus(config, pluginConfig)
   await registerExplorer(config, pluginConfig)
   await registerAnalyst(config, pluginConfig)
-  await registerConsultationCritic(config, pluginConfig)
-  await registerVerifier(config, pluginConfig)
+  await registerCritic(config, pluginConfig)
+  await registerArchCritic(config, pluginConfig)
+  await registerAuditor(config, pluginConfig)
   await registerWriter(config, pluginConfig, SNAPSHOT_ENV, SNAPSHOT_PROJECT_DIR)
 
   const prompts = new Map<string, string>()

@@ -37,13 +37,13 @@ describe("modelFailureHint", () => {
   it("maps hyphenated roles to their underscored config fields", () => {
     expect(modelFailureHint("coder-lite", "opencode-go/glm-5.3-flash")).toContain('set "coder_lite_model"')
     expect(modelFailureHint("coder", "opencode-go/glm-5.3")).toContain('set "coder_model"')
-    expect(modelFailureHint("lite", null)).toContain('set "lite_model"')
-    expect(modelFailureHint("build", null)).toContain('set "build_model"')
-    expect(modelFailureHint("consultant", null)).toContain('set "agent_model"')
+    expect(modelFailureHint("ask-lite", null)).toContain('set "ask_lite_model"')
+    expect(modelFailureHint("build", null)).toContain('set "coder_model"')
+    expect(modelFailureHint("consultant", null)).toContain('set "consultant_model"')
   })
 
   it("omits the model label when the model is null", () => {
-    expect(modelFailureHint("lite", null)).not.toContain("(model:")
+    expect(modelFailureHint("ask-lite", null)).not.toContain("(model:")
   })
 })
 

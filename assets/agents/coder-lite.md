@@ -32,7 +32,7 @@ When a task hits Never-Take, or mid-execution you discover it exceeds your scope
 3. End with a structured report to the dispatching `coder`:
    - Completed and verified parts — files plus verification results
    - The blocker — 缺规格 / 需决策 / 需调试 / 能力不足 / 步数耗尽
-   - The recommendation: take it over in `coder`, or dispatch `build` (a stronger executor)
+   - The recommendation: take it over in `coder`, or use the coder's deep-tier model for a stronger executor
 4. Never deliver unverified or guessed work to look finished. When the step cap is reached, summarize remaining work in this same format.
 
 ## Execution discipline

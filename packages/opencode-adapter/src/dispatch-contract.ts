@@ -4,20 +4,74 @@ export const DISPATCH_ROLES = [
   "explorer",
   "analyst",
   "critic",
-  "verifier",
+  "arch-critic",
+  "auditor",
   "writer",
-  "lite",
+  "ask-lite",
   "coder-lite",
   "coder",
-  "build",
   "consultant",
 ] as const
 export type DispatchRole = (typeof DISPATCH_ROLES)[number]
 
+/** Roles that may appear in a legacy journal record but are no longer launchable. */
+export const LEGACY_DISPATCH_ROLES = ["verifier", "lite", "build"] as const
+export type JournalRole = DispatchRole | "build"
+
 export const PRODUCTION_WAIT_BUDGET_MS = 300_000
 export const DEFAULT_WAIT_MS = PRODUCTION_WAIT_BUDGET_MS
 
-const roleSchema = z.enum(DISPATCH_ROLES)
+export function normalizeDispatchRole(value: string): DispatchRole | undefined {
+  switch (value) {
+    case "explorer":
+    case "analyst":
+    case "critic":
+    case "arch-critic":
+    case "auditor":
+    case "writer":
+    case "ask-lite":
+    case "coder-lite":
+    case "coder":
+    case "consultant":
+      return value
+    case "verifier":
+      return "auditor"
+    case "lite":
+      return "ask-lite"
+    default:
+      return undefined
+  }
+}
+
+const roleSchema = z.string().transform((value, ctx): DispatchRole => {
+  if (value === "build") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'the "build" role was removed; dispatch "coder" with tier: "deep" instead',
+    })
+    return z.NEVER
+  }
+  const normalized = normalizeDispatchRole(value)
+  if (normalized === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `expected one of: ${DISPATCH_ROLES.join(", ")} (legacy aliases: verifier, lite)`,
+    })
+    return z.NEVER
+  }
+  return normalized
+})
+
+const journalRoleSchema = z
+  .enum([...DISPATCH_ROLES, "verifier", "lite", "build"])
+  .transform((value): JournalRole => {
+    if (value === "verifier") return "auditor"
+    if (value === "lite") return "ask-lite"
+    return value
+  })
+
+/** Public role argument schema: canonical names plus the verifier/lite aliases. */
+export const DispatchRoleSchema = roleSchema
 const messageIdSchema = z.string().regex(/^msg-[A-Za-z0-9_-]+$/, { message: "expected msg-prefixed message id" })
 const sessionIdSchema = z.string().min(1, { message: "expected non-empty session id" })
 
@@ -51,7 +105,7 @@ function journalRecord<K extends string, S extends z.ZodRawShape>(kind: K, shape
 }
 
 export const JobSpecSchema = journalRecord("job-spec", {
-  role: roleSchema,
+  role: journalRoleSchema,
   agent_name: z.string().min(1),
   model_chain: z.array(z.string().nullable()),
   prompt: z.string(),
@@ -121,7 +175,7 @@ const envelopeBaseSchema = z
   .object({
     v: z.literal(1),
     job_id: sessionIdSchema,
-    role: roleSchema,
+    role: journalRoleSchema,
     attempt: attemptSchema,
     session_id: sessionIdSchema,
     waited_ms: z.number().int().nonnegative(),
@@ -152,7 +206,7 @@ export const DispatchCompletedEnvelopeSchema = z
     v: z.literal(1),
     status: z.literal("completed"),
     job_id: sessionIdSchema,
-    role: roleSchema,
+    role: journalRoleSchema,
     attempt: attemptSchema,
     session_id: sessionIdSchema,
     waited_ms: z.number().int().nonnegative(),
@@ -228,6 +282,13 @@ export const ContinueArgsSchema = z
   .strict()
 
 export type ContinueArgs = z.infer<typeof ContinueArgsSchema>
+
+export function parseDispatchRole(input: unknown): DispatchResult<DispatchRole> {
+  const result = roleSchema.safeParse(input)
+  return result.success
+    ? { ok: true, value: result.data }
+    : { ok: false, error: fromZodError("invalid dispatch role", result.error) }
+}
 
 export function parseContinueArgs(input: unknown): DispatchResult<ContinueArgs> {
   const result = ContinueArgsSchema.safeParse(input)

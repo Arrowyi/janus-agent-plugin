@@ -8,6 +8,16 @@ interface JournalSnapshot {
   readonly children: readonly SdkSession[]
 }
 
+const LEGACY_TITLE_ROLES: Readonly<Record<string, readonly string[]>> = {
+  auditor: ["verifier"],
+  "ask-lite": ["lite"],
+}
+
+function matchesDispatchTitle(title: string, role: string): boolean {
+  if (title === `[consultation-dispatch:v1] ${role}`) return true
+  return (LEGACY_TITLE_ROLES[role] ?? []).some((legacy) => title === `[consultation-dispatch:v1] ${legacy}`)
+}
+
 export function bindJob(snapshot: JournalSnapshot, input: LoadJobInput): JournalResult<LoadedJob> {
   const { records, root } = snapshot
   const directory = path.normalize(input.directory)
@@ -16,7 +26,7 @@ export function bindJob(snapshot: JournalSnapshot, input: LoadJobInput): Journal
   if (specs.length !== 1) return fail("invalid-job", specs.length === 0 ? "no job spec found" : "multiple job specs found")
   const spec = specs[0]
   if (spec === undefined) return fail("invalid-job", "no job spec found")
-  if (spec.parent_id !== input.expectedParentID || path.normalize(spec.directory) !== directory || root.title !== `[consultation-dispatch:v1] ${spec.role}`) {
+  if (spec.parent_id !== input.expectedParentID || path.normalize(spec.directory) !== directory || !matchesDispatchTitle(root.title, spec.role)) {
     return fail("job-unavailable", "job binding mismatch")
   }
   const reservations = records.filter((record): record is AttemptReservation => record.kind === "attempt-reservation")

@@ -98,70 +98,70 @@ async function exhaustBudget(clock: ReturnType<typeof createFakeClock>): Promise
 }
 
 describe("resolveRoleTarget", () => {
-  it("maps each role to its own agent and default model", () => {
-    const explorer = resolveRoleTarget(config(), "explorer")
-    const analyst = resolveRoleTarget(config(), "analyst")
-    const critic = resolveRoleTarget(config(), "critic")
-    const verifier = resolveRoleTarget(config(), "verifier")
-    const writer = resolveRoleTarget(config(), "writer")
-
-    expect(explorer).toEqual({ agentName: "consultation-explorer", model: "opencode-go/deepseek-v4.1-flash" })
-    expect(analyst).toEqual({ agentName: "consultation-analyst", model: "opencode-go/qwen3.8-max" })
-    expect(critic).toEqual({ agentName: "consultation-critic", model: "opencode/gemini-3.8-flash" })
-    expect(verifier).toEqual({ agentName: "consultation-verifier", model: "opencode/gemini-3.8-flash" })
-    expect(writer).toEqual({ agentName: "consultation-writer", model: "opencode/claude-sonnet-5-5" })
-    const coder = resolveRoleTarget(config(), "coder")
-    expect(coder).toEqual({ agentName: "coder", model: "opencode-go/glm-5.3" })
-    const lite = resolveRoleTarget(config(), "lite")
-    expect(lite).toEqual({ agentName: "lite", model: "opencode-go/deepseek-v4.1-flash" })
-    const coderLite = resolveRoleTarget(config(), "coder-lite")
-    expect(coderLite).toEqual({ agentName: "coder-lite", model: "opencode-go/glm-5.3-flash" })
-    const build = resolveRoleTarget(config(), "build")
-    expect(build).toEqual({ agentName: "build", model: undefined })
-    const consultant = resolveRoleTarget(config(), "consultant")
-    expect(consultant).toEqual({ agentName: "consultant", model: "opencode-go/glm-5.3" })
+  it("maps every role to its agent and default model", () => {
+    const expected = {
+      explorer: { agentName: "explorer", model: "opencode-go/deepseek-v4.1-flash" },
+      analyst: { agentName: "analyst", model: "opencode-go/qwen3.8-max" },
+      critic: { agentName: "critic", model: "opencode/gemini-3.8-flash" },
+      "arch-critic": { agentName: "arch-critic", model: "opencode/gemini-3.8-flash" },
+      auditor: { agentName: "auditor", model: "opencode/gemini-3.8-flash" },
+      writer: { agentName: "writer", model: "opencode/claude-sonnet-5-5" },
+      coder: { agentName: "coder", model: "opencode-go/glm-5.3" },
+      "ask-lite": { agentName: "ask-lite", model: "opencode-go/deepseek-v4.1-flash" },
+      "coder-lite": { agentName: "coder-lite", model: "opencode-go/glm-5.3-flash" },
+      consultant: { agentName: "consultant", model: "opencode-go/glm-5.3" },
+    } as const
+    for (const [role, target] of Object.entries(expected)) {
+      expect(resolveRoleTarget(config(), role as keyof typeof expected)).toEqual(target)
+    }
   })
 
-  it("resolves a renamed lite agent", () => {
-    const cfg = config({ lite_agent: "my-lite", lite_model: "test/lite" })
-    expect(resolveRoleTarget(cfg, "lite")).toEqual({ agentName: "my-lite", model: "test/lite" })
-  })
+  it("applies scalar overrides, aliases, delegate routing, and mode/tier precedence", () => {
+    expect(resolveRoleTarget(config({ analyst_model: "test/analyst" }), "analyst")).toEqual({
+      agentName: "analyst",
+      model: "test/analyst",
+    })
+    expect(resolveRoleTarget(config({ ask_lite_agent: "my-lite", ask_lite_model: "test/lite" }), "ask-lite")).toEqual({
+      agentName: "my-lite",
+      model: "test/lite",
+    })
+    expect(resolveRoleTarget(config({ writer_delegate_agent: "host-writer" }), "writer")).toEqual({
+      agentName: "host-writer",
+      model: undefined,
+    })
+    expect(
+      resolveRoleTarget(config({ writer_delegate_agent: "host-writer", writer_delegate_model: "p/m" }), "writer"),
+    ).toEqual({ agentName: "host-writer", model: "p/m" })
+    expect(
+      resolveRoleTarget(config({ writer_agent: "custom-writer", writer_model: "provider/writer-model" }), "writer"),
+    ).toEqual({ agentName: "custom-writer", model: "provider/writer-model" })
 
-  it("routes the build role to the configured host agent and pins its model only when set", () => {
-    const cfg = config({ build_agent: "host-build", build_model: "p/build-m" })
-    expect(resolveRoleTarget(cfg, "build")).toEqual({ agentName: "host-build", model: "p/build-m" })
-    const unpinned = config({ build_agent: "host-build" })
-    expect(resolveRoleTarget(unpinned, "build")).toEqual({ agentName: "host-build", model: undefined })
-  })
-
-  it("routes the writer to a delegate agent without pinning a model by default", () => {
-    const cfg = config({ writer_delegate_agent: "host-writer" })
-    expect(resolveRoleTarget(cfg, "writer")).toEqual({ agentName: "host-writer", model: undefined })
-  })
-
-  it("pins the delegate model only when writer_delegate_model is set", () => {
-    const cfg = config({ writer_delegate_agent: "host-writer", writer_delegate_model: "p/m" })
-    expect(resolveRoleTarget(cfg, "writer")).toEqual({ agentName: "host-writer", model: "p/m" })
-  })
-
-  it("honors model overrides", () => {
-    const cfg = config({ analyst_model: "test/analyst" })
-    expect(resolveRoleTarget(cfg, "analyst")).toEqual({ agentName: "consultation-analyst", model: "test/analyst" })
-  })
-
-  it("resolves the configured writer target", () => {
-    const cfg = config({ writer_agent: "custom-writer", writer_model: "provider/writer-model" })
-    expect(resolveRoleTarget(cfg, "writer")).toEqual({ agentName: "custom-writer", model: "provider/writer-model" })
+    const routed = config({
+      analyst_model: "scalar/model",
+      tier_models: { deep: { analyst: "tier/model" } },
+      mode_models: { research: { analyst: "mode/model" } },
+    })
+    expect(resolveRoleTarget(routed, "analyst", { tier: "deep" })).toEqual({
+      agentName: "analyst",
+      model: "tier/model",
+    })
+    expect(resolveRoleTarget(routed, "analyst", { mode: "research", tier: "deep" })).toEqual({
+      agentName: "analyst",
+      model: "mode/model",
+    })
   })
 })
 
 describe("splitModel", () => {
-  it("splits provider/model on the first slash", () => {
-    expect(splitModel("deepseek/deepseek-v4.1-flash")).toEqual({ providerID: "deepseek", modelID: "deepseek-v4.1-flash" })
-    expect(splitModel("opencode-go/qwen3.8-max")).toEqual({ providerID: "opencode-go", modelID: "qwen3.8-max" })
-  })
-
-  it("throws on a model id without a provider separator", () => {
+  it("splits provider/model on the first slash and rejects malformed ids", () => {
+    expect(splitModel("deepseek/deepseek-v4.1-flash")).toEqual({
+      providerID: "deepseek",
+      modelID: "deepseek-v4.1-flash",
+    })
+    expect(splitModel("opencode-go/qwen3.8-max")).toEqual({
+      providerID: "opencode-go",
+      modelID: "qwen3.8-max",
+    })
     expect(() => splitModel("no-slash")).toThrow(/provider\/model/)
     expect(() => splitModel("/leading")).toThrow()
     expect(() => splitModel("trailing/")).toThrow()
@@ -214,7 +214,7 @@ describe("createJanusDispatchTool", () => {
 
     const prompt = lastPromptAsyncCall(fake)
     expect(prompt.input.path.id).toMatch(/^ses_fake_/)
-    expect(prompt.input.body.agent).toBe("consultation-analyst")
+    expect(prompt.input.body.agent).toBe("analyst")
     expect(prompt.input.body.model).toEqual({ providerID: "provider-b", modelID: "analyst-m" })
     expect(prompt.input.body.parts).toEqual([{ type: "text", text: "analyze claims" }])
   })
@@ -358,20 +358,20 @@ describe("createJanusDispatchTool", () => {
     expect(prompt.input.body.model).toBeUndefined()
   })
 
-  it("rejects the lite role when lite_enabled=false", async () => {
+  it("rejects the ask-lite role when ask_lite_enabled=false", async () => {
     // given
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-liteoff-"))
     const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, '{\n  "lite_enabled": false\n}')
+    writeFileSync(configPath, '{\n  "ask_lite_enabled": false\n}')
     process.env.JANUS_CONFIG = configPath
     const tools = createJanusDispatchTools(createFakeSdk() as unknown as PluginInput["client"])
 
     try {
       // when
-      const result = await tools.janus_dispatch.execute({ role: "lite", prompt: "quick lookup" }, fakeContext())
+      const result = await tools.janus_dispatch.execute({ role: "ask-lite", prompt: "quick lookup" }, fakeContext())
 
       // then
-      expect(result).toBe("Error: lite is disabled by configuration")
+      expect(result).toBe("Error: ask-lite is disabled by configuration")
     } finally {
       delete process.env.JANUS_CONFIG
       rmSync(tmpConfigDir, { recursive: true, force: true })
@@ -402,7 +402,7 @@ describe("createJanusDispatchTool", () => {
     }
   })
 
-  it("launches the build role against the host agent without a pinned model", async () => {
+  it("rejects the removed build role with a clear error", async () => {
     // given
     const fake = createRespondingFake("done")
     const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
@@ -411,10 +411,67 @@ describe("createJanusDispatchTool", () => {
     const result = await tools.janus_dispatch.execute({ role: "build", prompt: "refactor X" }, fakeContext())
 
     // then
-    const body = lastPromptAsyncCall(fake).input.body
-    expect(body.agent).toBe("build")
-    expect(body.model).toBeUndefined()
-    expect(result).toBe("done")
+    expect(result).toContain('the "build" role was removed')
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("accepts the legacy plan mode alias and applies the mode model", async () => {
+    // given
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-mode-"))
+    const configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, JSON.stringify({ mode_models: { roadmap: { analyst: "mode/analyst" } } }))
+    process.env.JANUS_CONFIG = configPath
+    const fake = createRespondingFake("done")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    try {
+      // when
+      const result = await tools.janus_dispatch.execute(
+        { role: "analyst", prompt: "review the roadmap", mode: "plan" },
+        fakeContext(),
+      )
+
+      // then
+      expect(result).toBe("done")
+      expect(lastPromptAsyncCall(fake).input.body.model).toEqual({ providerID: "mode", modelID: "analyst" })
+    } finally {
+      delete process.env.JANUS_CONFIG
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it("prepends the protocol card to the first turn", async () => {
+    // given
+    const fake = createRespondingFake("reviewed")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute(
+      { role: "critic", prompt: "challenge this conclusion", protocol: "counter_evidence" },
+      fakeContext(),
+    )
+
+    // then
+    expect(result).toBe("reviewed")
+    const text = lastPromptAsyncCall(fake).input.body.parts[0]?.text ?? ""
+    expect(text.startsWith("## Protocol: counter_evidence")).toBe(true)
+    expect(text.endsWith("challenge this conclusion")).toBe(true)
+  })
+
+  it("rejects a protocol on a role that does not carry its contract", async () => {
+    // given
+    const fake = createRespondingFake("should not run")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute(
+      { role: "analyst", prompt: "review", protocol: "design_premortem" },
+      fakeContext(),
+    )
+
+    // then
+    expect(result).toContain("protocol design_premortem is not supported by role analyst")
+    expect(promptAsyncCount(fake)).toBe(0)
   })
 
   it("uses the production 300000 ms wait budget at the tool boundary", async () => {
@@ -575,13 +632,37 @@ describe("janus_dispatch_continue", () => {
     // Both prompts went to the same reused session.
     expect(asyncs[0]!.input.path.id).toBe(sessionID)
     expect(asyncs[1]!.input.path.id).toBe(sessionID)
-    expect(asyncs[1]!.input.body.agent).toBe("consultation-writer")
+    expect(asyncs[1]!.input.body.agent).toBe("writer")
     expect(asyncs[1]!.input.body.parts).toEqual([{ type: "text", text: "apply the review fix to chapter one" }])
     // A continuation job root was created under the caller, with the reuse journaled.
     const creates = fake.calls.filter((c) => (c as { method: string }).method === "create") as Array<{ input: { body: { title: string; parentID: string } } }>
     expect(creates).toHaveLength(2)
     expect(creates[1]!.input.body.title).toBe("[consultation-dispatch:v1] writer")
     expect(creates[1]!.input.body.parentID).toBe("ses_parent")
+  })
+
+  it("locks the original agent and model on continuation after a config change", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("maintenance applied", clock)
+    const tools = createTools(fake, clock)
+    const { sessionID } = await dispatchWriterWithHandle(fake, tools, "maintenance applied")
+
+    // The user changes the writer route between the first turn and the follow-up.
+    writeFileSync(
+      configPath,
+      JSON.stringify({ writer_agent: "other-writer", writer_model: "other/model" }),
+    )
+
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "apply the fix" },
+      fakeContext(),
+    )
+
+    expect(result).toBe("maintenance applied")
+    const asyncs = fake.calls.filter((c) => (c as { method: string }).method === "promptAsync") as Array<{ input: { body: { agent?: string; model?: { providerID: string; modelID: string } } } }>
+    expect(asyncs).toHaveLength(2)
+    expect(asyncs[1]!.input.body.agent).toBe("writer")
+    expect(asyncs[1]!.input.body.model).toEqual({ providerID: "opencode", modelID: "claude-sonnet-5-5" })
   })
 
   it("continues an attempt-child session of a normal job root", async () => {
@@ -592,7 +673,7 @@ describe("janus_dispatch_continue", () => {
     const { jobID, attemptSessionID } = await (async () => {
       const created = await createJob(fake, {
         parentID: "ses_parent", directory: "/tmp/project", role: "writer",
-        agentName: "consultation-writer", modelChain: ["opencode/claude-sonnet-5-5", "opencode-go/glm-5.3"],
+        agentName: "writer", modelChain: ["opencode/claude-sonnet-5-5", "opencode-go/glm-5.3"],
         prompt: "draft chapter one", clock,
       })
       if (!created.ok) throw created.error
@@ -934,7 +1015,7 @@ describe("janus_dispatch_continue", () => {
     const fake = createFakeSdk()
     const created = await createJob(fake, {
       parentID: "ses_parent", directory: "/tmp/project", role: "writer",
-      agentName: "consultation-writer", modelChain: ["opencode/claude-sonnet-5-5"],
+      agentName: "writer", modelChain: ["opencode/claude-sonnet-5-5"],
       prompt: "draft chapter one", clock,
     })
     if (!created.ok) throw created.error

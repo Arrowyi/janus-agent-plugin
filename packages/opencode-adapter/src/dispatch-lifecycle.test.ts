@@ -487,17 +487,17 @@ describe("unsupported promptAsync endpoint", () => {
 
 describe("synchronous provider-shaped launch failure", () => {
   it("appends the model-config remediation hint when promptAsync fails with a provider error", async () => {
-    // Given a synchronous provider-shaped submission failure, e.g. the build
-    // role's agent-missing case surfacing UnknownError at promptAsync time.
+    // Given a synchronous provider-shaped submission failure, e.g. an
+    // agent-missing case surfacing UnknownError at promptAsync time.
     const fake = createFakeSdk()
     fake.setPromptAsyncError({ name: "UnknownError", statusCode: 404 })
     const lifecycle = createDispatchLifecycle({ sdk: fake, clock: createFakeClock() })
 
     const result = await lifecycle.launch({
-      role: "build",
+      role: "coder",
       prompt: "code",
-      agentName: "build",
-      modelChain: [null],
+      agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"],
       parentID: FAKE_PARENT_ID,
       directory: FAKE_DIRECTORY,
       waitMs: 50,
@@ -506,9 +506,9 @@ describe("synchronous provider-shaped launch failure", () => {
     // Then the failure carries the §3.1 remediation hint with the role's
     // config field and path, alongside the job identity.
     expect(result.startsWith("Error:")).toBe(true)
-    expect(result).toContain("build dispatch failed")
+    expect(result).toContain("coder dispatch failed")
     expect(result).toContain("promptAsync failed: UnknownError: 404")
-    expect(result).toContain('set "build_model"')
+    expect(result).toContain('set "coder_model"')
     expect(result).toContain("~/.config/janus-agent/config.jsonc")
     expect(result).toMatch(/job_id=ses_fake_\d+/)
     expect(promptAsyncCount(fake)).toBe(1)

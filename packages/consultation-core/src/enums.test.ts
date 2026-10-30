@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import {
   ClaimKindSchema,
   ConfidenceSchema,
+  ConsultationModeInputSchema,
   ConsultationModeSchema,
+  CritiqueProtocolSchema,
+  normalizeConsultationMode,
   RiskLevelSchema,
   SourceGradeSchema,
   StabilitySchema,
@@ -51,11 +54,31 @@ describe("enums", () => {
     expect(ConsultationModeSchema.options).toEqual([
       "select",
       "verify",
-      "plan",
+      "roadmap",
       "research",
       "guide",
-      "author",
+      "doc",
       "design",
+    ]);
+  });
+
+  it("normalizes the legacy plan/author mode names", () => {
+    expect(ConsultationModeInputSchema.parse("plan")).toBe("roadmap")
+    expect(ConsultationModeInputSchema.parse("author")).toBe("doc")
+    expect(ConsultationModeInputSchema.parse("roadmap")).toBe("roadmap")
+    expect(ConsultationModeInputSchema.parse("doc")).toBe("doc")
+    expect(normalizeConsultationMode("plan")).toBe("roadmap")
+    expect(normalizeConsultationMode("author")).toBe("doc")
+    expect(normalizeConsultationMode("nope")).toBeUndefined()
+  });
+
+  it("CritiqueProtocolSchema exposes the five methodology protocols", () => {
+    expect(CritiqueProtocolSchema.options).toEqual([
+      "counter_evidence",
+      "hypothesis_matrix",
+      "plan_robustness",
+      "design_premortem",
+      "code_plan_review",
     ]);
   });
 });

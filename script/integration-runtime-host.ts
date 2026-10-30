@@ -11,7 +11,7 @@ export async function createRuntimeHost(providerURL: string) {
   const configHome = join(sandbox, "config")
   for (const name of ["home", "data", "state", "cache", "proj", "config/opencode", "config/janus-agent"]) mkdirSync(join(sandbox, name), { recursive: true })
   const entry = await resolvePluginEntry()
-  const modelNames = ["consultant", "explorer", "analyst", "critic", "verifier", "writer", "delegate"]
+  const modelNames = ["consultant", "explorer", "analyst", "critic", "arch-critic", "auditor", "writer", "ask-lite", "delegate"]
   const config = {
     $schema: "https://opencode.ai/config.json", plugin: [toFileUrl(entry.entry)],
     enabled_providers: ["fixture"], model: "fixture/consultant", small_model: "fixture/consultant",
@@ -20,7 +20,7 @@ export async function createRuntimeHost(providerURL: string) {
     snapshot: false, share: "disabled", compaction: { auto: false },
   }
   writeFileSync(join(configHome, "opencode/opencode.json"), JSON.stringify(config))
-  const pluginConfig = { agent_model: "fixture/consultant", explorer_model: "fixture/explorer", analyst_model: "fixture/analyst", critic_model: "fixture/critic", verifier_model: "fixture/verifier", writer_model: "fixture/writer", memory_enabled: false }
+  const pluginConfig = { consultant_model: "fixture/consultant", explorer_model: "fixture/explorer", analyst_model: "fixture/analyst", critic_model: "fixture/critic", arch_critic_model: "fixture/arch-critic", auditor_model: "fixture/auditor", writer_model: "fixture/writer", ask_lite_model: "fixture/ask-lite", memory_enabled: false }
   const pluginConfigPath = join(configHome, "janus-agent/config.jsonc")
   writeFileSync(pluginConfigPath, JSON.stringify(pluginConfig))
   writeFileSync(join(project, "fixture.txt"), "deterministic read fixture")

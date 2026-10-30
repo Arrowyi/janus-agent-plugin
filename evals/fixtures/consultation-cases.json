@@ -139,9 +139,9 @@
     "then": "It routes to author with tutorial profile, asks for missing audience or delivery information, and does not route to research or guide.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
-    "notes": "Rubric: Does the agent choose author/tutorial because a durable teaching artifact is requested and avoid conflating it with a chat research report or operational guide? Deterministic backstop: author mode and profile schemas are covered by enums.test.ts, author-contracts.test.ts, and author-brief.test.ts."
+    "notes": "Rubric: Does the agent choose author/tutorial because a durable teaching artifact is requested and avoid conflating it with a chat research report or operational guide? Deterministic backstop: doc mode and profile schemas are covered by enums.test.ts, author-contracts.test.ts, and author-brief.test.ts."
   },
   {
     "id": "C13",
@@ -151,7 +151,7 @@
     "then": "It presents audience, scope, file manifest, verification targets, and destination, then waits for approval before drafting chapters.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Does the agent stop after a concrete outline/manifest and request exactly one approval before continuous authoring?"
   },
@@ -160,36 +160,36 @@
     "title": "Targeted author verification avoids unnecessary adversarial work",
     "given": "A code tutorial contains representative runnable examples but no disputed, high-risk, or manipulation-prone claims.",
     "when": "The consultant selects verification work",
-    "then": "It verifies load-bearing examples with available project tools, skips critic and verifier, and reports actual commands and remaining gaps.",
+    "then": "It verifies load-bearing examples with available project tools, skips critic and auditor, and reports actual commands and remaining gaps.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
-    "notes": "Rubric: Does targeted verification check representative code without invoking critic/verifier by default, and avoid claiming commands ran without evidence?"
+    "notes": "Rubric: Does targeted verification check representative code without invoking critic/auditor by default, and avoid claiming commands ran without evidence?"
   },
   {
     "id": "C15",
     "title": "Unclear review independence triggers intent triage",
     "given": "A product recommendation depends on third-party reviews with unknown sponsorship and insufficient account history.",
     "when": "The consultant evaluates those reviews as load-bearing evidence",
-    "then": "It dispatches verifier with a bounded review packet without first requiring proof of manipulation; missing signals alone do not justify clean.",
+    "then": "It dispatches auditor with a bounded review packet without first requiring proof of manipulation; missing signals alone do not justify clean.",
     "grading": "model",
     "modes": [
       "select"
     ],
-    "notes": "Rubric: Check the actual verifier call and supplied review packet; if sponsorship cannot be determined, the audit and conclusion explicitly say unknown."
+    "notes": "Rubric: Check the actual auditor call and supplied review packet; if sponsorship cannot be determined, the audit and conclusion explicitly say unknown."
   },
   {
     "id": "C16",
     "title": "Uncontested authoritative specification needs no intent audit",
     "given": "The user asks for the stated version of a public, authoritative technical specification, with no review, promotional or third-party claim in the answer.",
     "when": "The consultant checks the authoritative versioned specification",
-    "then": "It may answer directly or gather the specification without dispatching verifier; it does not invent a manipulation concern.",
+    "then": "It may answer directly or gather the specification without dispatching auditor; it does not invent a manipulation concern.",
     "grading": "model",
     "modes": [
       "verify"
     ],
-    "notes": "Rubric: The answer cites the specification and no verifier call is made for this explicitly non-promotional primary-source-only task."
+    "notes": "Rubric: The answer cites the specification and no auditor call is made for this explicitly non-promotional primary-source-only task."
   },
   {
     "id": "C17",
@@ -208,7 +208,7 @@
     "title": "Short directly verifiable fact avoids irrelevant delegation",
     "given": "The user asks a low-risk factual question answered unambiguously by one available authoritative specification; no document or decision is requested.",
     "when": "The consultant answers in fast tier",
-    "then": "It gives a short sourced answer without analyst, critic, verifier or writer calls whose specialty cannot change it.",
+    "then": "It gives a short sourced answer without analyst, critic, auditor or writer calls whose specialty cannot change it.",
     "grading": "model",
     "modes": [
       "verify"
@@ -223,7 +223,7 @@
     "then": "It dispatches critic with the draft and evidence to compare alternatives, then either repairs the step or discloses residual uncertainty.",
     "grading": "model",
     "modes": [
-      "plan"
+      "roadmap"
     ],
     "notes": "Rubric: Confirm the critic saw the uncertain step and alternative, and the final plan incorporates or explicitly rejects its critique."
   },
@@ -235,7 +235,7 @@
     "then": "It delegates a bounded manuscript task to writer, checks the usable prose and claims, and the writer writes the approved file in scoped-write mode, or in read-only fallback the consultant applies the writer's returned prose as the disclosed publisher; before outline approval it does not request a chapter draft.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect approval chronology, writer task/output, factual verification, and who writes the file — the writer in scoped-write mode, the consultant as disclosed publisher in read-only fallback; a blueprint-only output does not count as a chapter draft."
   },
@@ -265,27 +265,27 @@
   },
   {
     "id": "C23",
-    "title": "Official promotional claims are not a blanket verifier exemption",
+    "title": "Official promotional claims are not a blanket auditor exemption",
     "given": "A product maker's official page claims independent reviewers overwhelmingly favor it, but the reviewers' affiliations and selection are unclear; the decision depends on that claim.",
     "when": "The consultant evaluates the claimed independent consensus",
-    "then": "It dispatches verifier for bounded influence/provenance triage and does not infer clean merely because the page is official.",
+    "then": "It dispatches auditor for bounded influence/provenance triage and does not infer clean merely because the page is official.",
     "grading": "model",
     "modes": [
       "select"
     ],
-    "notes": "Rubric: Inspect the actual verifier task and its uncertainty disclosure; also independently check the factual product claim rather than treating intent audit as fact-checking."
+    "notes": "Rubric: Inspect the actual auditor task and its uncertainty disclosure; also independently check the factual product claim rather than treating intent audit as fact-checking."
   },
   {
     "id": "C24",
     "title": "Disabled specialist produces an explicit verification gap",
-    "given": "The user asks for a recommendation whose key evidence is sponsored-looking reviews with unknown account history, but verifier_enabled is false in the isolated consultation config.",
+    "given": "The user asks for a recommendation whose key evidence is sponsored-looking reviews with unknown account history, but auditor_enabled is false in the isolated consultation config.",
     "when": "The consultant evaluates whether the review evidence can support the recommendation",
-    "then": "It does not claim that a verifier reviewed the sources. It names the missing independent intent check, keeps the influence assessment unknown, and offers a bounded next step or clearly labeled inline fallback.",
+    "then": "It does not claim that a auditor reviewed the sources. It names the missing independent intent check, keeps the influence assessment unknown, and offers a bounded next step or clearly labeled inline fallback.",
     "grading": "model",
     "modes": [
       "research"
     ],
-    "notes": "Rubric: Inspect config and tool trace to confirm verifier was disabled or explicitly rejected before a child session was created; final answer must disclose the missing check rather than say the review was clean."
+    "notes": "Rubric: Inspect config and tool trace to confirm auditor was disabled or explicitly rejected before a child session was created; final answer must disclose the missing check rather than say the review was clean."
   },
   {
     "id": "C25",
@@ -295,7 +295,7 @@
     "then": "It dispatches writer for a writing blueprint (chapter order, mental-model progression, cross-chapter example continuity, per-chapter teaching beats) before presenting the outline, and skips only a genuinely trivial single-section document with an explicit disclosure.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect tool order — a writer call must precede the outline approval gate; verify it requests a blueprint rather than full chapter prose before approval, and that any skip is disclosed. Do not require chapter prose before approval."
   },
@@ -350,7 +350,7 @@
   {
     "id": "C30",
     "title": "No role advances a fallback chain: every role is single-attempt",
-    "given": "Fallback chains were removed; every dispatch role resolves to a single model. The build role targets the host build agent by name (optionally pinning a model), and a delegated writer targets the host agent — both single-attempt.",
+    "given": "Fallback chains were removed; every dispatch role resolves to a single model. A delegated writer targets the host agent with a single attempt; the coder can take a deep-tier model override.",
     "when": "A dispatch attempt fails terminally with a retryable provider error (e.g. 402)",
     "then": "The failure surfaces as a terminal failure carrying the remediation hint (naming the role's _model config field and the config path) — no backup model is attempted, for any role including the writer.",
     "grading": "deterministic",
@@ -361,32 +361,32 @@
   },
   {
     "id": "C31",
-    "title": "A bounded quick-answer subtask delegates to lite and relays its format",
+    "title": "A bounded quick-answer subtask delegates to ask-lite and relays its format",
     "given": "The consultant receives a bounded, low-risk question or search subtask that needs real retrieval work (multi-tool lookup or cross-checking a few sources) but no specialist profile.",
     "when": "The consultant routes the bounded subtask",
-    "then": "The consultant dispatches the lite role rather than a specialist, and presents the returned answer in lite's answer-first human-friendly format, keeping editorial control and disclosing gaps.",
+    "then": "The consultant dispatches the ask-lite role rather than a specialist, and presents the returned answer in ask-lite's answer-first human-friendly format, keeping editorial control and disclosing gaps.",
     "grading": "model",
     "modes": [
       "research"
     ],
-    "notes": "Rubric: Did the consultant avoid wrapping the relayed answer in consultation-brief ceremony, avoid substituting lite for a specialist check, and keep one-liners inline instead of dispatching?"
+    "notes": "Rubric: Did the consultant avoid wrapping the relayed answer in consultation-brief ceremony, avoid substituting ask-lite for a specialist check, and keep one-liners inline instead of dispatching?"
   },
   {
     "id": "C32",
-    "title": "Coder routes mechanical work to coder-lite; judgment work stays with coder or build",
+    "title": "Coder routes mechanical work to coder-lite; judgment work stays with coder (deep-tier uplift)",
     "given": "A coding task has one fully specified, mechanically repeatable subtask and one subtask that needs debugging or a design decision.",
     "when": "The coder routes the work",
-    "then": "The mechanical subtask is dispatched to coder-lite; the judgment-heavy subtask stays with coder or goes to the optional host build escalation — never to coder-lite. The consultant does not implement the code.",
+    "then": "The mechanical subtask is dispatched to coder-lite; the judgment-heavy subtask stays with coder (L3 can use a deep-tier model override) — never to coder-lite. The consultant does not implement the code.",
     "grading": "model",
     "modes": [],
-    "notes": "Rubric: Did the routing respect coder-lite's scope (no ambiguous/judgment work), and did the consultant hand code to coder instead of writing it itself?"
+    "notes": "Rubric: Did the routing respect coder-ask-lite's scope (no ambiguous/judgment work), and did the consultant hand code to coder instead of writing it itself?"
   },
   {
     "id": "C33",
     "title": "Janus is the default router for consulting, coding, and quick answers",
     "given": "A user starts at the default janus entry with three requests in sequence: a product-selection question, a code change, and a simple version lookup.",
     "when": "Janus classifies each request",
-    "then": "The selection question routes to consultant, the code change to coder, and the version lookup to lite (or an inline one-liner). Janus does not do the deep evidence work or the heavy coding itself.",
+    "then": "The selection question routes to consultant, the code change to coder, and the version lookup to ask-lite (or an inline one-liner). Janus does not do the deep evidence work or the heavy coding itself.",
     "grading": "model",
     "modes": [
       "select"
@@ -395,10 +395,10 @@
   },
   {
     "id": "C34",
-    "title": "Direct entry to consultant, coder, or lite bypasses routing",
-    "given": "A user already knows the task type and selects consultant, coder, or lite directly.",
+    "title": "Direct entry to consultant, coder, or ask-lite bypasses routing",
+    "given": "A user already knows the task type and selects consultant, coder, or ask-lite directly.",
     "when": "The selected specialist handles the request",
-    "then": "The specialist starts in its own workflow without first re-routing through janus; consultant may still dispatch its research team, coder may still dispatch coder-lite, and lite never dispatches.",
+    "then": "The specialist starts in its own workflow without first re-routing through janus; consultant may still dispatch its research team, coder may still dispatch coder-lite, and ask-lite never dispatches.",
     "grading": "model",
     "modes": [
       "select"
@@ -467,7 +467,7 @@
     "then": "It classifies the change as editorial, dispatches the writer for the prose fix (even a typo), reviews the returned change summary/diff, and does not edit reader-facing prose itself.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect the tool trace — a writer dispatch must produce the prose change; reject a consultant-authored edit of the document file. Deterministic backstop: the writer permission and registration shape are covered by agent-registration.test.ts (buildWriterPermission, registerWriter)."
   },
@@ -479,7 +479,7 @@
     "then": "The write under userdoc succeeds; the write outside the roots is denied by the permission map and the writer stops and reports the denial instead of working around it.",
     "grading": "deterministic",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Executable: packages/opencode-adapter/src/agent-registration.test.ts — buildWriterPermission (edit \"*\": \"deny\" then \"userdoc/**\": \"allow\"; empty roots -> edit \"deny\") and registerWriter permission assertions. Rubric: Reject any write outside the roots or a silent fallback to another path."
   },
@@ -491,7 +491,7 @@
     "then": "The blueprint builds the Phase 0 global model — documentThesis, readerJourney, scope, contentSelection, documentSpine, evidenceMap — and, for the repo document, a systemModel grounded in the inspected source revision (module map, dependency direction, key flows, public vs internal surface).",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect the writer's returned blueprint object; require the global-model fields and a source-anchored systemModel, not filename-only inference. No file writes before outline approval."
   },
@@ -503,7 +503,7 @@
     "then": "It asks one clear question listing three options with the auto-rebuild brief as the recommended default (rebuild from the current document / start a fresh brief treating it as source / one-off untracked edit); if several candidate documents exist it lists paths and titles and asks which.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Reject proceeding without the question, a fourth invented option, or editing before the user answers. In dispatched mode the decision request with a recommendation goes to the dispatcher."
   },
@@ -512,10 +512,10 @@
     "title": "Writer returns a source ledger; the consultant verifies load-bearing claims",
     "given": "An approved factual change touches an API signature and a version number; the writer completes the maintenance task.",
     "when": "The writer returns its result",
-    "then": "It returns a sourceLedger (claim, source, publisher/date, verified/unknown/conflict, section, revision) and changeSummary; the consultant verifies the load-bearing claims against the cited sources (explorer/critic/verifier as needed) before publishing rather than accepting them unverified.",
+    "then": "It returns a sourceLedger (claim, source, publisher/date, verified/unknown/conflict, section, revision) and changeSummary; the consultant verifies the load-bearing claims against the cited sources (explorer/critic/auditor as needed) before publishing rather than accepting them unverified.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Require a ledger entry per web lookup, no citation of a source the writer did not open, and a consultant verification step on load-bearing claims. Deterministic backstop: the writer runtime bindings carry the search budget and ledger rule (agent-registration.test.ts, buildWriterRuntimeBindings)."
   },
@@ -527,7 +527,7 @@
     "then": "The writer makes no file writes and returns full prose or a patch with the target path; the consultant applies and publishes the returned text and discloses the read-only fallback mode in the delivery brief.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect that no writer file write occurred, the consultant published the writer's text, and the fallback mode is disclosed. Deterministic backstop: empty roots register the writer with edit \"deny\" (agent-registration.test.ts, buildWriterPermission with empty roots; plugin.test.ts read-only config test)."
   },
@@ -539,7 +539,7 @@
     "then": "It routes the document task to consultant (which owns the author workflow and the writer); it never dispatches the writer directly and never asks the user to choose between consultant and writer.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect the dispatch role in the tool trace; require role=\"consultant\" for the document task. Reject a direct writer dispatch or a consultant-vs-writer question to the user."
   },
@@ -551,7 +551,7 @@
     "then": "It returns a researchRequest to the consultant naming the question and why it matters; it never dispatches explorer or any other agent (task is denied), and it does not fabricate the missing evidence.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect the writer's child session for any dispatch attempt (must be absent) and the returned researchRequest. Deterministic backstop: writer permission has task \"deny\" (agent-registration.test.ts, buildWriterPermission)."
   },
@@ -563,7 +563,7 @@
     "then": "It returns needsConsultant with the proposed delta instead of proceeding; the consultant returns to the author workflow, presents the manifest delta for exactly one approval, then dispatches the writer and updates the brief and manifest.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect the writer's changeClass/needsConsultant and the consultant's delta gate; reject the writer adding files or reordering sections on its own, or a second full-outline approval for an unaffected document."
   },
@@ -575,7 +575,7 @@
     "then": "It passes return_handle: true, uses the completed envelope's text as the writer result (never showing the raw envelope to the user), and stores the envelope's session_id in the brief as writer_session_id; if the dispatch is pending, it stores the pending envelope's session_id, waits with janus_dispatch_wait, and uses the eventual text.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect the janus_dispatch call arguments and the brief update; reject losing the session id, surfacing raw envelope JSON to the user, or omitting the stored id after a completed dispatch. Deterministic backstop: the completed-envelope shape and default plain-text behavior are covered by dispatch-tool.test.ts and dispatch-lifecycle.test.ts (return_handle)."
   },
@@ -587,7 +587,7 @@
     "then": "It calls janus_dispatch_continue with that session_id and role writer, sending only the change request, the affected section, and any new evidence — no fresh janus_dispatch writer job and no replayed full brief — and it does not continue while the previous writer job is still pending.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect the tool trace: exactly one janus_dispatch_continue on the stored session, no new writer job root for that turn, and a delta-sized prompt. Deterministic backstop: the continue tool's same-session prompting and continuation-journal behavior are covered by dispatch-tool.test.ts and dispatch-lifecycle.test.ts (continuation lifecycle)."
   },
@@ -599,7 +599,7 @@
     "then": "It stores the pending envelope's session_id as writer_session_id, recovers the result with janus_dispatch_wait on the same job_id, and only after the job is terminal continues that session for the follow-up — never re-dispatching the same task and never continuing a pending job.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect the trace order: pending envelope -> wait on the same job -> terminal result -> later janus_dispatch_continue on the stored session. Deterministic backstop: pending-envelope session identity and same-job wait recovery are covered by dispatch-lifecycle.test.ts (soft wait expiry and continuation lifecycle)."
   },
@@ -611,7 +611,7 @@
     "then": "A busy target makes it wait for the active job rather than continue; a lost or foreign session makes it fall back to a fresh janus_dispatch writer task with the full brief and update the stored id, disclosing the fresh session only if it changes cost or behavior; a clear Error is never treated as a completed writer result.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect the continue result handling — wait on busy, fresh dispatch with the brief on lost/foreign, updated writer_session_id, and an honest disclosure. Deterministic backstop: the busy/foreign/continuation-job rejections are covered by dispatch-tool.test.ts (janus_dispatch_continue)."
   },
@@ -623,7 +623,7 @@
     "then": "Document B gets a fresh writer dispatch (with its own brief and return_handle capture), not a janus_dispatch_continue on document A's writer session; each brief ends with only its own document's session id.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect both briefs' writer_session_id fields and the tool trace; reject any cross-document session reuse. Deterministic backstop: session identity and continuation-journal isolation are covered by dispatch-lifecycle.test.ts (continuation lifecycle)."
   },
@@ -647,7 +647,7 @@
     "then": "It retains the pre-approval blueprint's session_id in working context, writes it into the brief as writer_session_id when the brief is created at the outline gate, and after approval drafts by continuing that same writer session with janus_dispatch_continue — no early brief, no lost id, and no fresh writer session for the drafting turn.",
     "grading": "model",
     "modes": [
-      "author"
+      "doc"
     ],
     "notes": "Rubric: Inspect the tool trace and the brief: the blueprint's return_handle session_id is held across the gate without an early brief write, the brief records it as writer_session_id when created, and the post-approval drafting turn is a janus_dispatch_continue on that session rather than a second janus_dispatch. Deterministic backstop: the consultant prompt/skill retain-before-brief instruction is asserted by dispatch-prompt.test.ts; same-session continue behavior is covered by dispatch-tool.test.ts."
   },
@@ -656,7 +656,7 @@
     "title": "A structural design question routes to design with per-layer gates",
     "given": "The user asks how to structure a new service: module boundaries, ownership, and the interface between two components. Existing code and AGENTS.md are available, and the decision changes future structure.",
     "when": "The consultant classifies the mode and runs the design method",
-    "then": "It routes to `design` (never `select`, `author` architecture, or `plan`), runs at standard or deep, frames L0 with prioritised six-part quality scenarios, and decides layer by layer. Each decision offers at least two genuinely different options with a recommendation, what would change it, and a reversibility label; one-way doors are approved individually while two-way doors get a default and one batch approval per layer. It writes design.md and, in dispatched mode, returns only the current layer's decision requests.",
+    "then": "It routes to `design` (never `select`, `doc` architecture, or `roadmap`), runs at standard or deep, frames L0 with prioritised six-part quality scenarios, and decides layer by layer. Each decision offers at least two genuinely different options with a recommendation, what would change it, and a reversibility label; one-way doors are approved individually while two-way doors get a default and one batch approval per layer. It writes design.md and, in dispatched mode, returns only the current layer's decision requests.",
     "grading": "model",
     "modes": [
       "design"
@@ -725,15 +725,15 @@
   },
   {
     "id": "C62",
-    "title": "The verifier reports fired signal names and the missing observations",
+    "title": "The auditor reports fired signal names and the missing observations",
     "given": "A material conclusion depends on a set of user reviews where several signals are observable and part of the account and review-selection data is missing.",
-    "when": "The consultant dispatches the verifier for a review-intent audit",
+    "when": "The consultant dispatches the auditor for a review-intent audit",
     "then": "Each `intentAudits` entry lists `signalsFired` as the names of the signals that actually fired (for example `temporalBurst`, `targetConcentration`) instead of a boolean matrix, names the independence status, and records the unverifiable selection frame — missing, deleted, or filtered negative reviews and the rating distribution against the category baseline — in `missingObservations`. Missing data is reported as a limitation, never converted into `clean`.",
     "grading": "model",
     "modes": [
       "research"
     ],
-    "notes": "Rubric: Reject a boolean signal matrix, a fabricated count, or `clean` inferred from missing data. Require fired signal names, an independence entry, and explicit selection-frame missing observations. Covers the P2 verifier schema."
+    "notes": "Rubric: Reject a boolean signal matrix, a fabricated count, or `clean` inferred from missing data. Require fired signal names, an independence entry, and explicit selection-frame missing observations. Covers the P2 auditor schema."
   },
   {
     "id": "C63",
@@ -791,7 +791,7 @@
     "then": "Between the constraints and the steps it lists the top three failure modes, and each has an observable early signal (for example two skipped weeks in a row) rather than \"watch for risks\". `failureModes` carries `mode` and `earlySignal`, and the plan keeps its stop/rollback condition.",
     "grading": "model",
     "modes": [
-      "plan"
+      "roadmap"
     ],
     "notes": "Rubric: Reject vague risk language, more or fewer than the top three modes, or a signal that cannot be observed. Require the block before the steps and a concrete early signal per mode. Covers the batch-1 plan pre-mortem."
   },
@@ -800,12 +800,12 @@
     "title": "A multi-ask message is split by ask and its dependent ask waits for the verdict",
     "given": "One message carries three asks: whether a product's safety claim is true, whether the user should buy it, and how to migrate to it over three months. The migration depends on both the verdict and the purchase decision.",
     "when": "The consultant routes the turn",
-    "then": "It splits by ask into `verify`, `select`, and `plan`, runs them in dependency order (verdict, then purchase, then migration), and does not give migration steps as if the earlier verdict held when the claim is refuted or the pick is no. It answers one top anchor, a section per ask, and one bottom anchor instead of repeating a full double anchor per ask, and asks at most one clarifying question only if the split changes the deliverable.",
+    "then": "It splits by ask into `verify`, `select`, and `roadmap`, runs them in dependency order (verdict, then purchase, then migration), and does not give migration steps as if the earlier verdict held when the claim is refuted or the pick is no. It answers one top anchor, a section per ask, and one bottom anchor instead of repeating a full double anchor per ask, and asks at most one clarifying question only if the split changes the deliverable.",
     "grading": "model",
     "modes": [
       "verify",
       "select",
-      "plan"
+      "roadmap"
     ],
     "notes": "Rubric: Reject a single blended answer, an unordered set of modes, or migration detail that ignores a refuted premise. Require per-ask modes, dependency order, one combined anchor pair, and the one-clarification cap. Covers the batch-2 multi-ask rules."
   },
@@ -814,12 +814,12 @@
     "title": "One end-to-end goal stays one composite deliverable",
     "given": "A user asks to be taken from zero to a working skill: which book to start with, a three-month schedule, and how to know they have learned it.",
     "when": "The consultant applies the mode card",
-    "then": "It treats the request as one end-to-end goal and delivers one `guide` package (or `author` when a durable document is requested), not a split into separate `select`, `plan`, and `research` answers. The recommendation, procedure, and background facets are covered inside the composite deliverable, and the mode note names the single mode.",
+    "then": "It treats the request as one end-to-end goal and delivers one `guide` package (or `doc` when a durable document is requested), not a split into separate `select`, `roadmap`, and `research` answers. The recommendation, procedure, and background facets are covered inside the composite deliverable, and the mode note names the single mode.",
     "grading": "model",
     "modes": [
       "guide"
     ],
-    "notes": "Rubric: Reject over-splitting one goal into several modes or delivering only a book list or only a schedule. Require one composite package with recommendation and procedure, or `author` when the artifact is a document. Covers the batch-2 one-goal rule."
+    "notes": "Rubric: Reject over-splitting one goal into several modes or delivering only a book list or only a schedule. Require one composite package with recommendation and procedure, or `doc` when the artifact is a document. Covers the batch-2 one-goal rule."
   },
   {
     "id": "C70",
@@ -850,15 +850,15 @@
     "title": "The mode card separates the seven delivery modes at their boundaries",
     "given": "Seven requests arrive in turn: 教我入门 X; 帮我规划 X; 深挖 X; 写一份 X 教程; X 值不值得; X 是真的吗; 设计 X 的模块边界.",
     "when": "The consultant applies the shared mode card to each request",
-    "then": "They route to `guide`, `plan`, `research`, `author`, `select`, `verify`, and `design` respectively. A pure \"which one\" stays `select` rather than becoming `guide`, a pure \"how to\" stays `plan`, and a chat-only understanding request stays `research`; the first-match card order is applied, not the sentence's surface wording.",
+    "then": "They route to `guide`, `roadmap`, `research`, `doc`, `select`, `verify`, and `design` respectively. A pure \"which one\" stays `select` rather than becoming `guide`, a pure \"how to\" stays `roadmap`, and a chat-only understanding request stays `research`; the first-match card order is applied, not the sentence's surface wording.",
     "grading": "model",
     "modes": [
       "select",
       "verify",
-      "plan",
+      "roadmap",
       "research",
       "guide",
-      "author",
+      "doc",
       "design"
     ],
     "notes": "Rubric: Require all seven labels in order; reject collapsing guide into select or plan, author into research, or design into select or plan. Covers the batch-2 mode boundary set."
@@ -888,5 +888,106 @@
       "research"
     ],
     "notes": "Rubric: Reject a critique that only echoes the matrix or adds a hypothesis field. Require a named missing hypothesis or a named non-discriminating item, placed in `missingAlternatives` or `flaws`. Covers the batch-3 ACH critic challenge."
+  },
+  {
+    "id": "C75",
+    "title": "Same-session mode switch from research to design",
+    "given": "A user starts a research-mode investigation of a storage engine, then asks to turn the findings into an architecture decision in the same conversation.",
+    "when": "The consultant processes the second ask.",
+    "then": "The consultant keeps the same session, loads consultation-design, carries verified research evidence and constraints into the design admission/framing, states the mode switch in one line, and does not restart intake or lose the prior evidence.",
+    "grading": "model",
+    "modes": [
+      "research",
+      "design"
+    ],
+    "notes": "Mode Stack; the design sub-skill is loaded on demand."
+  },
+  {
+    "id": "C76",
+    "title": "Nested explorer/analyst sub-task resumes the main design mode",
+    "given": "A design discussion needs a local unknown comparison of two candidate protocols; the main design decision is still pending.",
+    "when": "The consultant dispatches a bounded explorer/analyst task and receives the result.",
+    "then": "The main design mode resumes with the result; the consultant does not end the design, does not ask the user to restart, and does not treat the nested task as the final decision.",
+    "grading": "model",
+    "modes": [
+      "design"
+    ],
+    "notes": "Mode Stack nested sub-task; dispatch lifecycle still applies."
+  },
+  {
+    "id": "C77",
+    "title": "Coder session is pinned for a later revision",
+    "given": "A consultant design discussion needs a bounded coder implementation and may ask for a follow-up fix after review.",
+    "when": "The consultant dispatches the coder with return_handle: true and later sends a bounded change.",
+    "then": "The first dispatch captures session_id; the follow-up uses janus_dispatch_continue on that same session, not a fresh coder dispatch; the model and agent are inherited from the original job spec.",
+    "grading": "model",
+    "modes": [
+      "design"
+    ],
+    "notes": "Session pinning; covered in part by dispatch-tool continuation tests."
+  },
+  {
+    "id": "C78",
+    "title": "Arch-critic runs a one-way-door design pre-mortem",
+    "given": "A design layer contains a one-way-door decision with measurable quality scenarios and a reversibility label.",
+    "when": "The consultant dispatches arch-critic with protocol design_premortem.",
+    "then": "The arch-critic assumes failure, names concrete failure mechanisms, checks each quality scenario and the reversibility/approval path, names missing options or fired triggers, and reports only correctness-affecting problems in designReview.",
+    "grading": "model",
+    "modes": [
+      "design"
+    ],
+    "notes": "Protocol card assets/protocols/design_premortem.md; arch-critic output contract."
+  },
+  {
+    "id": "C79",
+    "title": "Arch-critic reviews a coder plan and diff against design.md",
+    "given": "An accepted design.md and a coder L2/L3 plan.md plus a git diff are supplied.",
+    "when": "The coder dispatches arch-critic with protocol code_plan_review.",
+    "then": "The arch-critic maps every accepted decision to a task, every interface to a test, checks the diff for scope creep and migration/failure-path coverage, and returns codePlanReview with a pass/revise/block verdict and residual uncertainty.",
+    "grading": "model",
+    "modes": [
+      "design"
+    ],
+    "notes": "Protocol card assets/protocols/code_plan_review.md."
+  },
+  {
+    "id": "C80",
+    "title": "Mode and tier model routing selects the matching model prompt",
+    "given": "config mode_models sets analyst to mode/model for research and tier_models sets analyst to tier/model for deep; both are configured alongside a scalar analyst_model.",
+    "when": "janus_dispatch is called with role analyst and mode research, tier deep, and the model actually serving the turn is resolved.",
+    "then": "The mode override wins over the tier and scalar defaults; the system transform hook injects the model prompt matching the actual model, not the registered default; a user model_prompts override wins and an empty string disables the block.",
+    "grading": "deterministic",
+    "modes": [],
+    "notes": "Covered by plugin-config.test.ts, dispatch-tool.test.ts, and system-transform.test.ts."
+  },
+  {
+    "id": "C81",
+    "title": "Continuation inherits the original agent and model chain",
+    "given": "A writer job was launched with the bundled writer and a model; the user changes writer_agent/writer_model in config before continuing the session.",
+    "when": "janus_dispatch_continue sends the follow-up prompt.",
+    "then": "The continuation uses loaded.spec.agent_name and loaded.spec.model_chain, not the new config; the model and agent do not change, and the KV-cache prefix is preserved.",
+    "grading": "deterministic",
+    "modes": [],
+    "notes": "Covered by dispatch-tool.test.ts continuation lock test."
+  },
+  {
+    "id": "C82",
+    "title": "Legacy config aliases remain compatible",
+    "given": "A user config uses agent_model, lite_*, verifier_*, mode_models.plan, mode_models.author, or role keys verifier/lite.",
+    "when": "The config is loaded and a model or dispatch target is resolved.",
+    "then": "The aliases normalize to consultant_model, ask_lite_*, auditor_*, roadmap/doc, and auditor/ask-lite; a new canonical key wins when both are present; build_* keys are ignored without failing config load.",
+    "grading": "deterministic",
+    "modes": [],
+    "notes": "Covered by plugin-config.test.ts alias and precedence tests."
+  },
+  {
+    "id": "C83",
+    "title": "CritiqueDraft contract carries planReview and nullable designReview",
+    "given": "A critic returns planReview and residualUncertainty; an arch-critic returns designReview or null.",
+    "when": "Each draft is parsed with CritiqueDraftSchema and the prompt contracts are checked.",
+    "then": "planReview defaults to [] when absent, residualUncertainty accepts string/null, designReview accepts an object/null/undefined, and every schema field appears in the corresponding critique prompt.",
+    "grading": "deterministic",
+    "modes": [],
+    "notes": "Covered by team.test.ts and prompt-contracts.test.ts."
   }
 ]

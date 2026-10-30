@@ -3,10 +3,14 @@ import {
   loadPluginConfig,
   resolveRoleModel,
   resolveRoleModelChain,
+  normalizeConfigMode,
+  type ConfigMode,
+  type ConfigTier,
   type JanusPluginConfig,
 } from "./plugin-config.ts"
 import {
   DISPATCH_ROLES,
+  parseDispatchRole,
   createKeyedMutex,
   parseContinueArgs,
   parseWaitArgs,
@@ -19,14 +23,20 @@ import { createDispatchLifecycle, createSystemClock, type DispatchLifecycle } fr
 import { createDispatchCancel } from "./dispatch-cancel.ts"
 import { loadJob } from "./dispatch-journal.ts"
 import { splitModel, errorText, isRetryableModelError } from "./dispatch-helpers.ts"
+import {
+  DISPATCH_PROTOCOLS,
+  PROTOCOL_ROLES,
+  loadProtocolCard,
+  prependProtocolCard,
+} from "./dispatch-protocol.ts"
 import path from "node:path"
 
 export { splitModel, errorText, isRetryableModelError }
 
 /**
- * The ten dispatch roles: the four research specialists and the writer, the
- * two entry delegates (consultant, coder), the economical leaf (lite), the
- * mechanical lane (coder-lite), and the optional host build target.
+ * The ten dispatch roles: the four research/review specialists and the writer,
+ * the two entry delegates (consultant, coder), the economical leaf (ask-lite),
+ * and the mechanical lane (coder-lite).
  */
 export { DISPATCH_ROLES }
 export type { DispatchRole }
@@ -38,34 +48,42 @@ export interface RoleTarget {
   model?: string
 }
 
+export interface RoleTargetOptions {
+  readonly mode?: ConfigMode
+  readonly tier?: ConfigTier
+}
+
 export function resolveRoleTarget(
   config: JanusPluginConfig,
   role: DispatchRole,
+  options: RoleTargetOptions = {},
 ): RoleTarget {
   switch (role) {
     case "explorer":
-      return { agentName: config.explorer_agent, model: resolveRoleModel(config, "explorer") }
+      return { agentName: config.explorer_agent, model: resolveRoleModel(config, "explorer", options) }
     case "analyst":
-      return { agentName: config.analyst_agent, model: resolveRoleModel(config, "analyst") }
+      return { agentName: config.analyst_agent, model: resolveRoleModel(config, "analyst", options) }
     case "critic":
-      return { agentName: config.critic_agent, model: resolveRoleModel(config, "critic") }
-    case "verifier":
-      return { agentName: config.verifier_agent, model: resolveRoleModel(config, "verifier") }
+      return { agentName: config.critic_agent, model: resolveRoleModel(config, "critic", options) }
+    case "arch-critic":
+      return { agentName: config.arch_critic_agent, model: resolveRoleModel(config, "arch-critic", options) }
+    case "auditor":
+      return { agentName: config.auditor_agent, model: resolveRoleModel(config, "auditor", options) }
     case "writer":
+      // A configured delegate keeps host-defined model selection; mode/tier
+      // overrides apply only to the bundled writer.
       if (config.writer_delegate_agent !== undefined) {
         return { agentName: config.writer_delegate_agent, model: config.writer_delegate_model }
       }
-      return { agentName: config.writer_agent, model: resolveRoleModel(config, "writer") }
+      return { agentName: config.writer_agent, model: resolveRoleModel(config, "writer", options) }
     case "coder":
-      return { agentName: config.coder_agent, model: resolveRoleModel(config, "coder") }
-    case "lite":
-      return { agentName: config.lite_agent, model: resolveRoleModel(config, "lite") }
+      return { agentName: config.coder_agent, model: resolveRoleModel(config, "coder", options) }
+    case "ask-lite":
+      return { agentName: config.ask_lite_agent, model: resolveRoleModel(config, "ask-lite", options) }
     case "coder-lite":
-      return { agentName: config.coder_lite_agent, model: resolveRoleModel(config, "coder-lite") }
-    case "build":
-      return { agentName: config.build_agent, model: config.build_model }
+      return { agentName: config.coder_lite_agent, model: resolveRoleModel(config, "coder-lite", options) }
     case "consultant":
-      return { agentName: "consultant", model: resolveRoleModel(config, "consultant") }
+      return { agentName: config.consultant_agent, model: resolveRoleModel(config, "consultant", options) }
   }
 }
 
@@ -78,8 +96,9 @@ export interface DispatchToolDeps {
 /**
  * Build the four consultation job tools with one shared coordinator set.
  *
- * It dispatches ONLY to the consultation roles (`consultant`, `coder`, `lite`,
- * `explorer`, `analyst`, `critic`, `verifier`, `writer`, `coder-lite`, `build`)
+ * It dispatches ONLY to the consultation roles (`consultant`, `coder`,
+ * `ask-lite`, `explorer`, `analyst`, `critic`, `arch-critic`, `auditor`,
+ * `writer`, `coder-lite`)
  * using the recoverable lifecycle coordinator. `janus_dispatch_continue`
  * reuses an existing dispatch session from the same caller. It is additive:
  * it neither shadows nor interferes with the built-in `task` tool or any
@@ -99,37 +118,54 @@ export function createJanusDispatchTools(
 
   const dispatch = tool({
     description:
-      "Dispatch ONLY to a consultation role (consultant, coder, lite, explorer, analyst, critic, verifier, writer, coder-lite, build). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
+      "Dispatch ONLY to a consultation role (consultant, coder, ask-lite, explorer, analyst, critic, arch-critic, auditor, writer, coder-lite). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Optional mode, tier, and protocol select the model and prepend a methodology card to the first turn. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
     args: {
-      role: tool.schema.enum(DISPATCH_ROLES),
+      role: tool.schema.string(),
       prompt: tool.schema.string(),
       return_handle: tool.schema.boolean().optional(),
+      mode: tool.schema.string().optional(),
+      tier: tool.schema.enum(["fast", "standard", "deep"]).optional(),
+      protocol: tool.schema.enum(DISPATCH_PROTOCOLS).optional(),
     },
     async execute(args, context: ToolContext): Promise<string> {
+      const roleResult = parseDispatchRole(args.role)
+      if (!roleResult.ok) return `Error: ${roleResult.error.message}`
+      const role = roleResult.value
+      let mode: ConfigMode | undefined
+      if (args.mode !== undefined) {
+        mode = normalizeConfigMode(args.mode)
+        if (mode === undefined) return `Error: invalid mode "${args.mode}"; expected select, verify, roadmap, research, guide, doc, or design`
+      }
+      const tier: ConfigTier | undefined = args.tier
+      if (args.protocol !== undefined && !PROTOCOL_ROLES[args.protocol].includes(role)) {
+        return `Error: protocol ${args.protocol} is not supported by role ${role}; use ${PROTOCOL_ROLES[args.protocol].join(" or ")}`
+      }
+      const protocolCard = args.protocol === undefined ? "" : await loadProtocolCard(args.protocol)
+      const prompt = prependProtocolCard(args.prompt, protocolCard)
       const config = await loadPluginConfig(process.env)
       const enabled: Record<DispatchRole, boolean> = {
-        explorer: true,
-        analyst: true,
+        explorer: config.explorer_enabled,
+        analyst: config.analyst_enabled,
         critic: config.critic_enabled,
-        verifier: config.verifier_enabled,
+        "arch-critic": config.arch_critic_enabled,
+        auditor: config.auditor_enabled,
         writer: config.writer_enabled || config.writer_delegate_agent !== undefined,
+        "ask-lite": config.ask_lite_enabled,
         coder: config.coder_enabled,
-        lite: config.lite_enabled,
         "coder-lite": config.coder_lite_enabled,
-        build: config.build_enabled,
         consultant: true,
       }
-      if (!enabled[args.role]) return `Error: ${args.role} is disabled by configuration`
+      if (!enabled[role]) return `Error: ${role} is disabled by configuration`
 
-      const { agentName, model } = resolveRoleTarget(config, args.role)
+      const { agentName, model } = resolveRoleTarget(config, role, { mode, tier })
       const modelChain: Array<string | null> =
-        args.role === "build" || (args.role === "writer" && config.writer_delegate_agent !== undefined)
+        role === "writer" && config.writer_delegate_agent !== undefined
           ? [model ?? null]
-          : resolveRoleModelChain(config, args.role).map((m) => m ?? null)
+          : resolveRoleModelChain(config, role, { mode, tier }).map((m) => m ?? null)
 
       return lifecycle.launch({
-        role: args.role,
-        prompt: args.prompt,
+        role,
+        prompt,
         agentName,
         modelChain,
         parentID: context.sessionID,
@@ -146,7 +182,7 @@ export function createJanusDispatchTools(
     args: {
       session_id: tool.schema.string(),
       prompt: tool.schema.string(),
-      role: tool.schema.enum(DISPATCH_ROLES).optional(),
+      role: tool.schema.string().optional(),
     },
     async execute(args, context: ToolContext): Promise<string> {
       const parsed = parseContinueArgs(args)
@@ -203,6 +239,9 @@ export function createJanusDispatchTools(
       if (loaded.spec.session_id !== undefined) {
         return `Error: ${targetSessionID} is a continuation job${target.parentID === context.sessionID ? "" : " attempt"}; use the original dispatch session_id, not a continuation job_id`
       }
+      if (loaded.spec.role === "build") {
+        return 'Error: the "build" role was removed; continue the original session only if its agent still exists, or start a fresh coder dispatch with tier: "deep"'
+      }
       role = loaded.spec.role
       if (target.parentID !== context.sessionID) {
         if (!loaded.children.some((child) => child.id === targetSessionID)) {
@@ -217,15 +256,15 @@ export function createJanusDispatchTools(
       }
 
       const enabled: Record<DispatchRole, boolean> = {
-        explorer: true,
-        analyst: true,
+        explorer: config.explorer_enabled,
+        analyst: config.analyst_enabled,
         critic: config.critic_enabled,
-        verifier: config.verifier_enabled,
+        "arch-critic": config.arch_critic_enabled,
+        auditor: config.auditor_enabled,
         writer: config.writer_enabled || config.writer_delegate_agent !== undefined,
+        "ask-lite": config.ask_lite_enabled,
         coder: config.coder_enabled,
-        lite: config.lite_enabled,
         "coder-lite": config.coder_lite_enabled,
-        build: config.build_enabled,
         consultant: true,
       }
       if (!enabled[role]) return `Error: ${role} is disabled by configuration`
@@ -252,11 +291,11 @@ export function createJanusDispatchTools(
             return `Error: target session is ${status.type}; wait for the active job first (janus_dispatch_wait)`
           }
 
-          const { agentName, model } = resolveRoleTarget(config, role)
-          const modelChain: Array<string | null> =
-            role === "build" || (role === "writer" && config.writer_delegate_agent !== undefined)
-              ? [model ?? null]
-              : resolveRoleModelChain(config, role).map((m) => m ?? null)
+          // A continuation inherits the durable job spec's agent and model
+          // chain. Re-resolving from current config could switch models and
+          // break the KV-cache prefix the session already established.
+          const agentName = loaded.spec.agent_name
+          const modelChain = [...loaded.spec.model_chain]
 
           return lifecycle.continue({
             role,

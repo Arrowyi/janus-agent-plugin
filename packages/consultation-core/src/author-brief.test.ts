@@ -4,7 +4,7 @@ import { validateDecisionBrief } from "./decision-brief.ts"
 import { ConsultationError } from "./errors.ts"
 
 const authorBrief = {
-  mode: "author",
+  mode: "doc",
   conclusion: "The approved tutorial was written and its load-bearing examples were verified.",
   profile: "tutorial",
   audience: "Kotlin developers new to coroutines",
@@ -85,13 +85,13 @@ function claimsWith(patch: Record<string, unknown>): unknown {
 describe("validateDecisionBrief: author delivery", () => {
   test("accepts a valid multi-file final brief", () => {
     const brief = validateDecisionBrief(authorBrief)
-    if (brief.mode !== "author") throw new Error("expected author mode")
+    if (brief.mode !== "doc") throw new Error("expected doc mode")
     expect(brief.artifactPaths).toHaveLength(2)
   })
 
   test("accepts inline delivery with zero artifact paths", () => {
     const brief = validateDecisionBrief(briefWith(authorBrief, { delivery: "inline", artifactPaths: [] }))
-    if (brief.mode !== "author") throw new Error("expected author mode")
+    if (brief.mode !== "doc") throw new Error("expected doc mode")
     expect(brief.artifactPaths).toHaveLength(0)
   })
 
@@ -107,7 +107,7 @@ describe("validateDecisionBrief: author delivery", () => {
     const brief = validateDecisionBrief(
       briefWith(authorBrief, { delivery: "single_file", artifactPaths: ["kotlin-coroutines-tutorial.md"] }),
     )
-    if (brief.mode !== "author") throw new Error("expected author mode")
+    if (brief.mode !== "doc") throw new Error("expected doc mode")
     expect(brief.artifactPaths).toEqual(["kotlin-coroutines-tutorial.md"])
   })
 

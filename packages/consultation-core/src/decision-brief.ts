@@ -69,7 +69,7 @@ export const PlanStepSchema = z
 export type PlanStep = z.infer<typeof PlanStepSchema>
 
 export const PlanBriefSchema = z.object({
-  mode: z.literal("plan"),
+  mode: z.literal("roadmap"),
   ...baseBriefShape,
   goal: z.string().min(1),
   suitedFor: z.string().optional(),
@@ -182,7 +182,7 @@ function briefTexts(brief: DecisionBrief): string[] {
     }
     texts.push(...brief.supportingEvidence, ...brief.opposingEvidence)
     if (brief.contaminationNote !== undefined) texts.push(brief.contaminationNote)
-  } else if (brief.mode === "plan") {
+  } else if (brief.mode === "roadmap") {
     texts.push(brief.goal, ...brief.assumptions)
     if (brief.suitedFor !== undefined) texts.push(brief.suitedFor)
     if (brief.healthNote !== undefined) texts.push(brief.healthNote)
@@ -217,7 +217,7 @@ function briefTexts(brief: DecisionBrief): string[] {
       if (step.basis !== undefined) texts.push(step.basis)
       if (step.risk !== undefined) texts.push(step.risk)
     }
-  } else if (brief.mode === "author") {
+  } else if (brief.mode === "doc") {
     texts.push(...authorTexts(brief))
   } else if (brief.mode === "design") {
     texts.push(...designTexts(brief))
@@ -236,7 +236,7 @@ function briefTexts(brief: DecisionBrief): string[] {
 export function validateDecisionBrief(input: unknown): DecisionBrief {
   try {
     const brief = DecisionBriefSchema.parse(input)
-    if (brief.mode === "author") assertValidAuthorDelivery(brief)
+    if (brief.mode === "doc") assertValidAuthorDelivery(brief)
     if (brief.mode === "design") assertValidDesignEvidence(brief)
     if (brief.mode === "guide" && brief.recommendation.length === 0 && brief.procedure.length === 0) {
       throw new ConsultationError(ConsultationErrorCode.VALIDATION_FAILED)

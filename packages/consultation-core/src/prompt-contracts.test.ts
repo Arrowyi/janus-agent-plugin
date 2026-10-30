@@ -9,6 +9,14 @@ async function readAgentPrompt(file: string): Promise<string> {
   return readFile(new URL(`../../../assets/agents/${file}`, import.meta.url), "utf8")
 }
 
+async function readSkill(name: "consultation" | "consultation-design" | "consultation-doc"): Promise<string> {
+  return readFile(new URL(`../../../assets/skills/${name}/SKILL.md`, import.meta.url), "utf8")
+}
+
+async function readAllSkills(): Promise<string> {
+  return `${await readSkill("consultation")}\n${await readSkill("consultation-design")}\n${await readSkill("consultation-doc")}`
+}
+
 function expectFields(prompt: string, fields: readonly string[]): void {
   for (const field of fields) expect(prompt).toContain(field)
 }
@@ -66,26 +74,57 @@ describe("agent prompt contracts", () => {
     }
   })
 
-  it("critic exposes the complete critique contract including loop control", async () => {
-    const prompt = await readAgentPrompt("consultation-critic.md")
+  it("critic exposes the critique contract including loop control and plan review", async () => {
+    const prompt = await readAgentPrompt("critic.md")
 
-    expectFields(prompt, Object.keys(CritiqueDraftSchema.shape))
-    expectFields(prompt, ["unresolvedGaps"])
+    const fields = Object.keys(CritiqueDraftSchema.shape)
+    const designOnly = new Set(["designReview"])
+    expectFields(prompt, fields.filter((field) => !designOnly.has(field)))
+    expectFields(prompt, ["unresolvedGaps", "planReview", "residualUncertainty"])
+  })
+
+  it("arch-critic exposes the design-review half of the critique contract", async () => {
+    const prompt = await readAgentPrompt("arch-critic.md")
+
+    expectFields(prompt, ["designReview", "preMortem", "unmetQualityScenarios", "reversibilityProblems", "missingOptions"])
+    expect(prompt).toContain("codePlanReview")
+    expect(prompt).not.toContain("Return `clean`")
+  })
+
+  it("CritiqueDraftSchema and the two critique prompts agree on every field", async () => {
+    const critic = await readAgentPrompt("critic.md")
+    const archCritic = await readAgentPrompt("arch-critic.md")
+    const combined = `${critic}\n${archCritic}`
+
+    for (const field of Object.keys(CritiqueDraftSchema.shape)) {
+      expect(combined).toContain(field)
+    }
+    for (const field of Object.keys(CritiqueDraftSchema.shape)) {
+      expect(
+        critic.includes(field) || archCritic.includes(field),
+        `schema field ${field} is absent from both critique prompts`,
+      ).toBe(true)
+    }
   })
 
   it("critic keeps its own challenge rules instead of verifier audit rules", async () => {
-    const prompt = await readAgentPrompt("consultation-critic.md")
+    const prompt = await readAgentPrompt("critic.md")
 
     expect(prompt).not.toContain("Return `clean`")
     expect(prompt).not.toContain("influence audit")
     expect(prompt).toContain("Do not manufacture counter-evidence")
     expect(prompt).toContain("biasChecks")
     expect(prompt).toContain("Selection and Denominator Check")
-    expect(prompt).toContain("escalate at most one level per round")
+    expect(prompt).toContain("`plan_robustness`")
+    const card = await readFile(
+      new URL("../../../assets/protocols/plan_robustness.md", import.meta.url),
+      "utf8",
+    )
+    expect(card).toContain("escalate at most one level per round")
   })
 
   it("verifier reports fired signal names and the audit schema agrees", async () => {
-    const prompt = await readAgentPrompt("consultation-verifier.md")
+    const prompt = await readAgentPrompt("auditor.md")
 
     expect(prompt).toContain("signalsFired")
     expect(prompt).toContain("missingObservations")
@@ -139,7 +178,7 @@ describe("agent prompt contracts", () => {
   it("consultant keeps a deliverable-shape conflict in two lanes", async () => {
     const prompt = await readAgentPrompt("consultant.md")
 
-    expect(prompt).toContain("put the document in `author` and answer the fact inline")
+    expect(prompt).toContain("put the document in `doc` and answer the fact inline")
     expect(prompt).toContain("do not force one mode to swallow the other")
   })
 
@@ -228,7 +267,7 @@ describe("agent prompt contracts", () => {
     const agentDir = new URL("../../../assets/agents/", import.meta.url)
     const files = (await readdir(agentDir)).filter((file) => file.endsWith(".md")).sort()
 
-    expect(files.length).toBe(10)
+    expect(files.length).toBe(11)
     for (const file of files) {
       const prompt = await readFile(new URL(file, agentDir), "utf8")
       if (prompt.includes("## File Change Confirmation")) {
@@ -240,11 +279,8 @@ describe("agent prompt contracts", () => {
     }
   })
 
-  it("skill keeps the dispatched context and structured handoffs", async () => {
-    const skill = await readFile(
-      new URL("../../../assets/skills/consultation/SKILL.md", import.meta.url),
-      "utf8",
-    )
+  it("the skills keep the dispatched context and structured handoffs", async () => {
+    const skill = await readAllSkills()
 
     expect(skill).toContain("Dispatched bounded task")
     expect(skill).toContain("Memory ownership")
@@ -269,11 +305,8 @@ describe("agent prompt contracts", () => {
     }
   })
 
-  it("skill defines the terminal readability rules and seven mode templates", async () => {
-    const skill = await readFile(
-      new URL("../../../assets/skills/consultation/SKILL.md", import.meta.url),
-      "utf8",
-    )
+  it("the skills define the terminal readability rules and seven mode templates", async () => {
+    const skill = await readAllSkills()
 
     for (const text of [
       "Output Readability (Terminal-First)",
@@ -281,10 +314,10 @@ describe("agent prompt contracts", () => {
       "Short vs full",
       "select: choose and try",
       "verify: verdict first",
-      "plan: feasibility first",
+      "roadmap: feasibility first",
       "research: bottom line then meaning",
       "guide: shortest path first",
-      "author: delivery brief",
+      "doc: delivery brief",
       "design: decision record",
       "证据与来源（可跳过）",
       "没有明显赢家",
@@ -317,13 +350,17 @@ describe("agent prompt contracts", () => {
   })
 
   it("critic checks assumptions, selection reversals, and plan failure modes", async () => {
-    const prompt = await readAgentPrompt("consultation-critic.md")
+    const prompt = await readAgentPrompt("critic.md")
 
     expect(prompt).toContain("load-bearing")
     expect(prompt).toContain("confidenceAdjustment")
     expect(prompt).toContain("cap the finding at `inferred`")
-    expect(prompt).toContain("early signal")
-    expect(prompt).toContain("failure mode")
+    const card = await readFile(
+      new URL("../../../assets/protocols/plan_robustness.md", import.meta.url),
+      "utf8",
+    )
+    expect(card).toContain("early signal")
+    expect(card).toContain("failure mode")
   })
 
   it("consultant states the deep-tier stop/trial/depth rule", async () => {
@@ -355,7 +392,7 @@ describe("agent prompt contracts", () => {
   })
 
   it("critic challenges a hypothesis matrix without adding a schema field", async () => {
-    const prompt = await readAgentPrompt("consultation-critic.md")
+    const prompt = await readAgentPrompt("critic.md")
 
     expect(prompt).toContain("missing hypothesis")
     expect(prompt).toContain("does not discriminate")
@@ -371,11 +408,8 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("competing explanations")
   })
 
-  it("skill keeps calibration passive and records outcomes without a journal", async () => {
-    const skill = await readFile(
-      new URL("../../../assets/skills/consultation/SKILL.md", import.meta.url),
-      "utf8",
-    )
+  it("the core skill keeps calibration passive and records outcomes without a journal", async () => {
+    const skill = await readSkill("consultation")
     const prompt = await readAgentPrompt("consultant.md")
 
     expect(skill).toContain("pendingOutcome")

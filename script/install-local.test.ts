@@ -61,16 +61,23 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/commands/janus-models.md")
   })
 
-  test("requires the core bundled entry points and role assets", () => {
+  test("requires the bundled entry points, role assets, protocols, and three skills", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("dist/index.js")
     expect(REQUIRED_INSTALLED_FILES).toContain("dist/memory-mcp-server.js")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/consultant.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/arch-critic.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/auditor.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/critic.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/protocols/counter_evidence.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/protocols/code_plan_review.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation/SKILL.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation-design/SKILL.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation-doc/SKILL.md")
   })
 
-  test("requires the coder, lite, and coder-lite agents and the shipped model-prompt library", () => {
+  test("requires the coder, ask-lite, and coder-lite agents and the shipped model-prompt library", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/coder.md")
-    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/lite.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/ask-lite.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/coder-lite.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/claudesonnet55.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/gemini38flash.md")

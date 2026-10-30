@@ -7,16 +7,16 @@ import { z } from "zod"
 import {
   buildWriterRuntimeBindings,
   injectCommonPrinciples,
-  injectModelPrompt,
   injectRuntimeBindings,
   loadCommonBase,
   loadCommonWrite,
   registerAnalyst,
+  registerArchCritic,
   registerConsultantAgent,
-  registerConsultationCritic,
+  registerCritic,
   registerExplorer,
-  registerLite,
-  registerVerifier,
+  registerAskLite,
+  registerAuditor,
   registerWriter,
   resolveAuthorStateDir,
 } from "./agent-registration.ts"
@@ -27,23 +27,26 @@ const pluginConfig = {
   install_skill: true,
   install_commands: true,
   memory_enabled: true,
-  explorer_agent: "consultation-explorer",
-  analyst_agent: "consultation-analyst",
-  critic_agent: "consultation-critic",
+  consultant_agent: "consultant",
+  auditor_agent: "auditor",
+  auditor_enabled: true,
+  arch_critic_agent: "arch-critic",
+  arch_critic_enabled: true,
+  explorer_agent: "explorer",
+  explorer_enabled: true,
+  analyst_agent: "analyst",
+  analyst_enabled: true,
+  critic_agent: "critic",
   critic_enabled: true,
-  verifier_agent: "consultation-verifier",
-  verifier_enabled: true,
-  writer_agent: "consultation-writer",
+  writer_agent: "writer",
   writer_enabled: true,
   writer_docs_roots: ["userdoc"],
   coder_agent: "coder",
   coder_enabled: true,
-  lite_agent: "lite",
-  lite_enabled: true,
+  ask_lite_agent: "ask-lite",
+  ask_lite_enabled: true,
   coder_lite_agent: "coder-lite",
   coder_lite_enabled: true,
-  build_agent: "build",
-  build_enabled: true,
   janus_agent: "janus",
   janus_enabled: true,
 } satisfies JanusPluginConfig
@@ -54,30 +57,37 @@ const pluginConfig = {
 const roles = [
   {
     asset: "explorer.md",
-    name: "consultation-explorer",
+    name: "explorer",
     block: "deepseekv41flash.md",
     register: registerExplorer,
     extras: ["principles/source-criteria.md"],
   },
   {
     asset: "analyst.md",
-    name: "consultation-analyst",
+    name: "analyst",
     block: "qwen38max.md",
     register: registerAnalyst,
     extras: ["principles/reasoning-failures.md", "principles/claim-types.md"],
   },
   {
-    asset: "consultation-critic.md",
-    name: "consultation-critic",
+    asset: "critic.md",
+    name: "critic",
     block: "gemini38flash.md",
-    register: registerConsultationCritic,
+    register: registerCritic,
     extras: ["principles/reasoning-failures.md", "principles/source-criteria.md"],
   },
   {
-    asset: "consultation-verifier.md",
-    name: "consultation-verifier",
+    asset: "arch-critic.md",
+    name: "arch-critic",
     block: "gemini38flash.md",
-    register: registerVerifier,
+    register: registerArchCritic,
+    extras: ["principles/engineering-principles.md"],
+  },
+  {
+    asset: "auditor.md",
+    name: "auditor",
+    block: "gemini38flash.md",
+    register: registerAuditor,
   },
 ] as const
 
@@ -108,9 +118,9 @@ describe("dispatch prompt routing contract", () => {
       for (const status of statuses) expect(source).toContain(`\`${status}\``)
     })
 
-    it(`exposes the writer-session reuse identifiers when loading ${asset}`, async () => {
+    it(`exposes the writer-session reuse identifiers when loading consultation-doc`, async () => {
       // given
-      const path = resolveAsset(asset)
+      const path = resolveAsset("skills/consultation-doc/SKILL.md")
       // when
       const source = await readFile(path, "utf8")
       // then
@@ -118,9 +128,9 @@ describe("dispatch prompt routing contract", () => {
       expect(source).toContain("writer_session_id")
     })
 
-    it(`retains the writer session id across the pre-approval blueprint when loading ${asset}`, async () => {
+    it(`retains the writer session id across the pre-approval blueprint when loading consultation-doc`, async () => {
       // given
-      const path = resolveAsset(asset)
+      const path = resolveAsset("skills/consultation-doc/SKILL.md")
       // when
       const source = await readFile(path, "utf8")
       // then: the blueprint may run before the brief exists; the handle is
@@ -158,17 +168,16 @@ describe("dispatch prompt routing contract", () => {
   })
 
   for (const role of roles) {
-    it(`passes the complete asset through with its shipped model block and shared rules when registering ${role.name}`, async () => {
+    it(`passes the complete asset through with its shared rules when registering ${role.name}`, async () => {
       // given
       const config: { agent?: Record<string, unknown> } = {}
       const source = await readFile(resolveAsset(`agents/${role.asset}`), "utf8")
-      const block = await readFile(resolveAsset(`model-prompts/${role.block}`), "utf8")
       const base = await loadCommonBase()
       const fragment = (await readFile(resolveAsset("principles/research-leaf.md"), "utf8")).trim()
       // when
       await role.register(config, pluginConfig)
       // then — read-only roles keep the common base but skip the common write gate
-      let body = `${injectModelPrompt(source, block)}\n\n${fragment}`
+      let body = `${source}\n\n${fragment}`
       if ("extras" in role) {
         for (const extra of role.extras) {
           body += `\n\n${(await readFile(resolveAsset(extra), "utf8")).trim()}`
@@ -205,13 +214,12 @@ describe("dispatch prompt routing contract", () => {
     expect(source).toContain("never write the brief")
   })
 
-  it("passes the complete writer asset through with its shipped model block and runtime bindings", async () => {
+  it("passes the complete writer asset through with runtime bindings", async () => {
     // given — temp HOME keeps the writer's author state dir off the real HOME
     const parent = mkdtempSync(join(tmpdir(), "writer-author-prompt-"))
     const env = { HOME: parent } as NodeJS.ProcessEnv
     const config: { agent?: Record<string, unknown> } = {}
     const source = await readFile(resolveAsset("agents/writer.md"), "utf8")
-    const block = await readFile(resolveAsset("model-prompts/claudesonnet55.md"), "utf8")
     const base = await loadCommonBase()
     const write = await loadCommonWrite()
 
@@ -222,20 +230,20 @@ describe("dispatch prompt routing contract", () => {
       // then — the writer keeps the write gate: base then write, then bindings
       const expected = injectRuntimeBindings(
         injectCommonPrinciples(
-          injectCommonPrinciples(injectModelPrompt(source, block), base),
+          injectCommonPrinciples(source, base),
           write,
         ),
         buildWriterRuntimeBindings(pluginConfig, resolveAuthorStateDir(env)),
       )
-      expect(promptSchema.parse(config.agent?.["consultation-writer"]).prompt).toBe(expected)
+      expect(promptSchema.parse(config.agent?.["writer"]).prompt).toBe(expected)
     } finally {
       rmSync(parent, { recursive: true, force: true })
     }
   })
 
-  it("keeps lite as a leaf with escalation lines instead of dispatch discipline", async () => {
+  it("keeps ask-lite as a leaf with escalation lines instead of dispatch discipline", async () => {
     // given
-    const path = resolveAsset("agents/lite.md")
+    const path = resolveAsset("agents/ask-lite.md")
     // when
     const source = await readFile(path, "utf8")
     // then
@@ -245,15 +253,15 @@ describe("dispatch prompt routing contract", () => {
     expect(source).not.toContain("janus_dispatch_wait")
   })
 
-  it("injects runtime bindings when registering lite", async () => {
+  it("injects runtime bindings when registering ask-lite", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfigWithWorkspace = { ...pluginConfig, lite_workspace_dir: "/tmp/lite-ws-prompt" }
+    const pluginConfigWithWorkspace = { ...pluginConfig, ask_lite_workspace_dir: "/tmp/lite-ws-prompt" }
     // when
-    await registerLite(config, pluginConfigWithWorkspace, "oc-lite-prompt")
+    await registerAskLite(config, pluginConfigWithWorkspace, "oc-lite-prompt")
     // then
-    const prompt = promptSchema.parse(config.agent?.["lite"]).prompt
-    expect(prompt).toContain("# Lite")
+    const prompt = promptSchema.parse(config.agent?.["ask-lite"]).prompt
+    expect(prompt).toContain("# Ask-Lite")
     expect(prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
     expect(prompt).toContain("oc-lite-prompt")
     expect(prompt).toContain("/tmp/lite-ws-prompt")

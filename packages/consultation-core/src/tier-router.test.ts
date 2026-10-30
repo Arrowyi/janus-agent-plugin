@@ -37,14 +37,14 @@ const fastInput: TierRoutingInput = {
 }
 
 describe("routeTier mode constraint", () => {
-  test("guide, author, and design never route to fast", () => {
-    for (const mode of ["guide", "author", "design"] as const) {
+  test("guide, doc, and design never route to fast", () => {
+    for (const mode of ["guide", "doc", "design"] as const) {
       expect(routeTier({ ...fastInput, mode })).toBe("standard")
     }
   })
 
   test("other modes keep the fast branch", () => {
-    for (const mode of ["select", "verify", "plan", "research"] as const) {
+    for (const mode of ["select", "verify", "roadmap", "research"] as const) {
       expect(routeTier({ ...fastInput, mode })).toBe("fast")
     }
   })
@@ -54,7 +54,7 @@ describe("routeTier mode constraint", () => {
     expect(
       routeTier({
         ...fastInput,
-        mode: "author",
+        mode: "doc",
         reliableSourceConflict: true,
         synthesisDominated: true,
       }),

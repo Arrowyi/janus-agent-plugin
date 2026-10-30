@@ -34,8 +34,6 @@ interface SubagentEntry {
 
 const RUNTIME_BINDINGS_PLACEHOLDER = /<!--\s*RUNTIME-BINDINGS[\s\S]*?-->/
 
-const MODEL_PROMPT_PLACEHOLDER = /<!--\s*MODEL-PROMPT[\s\S]*?-->/
-
 const COMMON_BASE_ASSET = "principles/common-base.md"
 
 const COMMON_WRITE_ASSET = "principles/common-write.md"
@@ -63,25 +61,28 @@ const ANALYST_DESCRIPTION =
   "Independent analysis pass. Reasons over gathered evidence when interpretation, conflicting sources, or important trade-offs could change the conclusion; returns a structured analysis. Model diversity is a runtime property reported in bindings, not a role guarantee."
 
 const CRITIC_DESCRIPTION =
-  "Adversarial counter-evidence reviewer. Independently searches for opposing, qualifying, and superseding sources when a consequential conclusion or uncertain plan step needs challenge; runs design pre-mortems for one-way decisions and reports only correctness-affecting problems."
+  "Adversarial counter-evidence and plan-robustness reviewer. Independently searches for opposing, qualifying, and superseding sources when a consequential conclusion or uncertain plan step needs challenge; runs the counter_evidence, hypothesis_matrix, and plan_robustness protocol cards and reports only correctness-affecting problems."
 
-const VERIFIER_DESCRIPTION =
+const AUDITOR_DESCRIPTION =
   "Source intent and influence specialist. Audits user reviews, promotional claims, and purportedly independent third-party material when sponsorship, coordination, or provenance is relevant or uncertain; reports observable signals and missing evidence rather than assuming clean."
 
-const WRITER_DESCRIPTION =
-  "Scoped-write author executor for `author` consultations and the sole author of reader-facing prose. Produces the pre-approval writing blueprint, drafts and maintains approved document files under the configured writer roots, and runs coherence and editorial passes; targeted web lookups with a source ledger only — no shell, no dispatch, no memory."
+const ARCH_CRITIC_DESCRIPTION =
+  "Architecture and engineering reviewer. Independently pre-mortems one-way design decisions and reviews the coder's L2/L3 plan.md, then the implemented git diff, against the accepted design record; applies the shared software-engineering principles and reports only correctness-affecting problems."
 
-const LITE_DESCRIPTION =
+const WRITER_DESCRIPTION =
+  "Scoped-write author executor for `doc` consultations and the sole author of reader-facing prose. Produces the pre-approval writing blueprint, drafts and maintains approved document files under the configured writer roots, and runs coherence and editorial passes; targeted web lookups with a source ledger only — no shell, no dispatch, no memory."
+
+const ASK_LITE_DESCRIPTION =
   "Economical quick-answer entry (DeepSeek V4.1-Flash by default) for low-risk facts, concepts, and simple how-to. A leaf: never dispatches; escalates multi-source/contested questions to the consultant, coding to the coder, and general questions to janus."
 
 const CODER_DESCRIPTION =
-  "Coding entry point and execution specialist. Owns coding, debugging, refactoring, tests, and repository work; selects a direct, brief-plan, design-gate, or quality-gate process by task weight; dispatches coder-lite for mechanical work and build for an optional stronger model."
+  "Coding entry point and execution specialist. Owns coding, debugging, refactoring, tests, and repository work; selects a direct, brief-plan, design-gate, or quality-gate process by task weight; dispatches coder-lite for mechanical work and can take a deep-tier model override for L3 work."
 
 const CODER_LITE_DESCRIPTION =
   "Cheap mechanical coding executor (GLM-5.3-Flash by default) for fully specified, decision-free, mechanically repeatable coding tasks: batch renames/moves, copy-adapt from existing in-repo patterns, formatting and lint fixes, boilerplate from explicit templates, simple tests following existing patterns, spec-complete CRUD glue. Stops and reports up on anything ambiguous, judgment-heavy, debugging, protocol-precision, cross-module, or security-sensitive — never attempts them."
 
 const JANUS_DESCRIPTION =
-  "Daily-driver primary and default entry point. Handles general questions, light tasks, and routing: dispatches consultant for evidence work, coder for coding, and lite for quick answers. Does not do deep research or heavy coding itself."
+  "Daily-driver primary and default entry point. Handles general questions, light tasks, and routing: dispatches consultant for evidence work, coder for coding, and ask-lite for quick answers. Does not do deep research or heavy coding itself."
 
 interface CodingLaneEntry {
   mode: "subagent"
@@ -133,15 +134,17 @@ interface AllModeAgentEntry {
 }
 
 /**
- * Resolve lite's pre-approved writable workspace directory:
- * `lite_workspace_dir` > `$XDG_DATA_HOME/janus-agent/lite` >
- * `$HOME/.local/share/janus-agent/lite`.
+ * Resolve ask-lite's pre-approved writable workspace directory:
+ * `ask_lite_workspace_dir` (legacy `lite_workspace_dir`) >
+ * `$XDG_DATA_HOME/janus-agent/lite` > `$HOME/.local/share/janus-agent/lite`.
+ * The directory name stays `lite` so an existing workspace survives the
+ * ask-lite rename.
  */
-export function resolveLiteWorkspaceDir(
+export function resolveAskLiteWorkspaceDir(
   pluginConfig: JanusPluginConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  if (pluginConfig.lite_workspace_dir !== undefined) return pluginConfig.lite_workspace_dir
+  if (pluginConfig.ask_lite_workspace_dir !== undefined) return pluginConfig.ask_lite_workspace_dir
   const home = env.HOME !== undefined && env.HOME.length > 0 ? env.HOME : homedir()
   const dataHome =
     env.XDG_DATA_HOME !== undefined && env.XDG_DATA_HOME.length > 0
@@ -197,11 +200,11 @@ export function computeProjectId(directory: string): string {
 }
 
 /**
- * lite's permissions: read tools allowed, its own workspace writable
+ * ask-lite's permissions: read tools allowed, its own workspace writable
  * without asking, everything else asks, and dispatch denied (leaf node).
  * Pattern objects put the `"*"` catch-all first (last matching rule wins).
  */
-export function buildLitePermission(workspaceDir: string): Record<string, unknown> {
+export function buildAskLitePermission(workspaceDir: string): Record<string, unknown> {
   return {
     webfetch: "allow",
     websearch: "allow",
@@ -213,11 +216,11 @@ export function buildLitePermission(workspaceDir: string): Record<string, unknow
 }
 
 /**
- * Build the runtime bindings block injected into the lite agent prompt.
- * Reports the memory MCP server, lite's model, the escalation targets, the
+ * Build the runtime bindings block injected into the ask-lite agent prompt.
+ * Reports the memory MCP server, ask-lite's model, the escalation targets, the
  * pre-approved workspace, the memory namespace, and the leaf rule.
  */
-export function buildLiteRuntimeBindings(
+export function buildAskLiteRuntimeBindings(
   pluginConfig: JanusPluginConfig,
   workspaceDir: string,
   namespace: string,
@@ -226,9 +229,9 @@ export function buildLiteRuntimeBindings(
     ? "- Memory MCP server name: `janus-memory` (tools: memory_recall, memory_expand, memory_prepare, memory_commit, memory_manage)"
     : "- Memory: DISABLED by configuration (saving and recall are unavailable)"
 
-  const modelLine = `- Lite model: \`${resolveRoleModel(pluginConfig, "lite")}\``
+  const modelLine = `- Ask-lite model: \`${resolveRoleModel(pluginConfig, "ask-lite")}\``
 
-  const consultantLine = `- Consultant: \`consultant\` (\`${resolveRoleModel(pluginConfig, "consultant")}\`) — escalate multi-source evidence, decisions, and documents`
+  const consultantLine = `- Consultant: \`${pluginConfig.consultant_agent}\` (\`${resolveRoleModel(pluginConfig, "consultant")}\`) — escalate multi-source evidence, decisions, and documents`
   const coderLine = `- Coder: \`${pluginConfig.coder_agent}\` (\`${resolveRoleModel(pluginConfig, "coder")}\`) — escalate coding and repository work`
   const janusLine = `- Janus: \`${pluginConfig.janus_agent}\` (\`${resolveRoleModel(pluginConfig, "janus")}\`) — escalate general questions that need more context`
 
@@ -240,38 +243,37 @@ export function buildLiteRuntimeBindings(
 }
 
 /**
- * Register the `lite` agent (mode "all": user-selectable entry, but a leaf
- * that never dispatches). Reads `assets/agents/lite.md`, injects the runtime
+ * Register the `ask-lite` agent (mode "all": user-selectable entry, but a leaf
+ * that never dispatches). Reads `assets/agents/ask-lite.md`, injects the runtime
  * bindings block, attempts to create the workspace directory (non-fatal), and
  * never clobbers a pre-existing user-defined entry.
  */
-export async function registerLite(
+export async function registerAskLite(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
   namespace: string,
 ): Promise<void> {
-  const agentName = pluginConfig.lite_agent
+  const agentName = pluginConfig.ask_lite_agent
   if (config.agent?.[agentName]) return
 
-  const workspaceDir = resolveLiteWorkspaceDir(pluginConfig)
+  const workspaceDir = resolveAskLiteWorkspaceDir(pluginConfig)
   try {
     mkdirSync(workspaceDir, { recursive: true })
   } catch {
     // Non-fatal: the permission pattern still ships; writes there may fail.
   }
 
-  const assembledPrompt = await assemblePrompt(pluginConfig, {
-    assetFile: "agents/lite.md",
-    model: resolveRoleModel(pluginConfig, "lite"),
-    runtimeBlock: buildLiteRuntimeBindings(pluginConfig, workspaceDir, namespace),
+  const assembledPrompt = await assemblePrompt({
+    assetFile: "agents/ask-lite.md",
+    runtimeBlock: buildAskLiteRuntimeBindings(pluginConfig, workspaceDir, namespace),
   })
 
   const entry: AllModeAgentEntry = {
     mode: "all",
-    description: LITE_DESCRIPTION,
+    description: ASK_LITE_DESCRIPTION,
     prompt: assembledPrompt,
-    model: resolveRoleModel(pluginConfig, "lite"),
-    permission: buildLitePermission(workspaceDir),
+    model: resolveRoleModel(pluginConfig, "ask-lite"),
+    permission: buildAskLitePermission(workspaceDir),
   }
 
   if (!config.agent) config.agent = {}
@@ -301,15 +303,14 @@ export function buildCoderRuntimeBindings(
   const coderLiteLine = pluginConfig.coder_lite_enabled
     ? `- Mechanical lane: \`${pluginConfig.coder_lite_agent}\` (\`${resolveRoleModel(pluginConfig, "coder-lite")}\`) for fully specified mechanical coding and file tasks`
     : "- Mechanical lane: coder-lite DISABLED by configuration"
-  const buildLine = pluginConfig.build_enabled
-    ? `- Optional stronger-model lane: role \`build\` routes to agent \`${pluginConfig.build_agent}\` (\`${pluginConfig.build_model ?? "host default model"}\`)`
-    : "- Optional stronger-model lane: build DISABLED by configuration"
+  const deepModel = resolveRoleModel(pluginConfig, "coder", { tier: "deep" })
+  const deepLine = `- L3 model uplift: dispatch with \`tier: "deep"\` to use \`${deepModel}\`; configure \`tier_models.deep.coder\` to change it`
   const designLine =
     design !== undefined
       ? `- Design record: \`${design.designStateDir}/${design.projectId}\` — read \`design.md\` and write \`plan.md\` there; you never edit \`design.md\``
       : undefined
   const dispatchLine = DISPATCH_JOB_TOOLS_LINE
-  const lines = [modelLine, coderLiteLine, buildLine]
+  const lines = [modelLine, coderLiteLine, deepLine]
   if (designLine !== undefined) lines.push(designLine)
   lines.push(dispatchLine)
   return `## Runtime Bindings (injected by opencode-adapter)\n${lines.join("\n")}`
@@ -333,9 +334,8 @@ export async function registerCoder(
     directory !== undefined
       ? { designStateDir, projectId: computeProjectId(directory) }
       : undefined
-  const assembledPrompt = await assemblePrompt(pluginConfig, {
+  const assembledPrompt = await assemblePrompt({
     assetFile: "agents/coder.md",
-    model: resolveRoleModel(pluginConfig, "coder"),
     fragments: [DISPATCH_HUB_ASSET, ENGINEERING_PRINCIPLES_ASSET],
     runtimeBlock: buildCoderRuntimeBindings(pluginConfig, design),
   })
@@ -382,9 +382,8 @@ export async function registerCoderLite(
   const agentName = pluginConfig.coder_lite_agent
   if (config.agent?.[agentName]) return
 
-  const prompt = await assemblePrompt(pluginConfig, {
+  const prompt = await assemblePrompt({
     assetFile: "agents/coder-lite.md",
-    model: resolveRoleModel(pluginConfig, "coder-lite"),
   })
 
   const entry: CodingLaneEntry = {
@@ -405,17 +404,18 @@ export async function registerCoderLite(
  *
  * Janus is the daily-driver primary and does not attach to memory, so its
  * block reports only what it needs to orchestrate: its own model, the
- * entry/specialist targets it routes to (consultant, coder, lite, explorer),
- * and the dispatch job-tool discipline. No memory namespace, no workspace.
+ * entry/specialist targets it routes to (consultant, coder, ask-lite,
+ * explorer), and the dispatch job-tool discipline. No memory namespace, no
+ * workspace.
  */
 export function buildJanusRuntimeBindings(pluginConfig: JanusPluginConfig): string {
   const modelLine = `- Janus model: \`${resolveRoleModel(pluginConfig, "janus")}\``
 
-  const consultantLine = `- \`consultant\` (agent \`consultant\`, \`${resolveRoleModel(pluginConfig, "consultant")}\`) — evidence-graded research, decisions, durable documents; dispatch via \`janus_dispatch\` (role="consultant")`
+  const consultantLine = `- \`consultant\` (agent \`${pluginConfig.consultant_agent}\`, \`${resolveRoleModel(pluginConfig, "consultant")}\`) — evidence-graded research, decisions, durable documents; dispatch via \`janus_dispatch\` (role="consultant")`
   const coderLine = `- \`coder\` (agent \`${pluginConfig.coder_agent}\`, \`${resolveRoleModel(pluginConfig, "coder")}\`) — coding, debugging, refactoring, tests, repo work; dispatch via \`janus_dispatch\` (role="coder")`
-  const liteLine = pluginConfig.lite_enabled
-    ? `- \`lite\` (agent \`${pluginConfig.lite_agent}\`, \`${resolveRoleModel(pluginConfig, "lite")}\`) — quick facts, concepts, simple how-to`
-    : "- Economical entry: lite DISABLED by configuration"
+  const liteLine = pluginConfig.ask_lite_enabled
+    ? `- \`ask-lite\` (agent \`${pluginConfig.ask_lite_agent}\`, \`${resolveRoleModel(pluginConfig, "ask-lite")}\`) — quick facts, concepts, simple how-to`
+    : "- Economical entry: ask-lite DISABLED by configuration"
   const explorerLine = `- \`explorer\` (agent \`${pluginConfig.explorer_agent}\`, \`${resolveRoleModel(pluginConfig, "explorer")}\`) — bounded evidence gathering with a specific claim list and search plan`
 
   const dispatchLine = DISPATCH_JOB_TOOLS_LINE
@@ -436,9 +436,8 @@ export async function registerJanus(
 ): Promise<void> {
   if (config.agent?.[pluginConfig.janus_agent]) return
 
-  const assembledPrompt = await assemblePrompt(pluginConfig, {
+  const assembledPrompt = await assemblePrompt({
     assetFile: "agents/janus.md",
-    model: resolveRoleModel(pluginConfig, "janus"),
     fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET],
     runtimeBlock: buildJanusRuntimeBindings(pluginConfig),
   })
@@ -496,8 +495,12 @@ export function buildRuntimeBindings(
   const consultantModelLine = `- Consultant model: \`${resolveRoleModel(pluginConfig, "consultant")}\``
 
   const roleParts = [
-    `explorer \`${pluginConfig.explorer_agent}\` (${resolveRoleModel(pluginConfig, "explorer")})`,
-    `analyst \`${pluginConfig.analyst_agent}\` (${resolveRoleModel(pluginConfig, "analyst")})`,
+    pluginConfig.explorer_enabled
+      ? `explorer \`${pluginConfig.explorer_agent}\` (${resolveRoleModel(pluginConfig, "explorer")})`
+      : "explorer DISABLED by configuration",
+    pluginConfig.analyst_enabled
+      ? `analyst \`${pluginConfig.analyst_agent}\` (${resolveRoleModel(pluginConfig, "analyst")})`
+      : "analyst DISABLED by configuration",
   ]
   roleParts.push(
     pluginConfig.critic_enabled
@@ -505,9 +508,14 @@ export function buildRuntimeBindings(
       : "critic DISABLED by configuration",
   )
   roleParts.push(
-    pluginConfig.verifier_enabled
-      ? `verifier \`${pluginConfig.verifier_agent}\` (${resolveRoleModel(pluginConfig, "verifier")})`
-      : "verifier DISABLED by configuration",
+    pluginConfig.arch_critic_enabled
+      ? `arch-critic \`${pluginConfig.arch_critic_agent}\` (${resolveRoleModel(pluginConfig, "arch-critic")})`
+      : "arch-critic DISABLED by configuration",
+  )
+  roleParts.push(
+    pluginConfig.auditor_enabled
+      ? `auditor \`${pluginConfig.auditor_agent}\` (${resolveRoleModel(pluginConfig, "auditor")})`
+      : "auditor DISABLED by configuration",
   )
   roleParts.push(
     pluginConfig.writer_delegate_agent !== undefined
@@ -518,9 +526,9 @@ export function buildRuntimeBindings(
   )
   const teamLine = `- Team subagents: ${roleParts.join(", ")}`
 
-  const liteLine = pluginConfig.lite_enabled
-    ? `- Economical leaf: \`${pluginConfig.lite_agent}\` (\`${resolveRoleModel(pluginConfig, "lite")}\`) for bounded quick-answer tasks`
-    : "- Economical leaf: lite DISABLED by configuration"
+  const liteLine = pluginConfig.ask_lite_enabled
+    ? `- Economical leaf: \`${pluginConfig.ask_lite_agent}\` (\`${resolveRoleModel(pluginConfig, "ask-lite")}\`) for bounded quick-answer tasks`
+    : "- Economical leaf: ask-lite DISABLED by configuration"
   const coderLine = pluginConfig.coder_enabled
     ? `- Coding delegate: \`${pluginConfig.coder_agent}\` (\`${resolveRoleModel(pluginConfig, "coder")}\`) for code examples and bounded code tasks; it owns the coding lanes`
     : "- Coding delegate: coder DISABLED by configuration"
@@ -530,7 +538,7 @@ export function buildRuntimeBindings(
   const costGuard = resolveCostGuardUsd(pluginConfig)
 
   const capsLine = `- Team maximums (not targets): round_cap=${caps.round_cap}, explorer<=${caps.explorer_cap}, critic_searches<=${caps.critic_search_cap} per round`
-  const tierMatrixLine = `- Tier role maximums (not a required roster): fast(e${tiers.fast.explorer},a${tiers.fast.analyst},c${tiers.fast.critic},v${tiers.fast.verifier},w${tiers.fast.writer}) standard(e${tiers.standard.explorer},a${tiers.standard.analyst},c${tiers.standard.critic},v${tiers.standard.verifier},w${tiers.standard.writer}) deep(e${tiers.deep.explorer},a${tiers.deep.analyst},c${tiers.deep.critic},v${tiers.deep.verifier},w${tiers.deep.writer})`
+  const tierMatrixLine = `- Tier role maximums (not a required roster): fast(e${tiers.fast.explorer},a${tiers.fast.analyst},c${tiers.fast.critic},ac${tiers.fast.arch_critic},au${tiers.fast.auditor},w${tiers.fast.writer}) standard(e${tiers.standard.explorer},a${tiers.standard.analyst},c${tiers.standard.critic},ac${tiers.standard.arch_critic},au${tiers.standard.auditor},w${tiers.standard.writer}) deep(e${tiers.deep.explorer},a${tiers.deep.analyst},c${tiers.deep.critic},ac${tiers.deep.arch_critic},au${tiers.deep.auditor},w${tiers.deep.writer})`
   const costLine = `- Cost guard: ~$${costGuard} per provider (advisory, converge when approaching)`
 
   const namespaceLine = `- Memory namespace: \`${namespace}\``
@@ -625,19 +633,6 @@ export async function resolveModelPrompt(
 }
 
 /**
- * Inject the model-adaptation block into an agent asset body. An empty block
- * returns the body unchanged (the placeholder comment stays inert), so
- * no-block assembly is byte-identical to the raw asset.
- */
-export function injectModelPrompt(body: string, block: string): string {
-  if (block.length === 0) return body
-  if (MODEL_PROMPT_PLACEHOLDER.test(body)) {
-    return body.replace(MODEL_PROMPT_PLACEHOLDER, block)
-  }
-  return `${body}\n\n## Driving This Model\n\n${block}`
-}
-
-/**
  * Load the shared baseline block injected into every plugin-owned agent
  * prompt. Reads `assets/principles/common-base.md`; a missing asset is a
  * deployment error and propagates.
@@ -677,7 +672,6 @@ async function loadPrincipleFragment(asset: string): Promise<string> {
 
 interface PromptAssembly {
   assetFile: string
-  model: string
   fragments?: readonly string[]
   /** Shared baseline block; defaults to true. */
   includeCommonBase?: boolean
@@ -688,21 +682,17 @@ interface PromptAssembly {
 
 /**
  * Assemble one role prompt in the fixed layer order:
- * role asset -> model-adaptation block -> principle fragments -> common-base
- * -> common-write -> runtime bindings.
+ * role asset -> principle fragments -> common-base -> common-write -> runtime
+ * bindings. The model-adaptation block is injected per request by the
+ * `experimental.chat.system.transform` hook, using the model actually serving
+ * the turn, so a mode/tier override or a continuation keeps the matching block
+ * without duplicating a stale one.
  *
  * Read-only roles omit only the common-write layer, which they can never act
- * on. Fragment-free assemblies stay byte-identical to the previous
- * per-register sequence, so adding the helper does not move existing text.
+ * on.
  */
-async function assemblePrompt(
-  pluginConfig: JanusPluginConfig,
-  options: PromptAssembly,
-): Promise<string> {
-  let prompt = injectModelPrompt(
-    await readFile(resolveAsset(options.assetFile), "utf8"),
-    await resolveModelPrompt(pluginConfig, options.model),
-  )
+async function assemblePrompt(options: PromptAssembly): Promise<string> {
+  let prompt = await readFile(resolveAsset(options.assetFile), "utf8")
   for (const fragment of options.fragments ?? []) {
     prompt = `${prompt}\n\n${await loadPrincipleFragment(fragment)}`
   }
@@ -722,9 +712,10 @@ async function assemblePrompt(
  *
  * Reads `assets/agents/consultant.md`, injects the runtime bindings block
  * (including the author state dir, project id, and writer write mode when
- * the project `directory` is supplied), and sets `config.agent["consultant"]`
- * with `mode: "primary"` and the resolved consultant model. A pre-existing
- * user-defined `consultant` agent entry is left untouched (never clobbered).
+ * the project `directory` is supplied), and sets
+ * `config.agent[consultant_agent]` with `mode: "primary"` and the resolved
+ * consultant model. A pre-existing user-defined consultant agent entry is left
+ * untouched (never clobbered).
  */
 export async function registerConsultantAgent(
   config: MutableConfig,
@@ -733,7 +724,7 @@ export async function registerConsultantAgent(
   directory?: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  if (config.agent?.["consultant"]) return
+  if (config.agent?.[pluginConfig.consultant_agent]) return
 
   const authorStateDir = resolveAuthorStateDir(env)
   const designStateDir = resolveDesignStateDir(env)
@@ -749,9 +740,8 @@ export async function registerConsultantAgent(
     projectId !== undefined ? { authorStateDir, projectId } : undefined
   const design: DesignBinding | undefined =
     projectId !== undefined ? { designStateDir, projectId } : undefined
-  const assembledPrompt = await assemblePrompt(pluginConfig, {
+  const assembledPrompt = await assemblePrompt({
     assetFile: "agents/consultant.md",
-    model: resolveRoleModel(pluginConfig, "consultant"),
     fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET, CHANNEL_POLICY_ASSET],
     runtimeBlock: buildRuntimeBindings(pluginConfig, namespace, author, design),
   })
@@ -769,7 +759,7 @@ export async function registerConsultantAgent(
   }
 
   if (!config.agent) config.agent = {}
-  config.agent["consultant"] = entry
+  config.agent[pluginConfig.consultant_agent] = entry
 }
 
 /**
@@ -793,9 +783,8 @@ async function registerReadOnlySubagent(
 ): Promise<void> {
   if (config.agent?.[options.name]) return
 
-  const prompt = await assemblePrompt(options.pluginConfig, {
+  const prompt = await assemblePrompt({
     assetFile: options.assetFile,
-    model: options.model,
     fragments: [RESEARCH_LEAF_ASSET, ...(options.extraFragments ?? [])],
     includeCommonWrite: false,
   })
@@ -840,29 +829,43 @@ export async function registerAnalyst(
   })
 }
 
-export async function registerConsultationCritic(
+export async function registerCritic(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
 ): Promise<void> {
   await registerReadOnlySubagent(config, {
     name: pluginConfig.critic_agent,
     description: CRITIC_DESCRIPTION,
-    assetFile: "agents/consultation-critic.md",
+    assetFile: "agents/critic.md",
     model: resolveRoleModel(pluginConfig, "critic"),
     pluginConfig,
     extraFragments: [REASONING_FAILURES_ASSET, SOURCE_CRITERIA_ASSET],
   })
 }
 
-export async function registerVerifier(
+export async function registerArchCritic(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
 ): Promise<void> {
   await registerReadOnlySubagent(config, {
-    name: pluginConfig.verifier_agent,
-    description: VERIFIER_DESCRIPTION,
-    assetFile: "agents/consultation-verifier.md",
-    model: resolveRoleModel(pluginConfig, "verifier"),
+    name: pluginConfig.arch_critic_agent,
+    description: ARCH_CRITIC_DESCRIPTION,
+    assetFile: "agents/arch-critic.md",
+    model: resolveRoleModel(pluginConfig, "arch-critic"),
+    pluginConfig,
+    extraFragments: [ENGINEERING_PRINCIPLES_ASSET],
+  })
+}
+
+export async function registerAuditor(
+  config: MutableConfig,
+  pluginConfig: JanusPluginConfig,
+): Promise<void> {
+  await registerReadOnlySubagent(config, {
+    name: pluginConfig.auditor_agent,
+    description: AUDITOR_DESCRIPTION,
+    assetFile: "agents/auditor.md",
+    model: resolveRoleModel(pluginConfig, "auditor"),
     pluginConfig,
   })
 }
@@ -1002,9 +1005,8 @@ export async function registerWriter(
     // reads of the brief path may fail until the directory exists.
   }
 
-  const assembledPrompt = await assemblePrompt(pluginConfig, {
+  const assembledPrompt = await assemblePrompt({
     assetFile: "agents/writer.md",
-    model: resolveRoleModel(pluginConfig, "writer"),
     runtimeBlock: buildWriterRuntimeBindings(pluginConfig, authorStateDir),
   })
 

@@ -2,19 +2,21 @@ import { type Plugin, type Config } from "@opencode-ai/plugin"
 import { loadPluginConfig } from "./plugin-config.ts"
 import {
   registerConsultantAgent,
-  registerConsultationCritic,
+  registerCritic,
+  registerArchCritic,
   registerExplorer,
   registerAnalyst,
   registerCoder,
-  registerLite,
+  registerAskLite,
   registerCoderLite,
-  registerVerifier,
+  registerAuditor,
   registerWriter,
   registerJanus,
+  resolveModelPrompt,
 } from "./agent-registration.ts"
 import { createJanusDispatchTools } from "./dispatch-tool.ts"
 import { registerMemoryMcp } from "./mcp-registration.ts"
-import { installConsultationSkill } from "./skill-installer.ts"
+import { installConsultationSkills } from "./skill-installer.ts"
 import { installMemoryCommands, installModelsCommand } from "./command-installer.ts"
 import { computeNamespace } from "./namespace.ts"
 
@@ -41,8 +43,8 @@ export function createJanusConfigHook(
       await registerCoder(config, pluginConfig, directory, env)
     }
 
-    if (pluginConfig.lite_enabled) {
-      await registerLite(config, pluginConfig, namespace)
+    if (pluginConfig.ask_lite_enabled) {
+      await registerAskLite(config, pluginConfig, namespace)
     }
 
     if (pluginConfig.coder_lite_enabled) {
@@ -53,15 +55,24 @@ export function createJanusConfigHook(
       await registerJanus(config, pluginConfig)
     }
 
-    await registerExplorer(config, pluginConfig)
-    await registerAnalyst(config, pluginConfig)
-
-    if (pluginConfig.critic_enabled) {
-      await registerConsultationCritic(config, pluginConfig)
+    if (pluginConfig.explorer_enabled) {
+      await registerExplorer(config, pluginConfig)
     }
 
-    if (pluginConfig.verifier_enabled) {
-      await registerVerifier(config, pluginConfig)
+    if (pluginConfig.analyst_enabled) {
+      await registerAnalyst(config, pluginConfig)
+    }
+
+    if (pluginConfig.critic_enabled) {
+      await registerCritic(config, pluginConfig)
+    }
+
+    if (pluginConfig.arch_critic_enabled) {
+      await registerArchCritic(config, pluginConfig)
+    }
+
+    if (pluginConfig.auditor_enabled) {
+      await registerAuditor(config, pluginConfig)
     }
 
     if (pluginConfig.writer_enabled) {
@@ -73,7 +84,7 @@ export function createJanusConfigHook(
     }
 
     if (pluginConfig.install_skill) {
-      await installConsultationSkill(env)
+      await installConsultationSkills(env)
     }
 
     if (pluginConfig.install_commands) {
@@ -83,14 +94,43 @@ export function createJanusConfigHook(
   }
 }
 
+export interface SystemTransformInput {
+  readonly model: {
+    readonly providerID: string
+    readonly id: string
+  }
+}
+
+export interface SystemTransformOutput {
+  readonly system: string[]
+}
+
+/**
+ * Inject the model-adaptation block for the model actually serving the turn.
+ *
+ * The block is keyed by the provider-agnostic normalized model id and is
+ * appended as a separate system entry, so mode/tier overrides and continuation
+ * sessions keep the matching block without replacing the agent prompt. The
+ * shipped block is static per model, so the prefix stays byte-stable across the
+ * tool steps of one job.
+ */
+export function createSystemTransformHook(env: NodeJS.ProcessEnv = process.env) {
+  return async (input: SystemTransformInput, output: SystemTransformOutput): Promise<void> => {
+    const config = await loadPluginConfig(env)
+    const block = await resolveModelPrompt(config, `${input.model.providerID}/${input.model.id}`)
+    if (block.length > 0) output.system.push(block)
+  }
+}
+
 /**
  * The janus-agent OpenCode plugin.
  *
- * Uses only the `config` hook to register the `consultant` primary agent,
- * the `janus-memory` local MCP server, and the `consultation` skill.
+ * Registers the agent family, the dispatch tools, the `janus-memory` MCP
+ * server, the three consultation skills, and the model-adaptation system hook.
  * Contains no evidence, recommendation, or persistence logic.
  */
 export const JanusAgentPlugin: Plugin = async (input) => ({
   config: createJanusConfigHook(input.project, input.directory),
   tool: createJanusDispatchTools(input.client),
+  "experimental.chat.system.transform": createSystemTransformHook(),
 })

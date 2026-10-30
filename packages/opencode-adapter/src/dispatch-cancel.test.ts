@@ -23,7 +23,7 @@ async function fixture(spec = validRoleSpecs[1]!.record, withAttempt = true) {
     aborts.push(input.path.id)
     return abortEffect(input.path.id)
   } } }
-  const root = await createJob(sdk, { parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: spec.role, agentName: spec.agent_name, modelChain: spec.model_chain, prompt: spec.prompt, clock })
+  const root = await createJob(sdk, { parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: spec.role as import("./dispatch-contract.ts").DispatchRole, agentName: spec.agent_name, modelChain: spec.model_chain, prompt: spec.prompt, clock })
   if (!root.ok) throw root.error
   const jobID = root.value.jobID
   const input = { jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY }

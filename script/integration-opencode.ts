@@ -17,7 +17,7 @@
  *       is supported by opencode but parsing stdout for the assigned port is
  *       fragile across versions). Wait for readiness via /global/health.
  *   (e) Assert via HTTP: GET /config responds 200 and its JSON contains the
- *       `consultant` agent key, the `consultation-writer` agent key, and the
+ *       `consultant` agent key, the `writer` agent key, and the
  *       `janus-memory` mcp key.
  *   (f) Assert the consultation skill file and the janus-models command file
  *       were installed in the sandbox config directory.
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
           const json: unknown = await resp.json()
           const hasConsultant = hasNestedKey(json, "agent", "consultant")
           const hasMemoryMcp = hasNestedKey(json, "mcp", "janus-memory")
-          const hasWriter = hasNestedKey(json, "agent", "consultation-writer")
+          const hasWriter = hasNestedKey(json, "agent", "writer")
           assertions.push({
             name: "config has consultant agent key",
             pass: hasConsultant,
@@ -190,9 +190,9 @@ async function main(): Promise<void> {
           assertions.push({
             name: "config has packaged writer agent key",
             pass: hasWriter,
-            detail: hasWriter ? "agent.consultation-writer present" : "agent.consultation-writer MISSING",
+            detail: hasWriter ? "agent.writer present" : "agent.writer MISSING",
           })
-          for (const role of ["coder", "lite", "coder-lite"]) {
+          for (const role of ["coder", "ask-lite", "coder-lite", "arch-critic", "auditor", "explorer", "analyst", "critic"]) {
             const present = hasNestedKey(json, "agent", role)
             assertions.push({
               name: `config has ${role} agent key`,
@@ -272,31 +272,48 @@ async function main(): Promise<void> {
         assertions.push({ name: "GET /config", pass: false, detail: `fetch error: ${detail}` })
       }
 
-      const skillPath = join(sandboxConfig, "opencode", "skills", "consultation", "SKILL.md")
-      const skillExists = existsSync(skillPath)
-      assertions.push({
-        name: "consultation skill installed in sandbox config",
-        pass: skillExists,
-        detail: skillExists ? skillPath : `NOT FOUND: ${skillPath}`,
-      })
+      const skillPaths = {
+        consultation: join(sandboxConfig, "opencode", "skills", "consultation", "SKILL.md"),
+        "consultation-design": join(sandboxConfig, "opencode", "skills", "consultation-design", "SKILL.md"),
+        "consultation-doc": join(sandboxConfig, "opencode", "skills", "consultation-doc", "SKILL.md"),
+      }
+      for (const [name, skillPath] of Object.entries(skillPaths)) {
+        const installed = existsSync(skillPath)
+        assertions.push({
+          name: `${name} skill installed in sandbox config`,
+          pass: installed,
+          detail: installed ? skillPath : `NOT FOUND: ${skillPath}`,
+        })
+      }
 
-      if (skillExists) {
-        const skillText = readFileSync(skillPath, "utf8")
-        const hasAuthor = skillText.includes("`author`")
+      const coreSkill = existsSync(skillPaths.consultation) ? readFileSync(skillPaths.consultation, "utf8") : ""
+      const designSkill = existsSync(skillPaths["consultation-design"])
+        ? readFileSync(skillPaths["consultation-design"], "utf8")
+        : ""
+      const docSkill = existsSync(skillPaths["consultation-doc"])
+        ? readFileSync(skillPaths["consultation-doc"], "utf8")
+        : ""
+      assertions.push({
+        name: "installed core skill contains the mode stack and sub-skill pointers",
+        pass: coreSkill.includes("### Mode Stack") && coreSkill.includes("consultation-design") && coreSkill.includes("consultation-doc"),
+        detail: "core skill mode stack and sub-skill pointers",
+      })
+      assertions.push({
+        name: "installed design skill contains the design method and template",
+        pass: designSkill.includes("## Design Mode") && designSkill.includes("### design: decision record"),
+        detail: designSkill.includes("## Design Mode") ? "design skill present" : "design skill MISSING design mode",
+      })
+      assertions.push({
+        name: "installed doc skill contains the doc workflow and template",
+        pass: docSkill.includes("## Doc Mode") && docSkill.includes("### doc: delivery brief"),
+        detail: docSkill.includes("## Doc Mode") ? "doc skill present" : "doc skill MISSING doc mode",
+      })
+      for (const name of ["janus_dispatch_wait", "janus_dispatch_cancel", "janus_dispatch_continue"]) {
         assertions.push({
-          name: "installed consultation skill contains author mode",
-          pass: hasAuthor,
-          detail: hasAuthor ? "skill text contains `author`" : "skill text MISSING `author`",
+          name: `installed core skill names ${name}`,
+          pass: coreSkill.includes(name),
+          detail: "installed tool-routing token",
         })
-        const hasDesign = skillText.includes("## Design Mode") && skillText.includes("### design: decision record")
-        assertions.push({
-          name: "installed consultation skill contains design mode",
-          pass: hasDesign,
-          detail: hasDesign ? "skill text contains the design method and template" : "skill text MISSING design mode",
-        })
-        for (const name of ["janus_dispatch_wait", "janus_dispatch_cancel", "janus_dispatch_continue"]) {
-          assertions.push({ name: `installed skill names ${name}`, pass: skillText.includes(name), detail: "installed tool-routing token" })
-        }
       }
       const modelsCommandPath = join(sandboxConfig, "opencode", "commands", "janus-models.md")
       const modelsCommandExists = existsSync(modelsCommandPath)

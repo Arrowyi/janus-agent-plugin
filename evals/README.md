@@ -19,7 +19,7 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 59 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 author-separation (writer/consultant) cases, C49-C55 writer-session reuse and continuation cases, and C56-C59 design mode (layer gates, design-record handoff to the coder, one-way-door pre-mortem, current-state record rewrite).
+- `fixtures/consultation-cases.json` - 83 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 doc-mode separation (writer/consultant) cases, C49-C55 writer-session reuse and continuation cases, C56-C59 design mode, and C75-C83 the mode-stack, arch-critic, dynamic model routing, continuation-lock, alias, and critique-contract cases.
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
@@ -33,7 +33,7 @@ Each case has the shape (`modes` is empty for process/coding cases that exercise
   "when": "...",
   "then": "...",
   "grading": "deterministic | model",
-  "modes": ["select | verify | plan | research | guide | author | design"],
+  "modes": ["select | verify | roadmap | research | guide | doc | design"],
   "notes": "test file or rubric question"
 }
 ```
@@ -120,7 +120,7 @@ Adversarial rubric: **Reject “300s means failed”, silent inline substitution
 abort-on-expiry, and unknown-triggered backup model.** Also reject duplicate
 generation presented as recovery and cancelled claims after normal completion.
 Host session/message evidence, not specialist claims of being alive, determines
-execution status; a verifier's evidence-quality `unknown` is not dispatch failure.
+execution status; an auditor's evidence-quality `unknown` is not dispatch failure.
 Keep private messages, credentials, raw source copies and full transcripts out
 of repository evidence; retain only redacted structural observations and verdicts.
 
@@ -139,7 +139,9 @@ and its host permissions are retained, not replaced by bundled restrictions.
 | explorer | Same launch/wait/cancel | One | Recover original evidence report; no duplicated gathering on expiry |
 | analyst | Same launch/wait/cancel | One | Integrate returned analysis; inline reasoning is not an independent check |
 | critic | Same launch/wait/cancel | One | Await challenge before dependent synthesis; no false review credit |
-| verifier | Same launch/wait/cancel | One | Separate execution status from evidence-quality uncertainty |
+| arch-critic | Same launch/wait/cancel | One | Await the pre-mortem/plan review before a one-way approval or implementation; no false review credit |
+| ask-lite | Same launch/wait/cancel | One | Bounded economical answer; a leaf that never dispatches |
+| auditor | Same launch/wait/cancel | One | Separate execution status from evidence-quality uncertainty |
 | bundled writer | Same launch/wait/cancel | One (single-model chain) | No fallback advance — a confirmed terminal retryable failure ends the job after one attempt; preserve outline gate and scoped-write roots (edit only under `writer_docs_roots`; `[]` = read-only fallback) |
 | delegate writer | Same launch/wait/cancel | One, pinned model or host selection | No plugin fallback advance; retain external host permissions |
 
@@ -152,8 +154,8 @@ retries; the plugin cannot claim control of an external delegate's internals.
 These cases check the entry layout and the coder's adaptive process, not model
 quality. Run them with a live model and record the observed tool trace:
 
-- **C31/C32** — bounded work goes to `lite`; mechanical code goes to `coder-lite`; judgment code stays with `coder`/`build`; the consultant does not implement code.
-- **C33/C34** — `janus` routes consulting/coding/quick answers; direct entry to `consultant`/`coder`/`lite` does not bounce back.
+- **C31/C32** — bounded work goes to `ask-lite`; mechanical code goes to `coder-lite`; judgment code stays with `coder` (L3 can use a deep-tier model); the consultant does not implement code.
+- **C33/C34** — `janus` routes consulting/coding/quick answers; direct entry to `consultant`/`coder`/`ask-lite` does not bounce back.
 - **C35/C36/C37** — coder L0 skips the plan; L2 presents the design gate and waits; L3 runs the quality gate.
 - **C38** — a dispatched consultant does not ask the end user; it saves only when the task assigns `Memory ownership: consultant saves`, otherwise it returns a summary and the dispatcher owns the record.
 - **C39** — a close `select` answer opens with 结论/理由/下一步, says there is no clear winner, gives a tie-break and `把握`, puts evidence after the decision, and ends with a next action.
@@ -163,7 +165,7 @@ failure modes are process theater on L0 and skipped design on L2/L3.
 
 ## Author separation evaluation (C40-C48)
 
-These cases check the consultant/writer author split in `author` mode and
+These cases check the consultant/writer split in `doc` mode and
 maintenance. Run them with a live model and record the observed tool trace
 plus the writer's child-session trace:
 
@@ -176,7 +178,7 @@ plus the writer's child-session trace:
 - **C47** — the writer never dispatches explorer; broad research returns to the consultant as a `researchRequest`.
 - **C48** — a structural change returns `needsConsultant`; the consultant presents the manifest delta for exactly one approval, then dispatches the writer and updates the brief.
 
-Reject a run where the consultant edits prose itself in author mode, where
+Reject a run where the consultant edits prose itself in doc mode, where
 the writer writes outside its roots, or where author state silently drifts
 from the brief and manifest.
 

@@ -50,7 +50,7 @@ const verifyBrief = {
 }
 
 const planBrief = {
-  mode: "plan",
+  mode: "roadmap",
   conclusion: "Follow a progressive plan.",
   goal: "Build strength safely.",
   suitedFor: "Healthy adults.",
@@ -209,8 +209,8 @@ describe("validateDecisionBrief: verify", () => {
 describe("validateDecisionBrief: plan", () => {
   test("accepts a valid plan brief", () => {
     const brief = validateDecisionBrief(planBrief)
-    expect(brief.mode).toBe("plan")
-    if (brief.mode !== "plan") throw new Error("expected plan mode")
+    expect(brief.mode).toBe("roadmap")
+    if (brief.mode !== "roadmap") throw new Error("expected roadmap mode")
     expect(brief.steps).toHaveLength(2)
   })
 
@@ -233,7 +233,7 @@ describe("validateDecisionBrief: plan", () => {
         residualUncertainty: "The loading rate is uncertain; start conservatively.",
       }),
     )
-    if (brief.mode !== "plan") throw new Error("expected plan mode")
+    if (brief.mode !== "roadmap") throw new Error("expected roadmap mode")
     expect(brief.steps[0]?.alternatives).toEqual(["Start with bands"])
     expect(brief.residualUncertainty).toContain("uncertain")
   })
@@ -247,13 +247,13 @@ describe("validateDecisionBrief: plan", () => {
         ],
       }),
     )
-    if (brief.mode !== "plan") throw new Error("expected plan mode")
+    if (brief.mode !== "roadmap") throw new Error("expected roadmap mode")
     expect(brief.failureModes[0]?.earlySignal).toContain("two skipped sessions")
   })
 
   test("defaults failureModes to an empty list", () => {
     const brief = validateDecisionBrief(planBrief)
-    if (brief.mode !== "plan") throw new Error("expected plan mode")
+    if (brief.mode !== "roadmap") throw new Error("expected roadmap mode")
     expect(brief.failureModes).toEqual([])
   })
 })

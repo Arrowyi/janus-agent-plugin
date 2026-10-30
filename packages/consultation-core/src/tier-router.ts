@@ -13,7 +13,7 @@ export type TierRoutingInput = {
 /** Modes whose deliverable is never valid at fast tier. */
 export const FAST_FORBIDDEN_MODES: ReadonlySet<ConsultationMode> = new Set<ConsultationMode>([
   "guide",
-  "author",
+  "doc",
   "design",
 ])
 

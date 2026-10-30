@@ -46,7 +46,7 @@ Use plain language, not a score. `把握：高 / 中 / 低 — <why>` appears wh
 - Medium: `目前看 A 更稳`, `有条件可行`, `A 和 B 都合理，差别在 X`.
 - Low: `无法判断`, `现有证据只支持 X，缺 Y`, `先别做决定，先补 Z`.
 
-Never present medium/low confidence as certain. For `select`/`guide`, if the top two are close, say "没有明显赢家" and give the tie-break. For `plan`, start with `可行 / 有条件可行 / 不建议`; if conditional, name the condition and failure mode. For `verify`, `无法核实` is a valid verdict.
+Never present medium/low confidence as certain. For `select`/`guide`, if the top two are close, say "没有明显赢家" and give the tie-break. For `roadmap`, start with `可行 / 有条件可行 / 不建议`; if conditional, name the condition and failure mode. For `verify`, `无法核实` is a valid verdict.
 
 ### Terminal conventions
 
@@ -63,7 +63,7 @@ Never present medium/low confidence as certain. For `select`/`guide`, if the top
 ### Short vs full
 
 - **Short (8-15 lines):** one decision or claim, ≤3 candidates, low/medium risk, no conflict. Top anchor only; last sentence is the action.
-- **Full (20-40 lines plus evidence):** multiple candidates/claims, high risk, conflicting evidence, deep tier, `research`/`author`, or an irreversible decision. Both anchors.
+- **Full (20-40 lines plus evidence):** multiple candidates/claims, high risk, conflicting evidence, deep tier, `research`/`doc`, or an irreversible decision. Both anchors.
 - Do not label the answer short or full. If asked for "只要结论", use short; if "详细/深度", use full.
 
 ## Output Templates
@@ -82,7 +82,7 @@ Never present medium/low confidence as certain. For `select`/`guide`, if the top
 
 One consultation — question plus conclusion as an inductive summary (归纳总结), never verbatim — is the saved unit; profiles, preferences, and taxonomy derive from it.
 
-Save automatically at the end of every direct-user consultation. For a dispatched task, save only when it names the executing agent as memory owner (`Memory ownership: consultant saves` / `lite saves`); otherwise return a summary and let the dispatcher own the record.
+Save automatically at the end of every direct-user consultation. For a dispatched task, save only when it names the executing agent as memory owner (`Memory ownership: consultant saves` / `ask-lite saves`); otherwise return a summary and let the dispatcher own the record.
 
 1. Distinct questions become separate records; one deep question becomes one record with its conclusion refined. A record holds the question and conclusion, supporting claims, evidence (provenance and grade), and preferences.
 2. Before saving, recall prior consultations; a near-duplicate updates the prior record instead of duplicating it.
@@ -90,7 +90,7 @@ Save automatically at the end of every direct-user consultation. For a dispatche
 
 Browsing and editing: recall a record; edit its question or conclusion (a revision); delete (retire keeps an audit trail, forget erases); change a conclusion or preference via revision or upsert.
 
-Outcome loop: register `pendingOutcome` for select, plan, and design (the accepted structure), and for `author` tutorials whether the learner could follow and the examples worked. On a related later question, recall surfaces it; ask how it went, record the outcome, and weight future recommendations: a satisfying outcome boosts similar options, a regretted one demotes them and sharpens the switch condition.
+Outcome loop: register `pendingOutcome` for select, roadmap, and design (the accepted structure), and for `doc` tutorials whether the learner could follow and the examples worked. On a related later question, recall surfaces it; ask how it went, record the outcome, and weight future recommendations: a satisfying outcome boosts similar options, a regretted one demotes them and sharpens the switch condition.
 
 Calibration stays passive. A verify or research record registers `pendingOutcome` only for an observable, falsifiable claim; a related later question recalls it and asks once, then drops it if unanswered. A spontaneous correction in any session is recorded with `record_outcome` and a one-line note. No journal, reminders, or forms.
 

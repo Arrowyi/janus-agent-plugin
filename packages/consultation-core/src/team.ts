@@ -11,7 +11,14 @@ import {
 import { DecomposedClaimSchema } from "./research-contracts.ts"
 import { GradedSourceSchema } from "./research-contracts.ts"
 
-export const TeamRoleSchema = z.enum(["explorer", "analyst", "critic", "verifier", "writer"])
+export const TeamRoleSchema = z.enum([
+  "explorer",
+  "analyst",
+  "critic",
+  "arch_critic",
+  "auditor",
+  "writer",
+])
 export type TeamRole = z.infer<typeof TeamRoleSchema>
 
 export const TeamPhaseSchema = z.enum(["explore", "analyze", "critique", "synthesize"])
@@ -34,14 +41,15 @@ export interface RoleCaps {
   explorer: number
   analyst: number
   critic: number
-  verifier: number
+  arch_critic: number
+  auditor: number
   writer: number
 }
 
 export const TIER_ROLE_CAPS: Record<Tier, RoleCaps> = {
-  fast: { explorer: 5, analyst: 0, critic: 0, verifier: 0, writer: 0 },
-  standard: { explorer: 5, analyst: 1, critic: 1, verifier: 1, writer: 1 },
-  deep: { explorer: 5, analyst: 3, critic: 2, verifier: 2, writer: 2 },
+  fast: { explorer: 5, analyst: 0, critic: 0, arch_critic: 0, auditor: 0, writer: 0 },
+  standard: { explorer: 5, analyst: 1, critic: 1, arch_critic: 1, auditor: 1, writer: 1 },
+  deep: { explorer: 5, analyst: 3, critic: 2, arch_critic: 2, auditor: 2, writer: 2 },
 }
 
 export function tierRoleCaps(tier: Tier): RoleCaps {
@@ -175,6 +183,17 @@ export const CritiqueDraftSchema = z.object({
   whatWouldChangeTheRecommendation: z.array(z.string()),
   resolved: z.boolean(),
   unresolvedGaps: z.array(z.string()).default([]),
+  planReview: z
+    .array(
+      z.object({
+        step: z.string(),
+        uncertainty: z.string(),
+        alternatives: z.array(z.string()).default([]),
+        repair: z.string(),
+        repaired: z.boolean(),
+      }),
+    )
+    .default([]),
   designReview: z
     .object({
       preMortem: z.array(z.string()).default([]),
@@ -182,7 +201,9 @@ export const CritiqueDraftSchema = z.object({
       reversibilityProblems: z.array(z.string()).default([]),
       missingOptions: z.array(z.string()).default([]),
     })
+    .nullable()
     .optional(),
+  residualUncertainty: z.string().nullable().optional(),
 })
 export type CritiqueDraft = z.infer<typeof CritiqueDraftSchema>
 

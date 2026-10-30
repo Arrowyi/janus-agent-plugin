@@ -1,10 +1,10 @@
-## Author Mode
+## Doc Mode
 
-Use `author` when the user asks to create, write, maintain, or update a durable technical document for later reading or sharing: 教程, 课程, 教学文档, 学习材料, 技术文章, 架构分析文档, 源码分析文档, 设计说明, 原理讲解文档, tutorial, course, write-up, architecture document, or an explicit request for Markdown files, chapters, or a document set. The `architecture` profile describes existing code; deciding future structure is `design`.
+Use `doc` when the user asks to create, write, maintain, or update a durable technical document for later reading or sharing: 教程, 课程, 教学文档, 学习材料, 技术文章, 架构分析文档, 源码分析文档, 设计说明, 原理讲解文档, tutorial, course, write-up, architecture document, or an explicit request for Markdown files, chapters, or a document set. The `architecture` profile describes existing code; deciding future structure is `design`.
 
-Routing precedence: a brief explanation stays a simple answer or `research`; deep research stays `research` unless a durable artifact is requested; "everything needed to do X" stays `guide` unless it is an instructional document; "how should I do X?" stays `plan`; "write a guide/tutorial that teaches X" is `author`; "analyze this repo's architecture" is `research` in chat and `author` (architecture profile) when a document is requested. If artifact intent is ambiguous, ask: "A chat explanation or a document to keep/share?"
+Routing precedence: a brief explanation stays a simple answer or `research`; deep research stays `research` unless a durable artifact is requested; "everything needed to do X" stays `guide` unless it is an instructional document; "how should I do X?" stays `roadmap`; "write a guide/tutorial that teaches X" is `doc`; "analyze this repo's architecture" is `research` in chat and `doc` (architecture profile) when a document is requested. If artifact intent is ambiguous, ask: "A chat explanation or a document to keep/share?"
 
-`author` routes to standard or deep tier, never fast. Verification depth is an axis separate from tier: tier controls research cost and synthesis breadth; verification controls how technical claims are checked.
+`doc` routes to standard or deep tier, never fast. Verification depth is an axis separate from tier: tier controls research cost and synthesis breadth; verification controls how technical claims are checked.
 
 ### Profiles
 
@@ -16,7 +16,7 @@ Select exactly one primary profile. A document may contain elements of the other
 
 ### Delivery and destination
 
-Delivery: `inline` (chat), `single_file` (one Markdown file), `multi_file` (an index plus chapters). Ask for the shape and destination when absent or ambiguous; confirm the resolved destination at the outline gate. Resolve relative paths against the project root and never hard-code a documentation directory or a developer-machine path; follow host/project instructions when present and surface the destination for approval. Repository-maintenance files (`README`, `AGENTS.md`) are code-adjacent and route to `coder`, not author mode, unless the user explicitly expands `writer_docs_roots`.
+Delivery: `inline` (chat), `single_file` (one Markdown file), `multi_file` (an index plus chapters). Ask for the shape and destination when absent or ambiguous; confirm the resolved destination at the outline gate. Resolve relative paths against the project root and never hard-code a documentation directory or a developer-machine path; follow host/project instructions when present and surface the destination for approval. Repository-maintenance files (`README`, `AGENTS.md`) are code-adjacent and route to `coder`, not doc mode, unless the user explicitly expands `writer_docs_roots`.
 
 ### Verification
 
@@ -26,7 +26,7 @@ Profile defaults: `tutorial` → `targeted` (learners need runnable, version-app
 
 Prioritize claims whose failure would teach the wrong model: API signatures and versions; ordering, lifecycle, concurrency, cancellation, or transactions; compiler/plugin transformations; source control flow; observable example output; performance or safety claims. Do not equal-effort introductory prose, analogies, or established definitions.
 
-Adversarial roles are proportionate, never a fixed roster: the explorer gathers missing authoritative evidence; the analyst resolves complex mechanisms or conflicting source interpretations; the critic runs for `strict` verification, conflicting evidence, high-risk material, failed execution that challenges the explanation, or a material uncertainty it could resolve even in `light`/`targeted` work; the verifier runs when user-generated, promotional, or purportedly independent evidence has uncertain influence or provenance. Skip only when a role's check is demonstrably unnecessary.
+Adversarial roles are proportionate, never a fixed roster: the explorer gathers missing authoritative evidence; the analyst resolves complex mechanisms or conflicting source interpretations; the critic runs for `strict` verification, conflicting evidence, high-risk material, failed execution that challenges the explanation, or a material uncertainty it could resolve even in `light`/`targeted` work; the auditor runs when user-generated, promotional, or purportedly independent evidence has uncertain influence or provenance. Skip only when a role's check is demonstrably unnecessary.
 
 ### Permission policy
 
@@ -65,7 +65,7 @@ Outline gate: present audience and prerequisites, the goal, the chapter/file man
 
 <!-- part -->
 
-### author: delivery brief
+### doc: delivery brief
 
 Short/full:
 

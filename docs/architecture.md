@@ -6,7 +6,7 @@ The living architecture specification for the janus-agent plugin, describing the
 
 Build an independent Janus agent plugin with a harness-neutral consultation core, a harness-neutral memory core, a local SQLite store, a local MCP interface, and a thin OpenCode adapter.
 
-The public experience is a small agent family with one default entry and three direct-entry shortcuts: `janus` (default general/routing), `consultant` (evidence-driven advice in seven modes: `select`, `verify`, `plan`, `research`, `guide`, `author`, `design`), `coder` (coding with adaptive L0/L1/L2/L3 process weight), and `lite` (economical quick answers). The consultant leads the research team (`explorer`, `analyst`, `critic`, `verifier`) and the scoped-write writer; the coder owns the coding lanes (`coder-lite`, optional host `build`). In author mode the consultant and writer are separated: the consultant owns intake, evidence, the outline approval, final review, the author brief, memory, and publishing and writes no reader-facing prose; the `writer` is the sole author of reader-facing prose and, in scoped-write mode, the sole writer of approved document files under `writer_docs_roots`. The consultant produces decision briefs, playbooks, research reports, and durable documents behind one outline-approval gate, and distinguishes verified facts from synthesis. The coder discusses design/architecture before editing for multi-file or correctness-critical work and gates that discussion on user approval.
+The public experience is a small agent family with one default entry and three direct-entry shortcuts: `janus` (default general/routing), `consultant` (evidence-driven advice in seven modes: `select`, `verify`, `roadmap`, `research`, `guide`, `doc`, `design`), `coder` (coding with adaptive L0/L1/L2/L3 process weight), and `ask-lite` (economical quick answers). The consultant leads the review/research team (`explorer`, `analyst`, `critic`, `arch-critic`, `auditor`) and the scoped-write writer; the coder owns the coding lanes (`coder-lite`; L3 work may use a deep-tier model override). In doc mode the consultant and writer are separated: the consultant owns intake, evidence, the outline approval, final review, the author brief, memory, and publishing and writes no reader-facing prose; the `writer` is the sole author of reader-facing prose and, in scoped-write mode, the sole writer of approved document files under `writer_docs_roots`. The consultant produces decision briefs, playbooks, research reports, and durable documents behind one outline-approval gate, and distinguishes verified facts from synthesis. The coder discusses design/architecture before editing for multi-file or correctness-critical work and gates that discussion on user approval.
 
 The memory system stores only user-approved experience packages. It does not automatically persist complete conversations. Canonical experience records remain independent of classification schemes, summarization models, embedding models, and storage indexes. Every derived view can be rebuilt.
 
@@ -94,22 +94,26 @@ Core packages must not import OpenCode or the MCP SDK. Adapters translate host a
 
 ### 5.1 Consultant Agent
 
-The `consultant` primary agent owns the evidence workflow and final expression for consultation requests. `janus` is the default general/routing entry; `coder` owns coding; `lite` is the economical quick-answer leaf. The consultant routes every question to one of seven modes — `select`, `verify`, `plan`, `research`, `guide`, `author`, or `design` — and a tier (fast, standard, or deep; `author` and `design` never use fast). It:
+The `consultant` primary agent owns the evidence workflow and final expression for consultation requests. `janus` is the default general/routing entry; `coder` owns coding; `ask-lite` is the economical quick-answer leaf. The consultant routes every question to one of seven modes — `select`, `verify`, `roadmap`, `research`, `guide`, `doc`, or `design` — and a tier (fast, standard, or deep; `doc` and `design` never use fast). It:
 
 - detects the mode from intent and chooses the tier;
 - identifies decision-changing missing information;
 - asks at most one to three initial questions when needed;
-- invokes search, memory, the research team (explorer, analyst, critic, verifier), and the writer (sole author of reader-facing prose);
-- retains final editorial control over delegated research and author-mode artifacts (review, verification, bounded writer fix requests) without writing prose itself;
+- invokes search, memory, the review/research team (explorer, analyst, critic, arch-critic, auditor), and the writer (sole author of reader-facing prose);
+- retains final editorial control over delegated research and doc-mode artifacts (review, verification, bounded writer fix requests) without writing prose itself;
 - in `design` mode frames the decision, records it layer by layer with reversibility gates, and writes the self-contained design record;
 - returns a mode-specific decision brief, a readable research report, an authored document delivery, or a design record summary;
 - recognizes natural-language memory intents.
 
 It does not directly implement persistence or source grading rules.
 
+### 5.1.1 Mode Stack and on-demand playbooks
+
+The consultant keeps one session across modes: each turn re-evaluates the ask, and a switch from `research` to `design` or `doc` loads `consultation-design` or `consultation-doc` while carrying verified evidence, constraints, and accepted decisions forward. A nested local unknown suspends the main mode, dispatches a bounded `explorer`/`analyst` task, and then resumes. A coder or writer task that may be revisited is dispatched with `return_handle: true` and continued through `janus_dispatch_continue`. Only the core `consultation` skill is always relevant; the heavy playbooks are loaded on demand, which is why the core skill stays at roughly 5,800 words.
+
 ### 5.2 Consultation Skill
 
-The reusable `consultation` skill defines the cognitive workflow:
+The reusable core `consultation` skill defines the shared cognitive workflow; `consultation-design` and `consultation-doc` carry the heavy design and document playbooks and are loaded on demand:
 
 - claim decomposition;
 - evidence and source evaluation;
@@ -121,7 +125,7 @@ The reusable `consultation` skill defines the cognitive workflow:
 - the design method (admission, layered decisions, quality scenarios, reversibility gates, the design record);
 - memory preview and save behavior.
 
-The skill is reusable by agents other than `consultant`. The agent prompt may preload it, but the skill remains the authoritative workflow source. It is modular: `skill-src/consultation/{core.md,modes/*.md,policies/*.md}` is the source of truth and `script/gen-skill.ts` generates `assets/skills/consultation/SKILL.md` (wired into the build); a freshness test fails on drift. `script/skill-consistency.test.ts` checks the seven-mode schema against the consultant prompt, the generated skill, and the eval `modes` metadata, and `script/prompt-lint.test.ts` enforces word budgets and duplicate-sentence discipline.
+The skills are reusable by agents other than `consultant`. The agent prompt may preload the core skill, but the skill remains the authoritative workflow source. `skill-src/{consultation,consultation-design,consultation-doc}/**` is the source of truth and `script/gen-skill.ts` generates the three `assets/skills/*/SKILL.md` files (wired into the build); a freshness test fails on drift. `script/skill-consistency.test.ts` checks the seven-mode schema against the consultant prompt, the generated skills, and the eval `modes` metadata, and `script/prompt-lint.test.ts` enforces per-skill word budgets and duplicate-sentence discipline.
 
 ### 5.3 Consultation Core
 
@@ -174,11 +178,11 @@ The local stdio MCP server exposes a stable cross-harness memory boundary. It re
 
 The first adapter:
 
-- registers the `janus` default entry, the `consultant` evidence entry, the `coder` coding entry, and the `lite` economical leaf;
-- registers the research subagents — `explorer`, `analyst`, `critic`, and `verifier` (read-only, shell-denied, and dispatch-denied) and the `writer` scoped-write author executor (edit allowed only under the configured `writer_docs_roots`, default `userdoc`; an empty roots array selects the read-only fallback; shell and dispatch denied; step-capped at 80; the writer is optional via `writer_enabled`);
+- registers the `janus` default entry, the `consultant` evidence entry, the `coder` coding entry, and the `ask-lite` economical leaf;
+- registers the research subagents — `explorer`, `analyst`, `critic`, and `auditor` (read-only, shell-denied, and dispatch-denied) and the `writer` scoped-write author executor (edit allowed only under the configured `writer_docs_roots`, default `userdoc`; an empty roots array selects the read-only fallback; shell and dispatch denied; step-capped at 80; the writer is optional via `writer_enabled`);
 - creates the fixed author state directory (`$XDG_DATA_HOME/janus-agent/author`) where the consultant writes per-document briefs, and the design state directory (`$XDG_DATA_HOME/janus-agent/design`); the consultant gets `external_directory` access to both and the coder to the design dir (it reads `design.md`, writes `plan.md`);
-- registers the `coder-lite` mechanical coding lane (leaf, step-capped) and accepts the optional host `build` delegation target;
-- makes the consultation skill available;
+- registers the `coder-lite` mechanical coding lane (leaf, step-capped);
+- makes the core consultation skill and its design/doc sub-skills available;
 - registers or launches the bundled local memory MCP;
 - maps OpenCode session IDs into namespaced core IDs;
 - exposes model and provider configuration;
@@ -213,7 +217,7 @@ flowchart TD
     O --> SAVE[Auto-Save Consultation Record + Register Outcome]
 ```
 
-`author` consultations run a dedicated state machine behind one outline-approval gate, with a strict author separation — the `writer` is the sole author of reader-facing prose and the consultant writes none:
+`doc` consultations run a dedicated state machine behind one outline-approval gate, with a strict author separation — the `writer` is the sole author of reader-facing prose and the consultant writes none:
 
 ```text
 route -> intake (audience/delivery/scope) -> explore load-bearing claims
@@ -224,7 +228,7 @@ route -> intake (audience/delivery/scope) -> explore load-bearing claims
 -> proportionate verification -> cross-file check -> final AuthorBrief -> memory summary
 ```
 
-The brief is the document's external state file at `<authorStateDir>/<projectId>/<docId>/brief.md` (fixed author state dir, stable project id): the consultant creates it at the outline gate, updates it at structural changes, and appends a change log; the writer reads it and never writes it. The brief also records `writer_session_id` — the reusable writer session for this document, captured from the first writer dispatch's `return_handle` completed envelope (or the pending envelope's `session_id`) and absent until then. That first dispatch may be the pre-approval blueprint, before the brief exists: the consultant retains the id in working context and writes it into the brief when the brief is created at the outline gate. Document-scoped session reuse is a policy on top of the generic continuation mechanism: the consultant continues the same writer session for that document's later bounded tasks (`janus_dispatch_continue` with only the change request, affected section, and new evidence — not the whole brief), one writer session per document with no cross-document reuse, continue only after the previous job is terminal, and a lost/foreign/busy session falls back to a fresh dispatch with the full brief and an updated id. In this mode adversarial roles are proportionate, never a fixed roster: the critic runs for `strict` verification, conflicting evidence, high-risk material, failed execution, or material uncertainty it could resolve; the verifier audits user-generated, promotional, or purportedly independent evidence when influence or provenance is relevant or uncertain. After outline approval the writer may produce complete section/chapter prose from a bounded evidence packet and do targeted web lookups within a search budget, logging a source ledger; broad or contested research stays with the consultant, which routes it to `explorer` (the writer never dispatches explorer). The consultant verifies load-bearing claims against the writer's source ledger, checks cross-file consistency, and requests bounded writer fixes — in scoped-write mode (`writer_docs_roots` non-empty, default `["userdoc"]`) it does not edit files under the writer roots; in read-only fallback (`writer_docs_roots: []`) it applies and publishes the writer's returned text and discloses the mode. A delegated writer's host permissions are separate and are not enforced by this plugin.
+The brief is the document's external state file at `<authorStateDir>/<projectId>/<docId>/brief.md` (fixed author state dir, stable project id): the consultant creates it at the outline gate, updates it at structural changes, and appends a change log; the writer reads it and never writes it. The brief also records `writer_session_id` — the reusable writer session for this document, captured from the first writer dispatch's `return_handle` completed envelope (or the pending envelope's `session_id`) and absent until then. That first dispatch may be the pre-approval blueprint, before the brief exists: the consultant retains the id in working context and writes it into the brief when the brief is created at the outline gate. Document-scoped session reuse is a policy on top of the generic continuation mechanism: the consultant continues the same writer session for that document's later bounded tasks (`janus_dispatch_continue` with only the change request, affected section, and new evidence — not the whole brief), one writer session per document with no cross-document reuse, continue only after the previous job is terminal, and a lost/foreign/busy session falls back to a fresh dispatch with the full brief and an updated id. In this mode adversarial roles are proportionate, never a fixed roster: the critic runs for `strict` verification, conflicting evidence, high-risk material, failed execution, or material uncertainty it could resolve; the auditor audits user-generated, promotional, or purportedly independent evidence when influence or provenance is relevant or uncertain. After outline approval the writer may produce complete section/chapter prose from a bounded evidence packet and do targeted web lookups within a search budget, logging a source ledger; broad or contested research stays with the consultant, which routes it to `explorer` (the writer never dispatches explorer). The consultant verifies load-bearing claims against the writer's source ledger, checks cross-file consistency, and requests bounded writer fixes — in scoped-write mode (`writer_docs_roots` non-empty, default `["userdoc"]`) it does not edit files under the writer roots; in read-only fallback (`writer_docs_roots: []`) it applies and publishes the writer's returned text and discloses the mode. A delegated writer's host permissions are separate and are not enforced by this plugin.
 
 ### 6.1 Consultation Tiers
 
@@ -270,27 +274,28 @@ The router evaluates:
 
 ### 6.3 Team Roles and Tier Caps
 
-The consultant leads four research subagent roles and the writer through `janus_dispatch`. Its skill is the authoritative task-fit policy: assign bounded work when a role could materially change the result and the consultant can name the decision it could change and the specific failure it would catch; skip only with that reason. Independent gathering may fan out; analysis follows evidence, critique follows a draft conclusion, and substantive authoring follows outline approval. The consultant retains final synthesis and delivery.
+The consultant leads five review/research subagent roles and the writer through `janus_dispatch`. Its skills are the authoritative task-fit policy: assign bounded work when a role could materially change the result and the consultant can name the decision it could change and the specific failure it would catch; skip only with that reason. Independent gathering may fan out; analysis follows evidence, critique follows a draft conclusion, and substantive authoring follows outline approval. The consultant retains final synthesis and delivery.
 
-Entry roles and execution delegates are separate from this research roster: `janus` (default general entry), `consultant` (evidence entry), `coder` (coding entry), and `lite` (economical leaf) are user-selectable; `coder` owns the `coder-lite` mechanical lane and the optional host `build` escalation. The tier caps below apply only to the research team.
+Entry roles and execution delegates are separate from this research roster: `janus` (default general entry), `consultant` (evidence entry), `coder` (coding entry), and `ask-lite` (economical leaf) are user-selectable; `coder` owns the `coder-lite` mechanical lane. The tier caps below apply only to the review/research team.
 
 | Role | Purpose |
 |---|---|
 | `explorer` | gather and grade evidence (fan-out up to 5 instances) |
 | `analyst` | independent reasoning pass over evidence (model diversity is a runtime property) |
-| `critic` | adversarial counter-evidence pass; hard gate over research hypotheses |
-| `verifier` | bounded audit of manipulation or opaque independence in user/third-party/promotional evidence; missing observations produce `unknown` |
-| `writer` | sole author of reader-facing prose for `author` — blueprint before approval, section/chapter prose and maintenance after approval, coherence passes; targeted web lookups with a source ledger. Plugin-owned: shell and dispatch denied; edit allowed only under `writer_docs_roots` (read-only fallback when empty) |
+| `critic` | adversarial counter-evidence pass and plan-robustness review; protocol cards for counter-evidence, hypothesis matrix, and plan robustness |
+| `arch-critic` | one-way-door design pre-mortem and independent review of the coder's `plan.md`/diff against `design.md`; applies the shared engineering principles |
+| `auditor` | bounded audit of manipulation or opaque independence in user/third-party/promotional evidence; missing observations produce `unknown` |
+| `writer` | sole author of reader-facing prose for `doc` — blueprint before approval, section/chapter prose and maintenance after approval, coherence passes; targeted web lookups with a source ledger. Plugin-owned: shell and dispatch denied; edit allowed only under `writer_docs_roots` (read-only fallback when empty) |
 
 Per-tier **maximum** instance counts (`TIER_ROLE_CAPS`, mirrored by the adapter's validated `tier_role_caps` config), never minimums or a required team roster:
 
-| Tier | explorer | analyst | critic | verifier | writer |
-|---|---|---|---|---|---|
-| fast | 5 | 0 | 0 | 0 | 0 |
-| standard | 5 | 1 | 1 | 1 | 1 |
-| deep | 5 | 3 | 2 | 2 | 2 |
+| Tier | explorer | analyst | critic | arch-critic | auditor | writer |
+|---|---|---|---|---|---|---|---|
+| fast | 5 | 0 | 0 | 0 | 0 | 0 |
+| standard | 5 | 1 | 1 | 1 | 1 | 1 |
+| deep | 5 | 3 | 2 | 2 | 2 | 2 |
 
-`author` never runs at fast tier. The writer is optional (`writer_enabled`, default true); when it is disabled or unavailable, author mode is unavailable — the consultant discloses which writer work is missing and offers to enable the writer, configure a delegate, or an explicit consultant-prose fallback the user accepts; it does not silently write reader-facing prose. The caps are passed to the consultant as configuration, not enforced by a per-turn runtime scheduler; zero means the role is unavailable at that tier and the consultant must disclose a material gap.
+`doc` never runs at fast tier. The writer is optional (`writer_enabled`, default true); when it is disabled or unavailable, doc mode is unavailable — the consultant discloses which writer work is missing and offers to enable the writer, configure a delegate, or an explicit consultant-prose fallback the user accepts; it does not silently write reader-facing prose. The caps are passed to the consultant as configuration, not enforced by a per-turn runtime scheduler; zero means the role is unavailable at that tier and the consultant must disclose a material gap.
 
 ### 6.4 Recoverable Dispatch API
 
@@ -298,10 +303,12 @@ All roles share the same recoverable dispatch lifecycle; every agent resolves to
 
 | Tool | Arguments | Contract |
 |---|---|---|
-| `janus_dispatch` | `{role, prompt, return_handle?}`; role is a configured dispatch role (`consultant`, `coder`, `lite`, the four research roles and the writer, `coder-lite`, or optional `build`) | Launch a durable host-session job and observe within a soft wait window; with `return_handle: true` a success returns a completed JSON envelope (`job_id`, `role`, `attempt`, `session_id`, `waited_ms`, `text`) instead of plain text, pending/failed unchanged |
+| `janus_dispatch` | `{role, prompt, return_handle?, mode?, tier?, protocol?}`; role is a configured dispatch role (`consultant`, `coder`, `ask-lite`, the five review/research roles and the writer, `coder-lite`); `mode`/`tier` select the model and `protocol` prepends one of the five methodology cards | Launch a durable host-session job and observe within a soft wait window; with `return_handle: true` a success returns a completed JSON envelope (`job_id`, `role`, `attempt`, `session_id`, `waited_ms`, `text`) instead of plain text, pending/failed unchanged |
 | `janus_dispatch_wait` | `{job_id, wait_ms?}` | Recover/observe the same job; optional integer `wait_ms` is 0..300000, default 300000; zero performs a snapshot |
 | `janus_dispatch_cancel` | `{job_id}` | Request explicit cancellation and reconcile durable completion/abort evidence |
-| `janus_dispatch_continue` | `{session_id, prompt, role?}` | Send a new prompt to an existing dispatch session (`session_id` from a `return_handle` completed envelope or a pending envelope); role is inferred from the target's job spec and validated when supplied. Returns the response text or a recoverable pending envelope keyed by the continuation job id |
+| `janus_dispatch_continue` | `{session_id, prompt, role?}` | Send a new prompt to an existing dispatch session (`session_id` from a `return_handle` completed envelope or a pending envelope); role is inferred from the target's job spec and validated when supplied. The continuation inherits the spec's `agent_name` and `model_chain`, so it never switches model. Returns the response text or a recoverable pending envelope keyed by the continuation job id |
+
+Model selection follows `mode_models[mode][role] > tier_models[tier][role] > <role>_model > MODEL_DEFAULTS[role]`. The per-model adaptation block is injected per request by the `experimental.chat.system.transform` hook using the model actually serving the turn, so a mode/tier override or a continuation keeps the matching block. A continuation inherits the original job spec's `agent_name` and `model_chain`; it never re-resolves them from current config. A `protocol` argument prepends one of the five methodology cards (`counter_evidence`, `hypothesis_matrix`, `plan_robustness`, `design_premortem`, `code_plan_review`) as the first bytes of the turn-1 task message.
 
 Launch uses a 300000 ms soft observation window, not a specialist execution deadline. Completed usable reports remain plain text and confirmed failures use `Error:` text. Nonterminal JSON envelopes identify `job_id`, `session_id`, `role`, `attempt`, `status` (`pending`, `unknown`, or `cancelling`) and `next: "janus_dispatch_wait"`. A `cancelled` envelope requires confirmed abort evidence; normal completion racing cancellation wins and preserves the original report. The `return_handle` completed envelope adds a `text` field and drops `reason`/`next` — the job is terminal — and is the only shape change `janus_dispatch` can produce.
 
@@ -311,7 +318,7 @@ Expiry or an observation-context abort stops waiting, not the child job. Pending
 
 Each job is a durable host session rooted under the caller's session (`[consultation-dispatch:v1] <role>`). The first attempt's generation runs directly in that job session, so the dispatched prompt and the specialist's live messages are visible there; journal records are written as ignored/synthetic user messages and stay out of the conversation. Every job is a single attempt.
 
-The consultant may do independent preparation within existing permissions and caps while waiting, but must integrate the eventual specialist report before dependent synthesis and cannot silently substitute inline work or claim an independent check that did not return. Execution status comes from host session/message evidence, not from specialist liveness assertions. A verifier's evidence-quality `unknown` is distinct from a dispatch execution `unknown`.
+The consultant may do independent preparation within existing permissions and caps while waiting, but must integrate the eventual specialist report before dependent synthesis and cannot silently substitute inline work or claim an independent check that did not return. Execution status comes from host session/message evidence, not from specialist liveness assertions. A auditor's evidence-quality `unknown` is distinct from a dispatch execution `unknown`.
 
 Every role has one configured attempt and every agent resolves to a single model; no failure kind — pending, unknown, non-retryable, or confirmed retryable — triggers a plugin fallback advance. A delegated writer also has one configured attempt, with either a pinned model or host model selection (`null` in the durable spec), and retains host-defined permissions. This describes plugin model resolution, not the external host's internal retry policy. See [the per-role audit matrix and verification levels](../evals/README.md#per-role-audit-matrix).
 
@@ -319,7 +326,7 @@ Every role has one configured attempt and every agent resolves to a single model
 
 `design` decides the future structure of a system — architecture, patterns, module boundaries, external interfaces — at standard or deep tier, never fast. It admits only decisions that change future structure and are not one obvious reversible edit; everything else goes to the coder as L1/L2. The consultant reads the repository and `AGENTS.md` first (at most five questions per round), frames L0 with goal, non-goals, and prioritised six-part quality scenarios, and decides layer by layer (C4 as zoom): L1 system, L2 module, L3 interface.
 
-Every decision carries at least two genuinely different options, a recommendation, what would change it, a one-way/two-way reversibility label, and a deferral trigger where relevant. One-way doors are approved individually and get a critic pre-mortem (the critic's `designReview`: pre-mortem failures, unmet quality scenarios, reversibility problems, missing options); two-way doors get a default value and one batch approval per layer. A read-only cross-layer consistency check runs before each approval and before handoff, and the accepted result is written to `design.md`.
+Every decision carries at least two genuinely different options, a recommendation, what would change it, a one-way/two-way reversibility label, and a deferral trigger where relevant. One-way doors are approved individually and get an arch-critic pre-mortem (the arch-critic's `designReview`: pre-mortem failures, unmet quality scenarios, reversibility problems, missing options); two-way doors get a default value and one batch approval per layer. A read-only cross-layer consistency check runs before each approval and before handoff, and the accepted result is written to `design.md`.
 
 The record lives at `<designStateDir>/<projectId>/<designId>/design.md` (`$XDG_DATA_HOME/janus-agent/design` by default) and is self-contained: MADR-shaped decisions with only proposed/accepted states, one line per rejected option, fitness functions for load-bearing quality attributes, and open questions with triggers. It is a current-state document, rewritten in place at roughly 200–300 lines. The consultant writes it; the coder only reads it.
 
@@ -355,7 +362,7 @@ Grades are `high`, `medium`, `low`, and `lead_only`. Numerical trust percentages
 
 Niche sources, forums, and social platforms are normally leads, counterexamples, or experience reports. Obscurity is never a credibility bonus.
 
-Reliability grading assumes honest-but-flawed sources. Deliberate deception and opaque independence (water armies, coordinated smearing, undisclosed sponsorship, astroturfing, and purportedly independent promotional evidence) receive a bounded `verifier` audit when potentially relevant, not only after manipulation is proved: each source is annotated `clean`, `suspect_shill`, `suspect_smear`, or `unknown` from observable signals (temporal bursts, cross-account phrase repetition, account history, disclosure, reviewer target concentration, publisher affiliation, and others). Missing account, sponsorship, or comparison data require `unknown`, not an unsupported `clean`. Suspicion is graded with a stated basis, never ground truth. Explorer and consultant still verify the underlying factual claim.
+Reliability grading assumes honest-but-flawed sources. Deliberate deception and opaque independence (water armies, coordinated smearing, undisclosed sponsorship, astroturfing, and purportedly independent promotional evidence) receive a bounded `auditor` audit when potentially relevant, not only after manipulation is proved: each source is annotated `clean`, `suspect_shill`, `suspect_smear`, or `unknown` from observable signals (temporal bursts, cross-account phrase repetition, account history, disclosure, reviewer target concentration, publisher affiliation, and others). Missing account, sponsorship, or comparison data require `unknown`, not an unsupported `clean`. Suspicion is graded with a stated basis, never ground truth. Explorer and consultant still verify the underlying factual claim.
 
 ### 7.3 Facts and Inference
 
@@ -672,7 +679,7 @@ Full answers start with `结论 / 理由 / 下一步` and end with `一句话 / 
 
 ### Confidence and alternatives
 
-Use `把握：高 / 中 / 低 — why` when confidence is not high or the top alternatives are close. Never present medium/low confidence as certain. `select` and `guide` may say "没有明显赢家" and give a tie-break instead of forcing a winner. `plan` starts with `可行 / 有条件可行 / 不建议` and names the condition and failure mode. `verify` may conclude `无法核实` and name the missing evidence.
+Use `把握：高 / 中 / 低 — why` when confidence is not high or the top alternatives are close. Never present medium/low confidence as certain. `select` and `guide` may say "没有明显赢家" and give a tie-break instead of forcing a winner. `roadmap` starts with `可行 / 有条件可行 / 不建议` and names the condition and failure mode. `verify` may conclude `无法核实` and name the missing evidence.
 
 ### Mode bodies
 
@@ -705,12 +712,12 @@ The exact templates live in the `consultation` skill. `AuthorBrief` remains the 
 - prompt injection is blocked and reported;
 - deep consultation asks before consuming the larger budget;
 - a composite end-to-end request routes to the guide mode and carries at least a recommendation or a procedure;
-- a durable tutorial or course request routes to the author mode with the correct profile instead of research or guide;
+- a durable tutorial or course request routes to the doc mode with the correct profile instead of research or guide;
 - a large author request presents an outline and file manifest and waits for exactly one approval before drafting chapters;
-- targeted author verification checks representative code without invoking the critic or verifier by default;
-- a structural design question routes to `design` (not `select`, author architecture, or `plan`) and returns per-layer decision requests with reversibility labels;
+- targeted author verification checks representative code without invoking the critic or auditor by default;
+- a structural design question routes to `design` (not `select`, a doc architecture write-up, or `roadmap`) and returns per-layer decision requests with reversibility labels;
 - a coder with an accepted `design.md` shrinks the L2 gate to uncovered details plus the file list and checks its plan against the record;
-- a one-way-door decision gets a critic pre-mortem (`designReview`) before approval;
+- a one-way-door decision gets an arch-critic pre-mortem (`designReview`) before approval;
 - the design record is rewritten in place, not appended, and old designs get a cleanup proposal.
 
 The fixtures carry an explicit `modes` array per case; `script/skill-consistency.test.ts` asserts every schema mode is exercised by at least one case.
@@ -749,10 +756,10 @@ Run a real isolated OpenCode instance and prove:
 
 The first version includes:
 
-- independent plugin packaging, including the seven-mode consultation skill;
-- the `janus` default entry, `consultant` evidence entry, `coder` coding entry, and `lite` economical leaf;
+- independent plugin packaging, including the seven-mode consultation skill set;
+- the `janus` default entry, `consultant` evidence entry, `coder` coding entry, and `ask-lite` economical leaf;
 - the four read-only research subagents, the scoped-write writer, and the `coder-lite` mechanical lane;
-- the reusable consultation skill;
+- the reusable core consultation skill and its design/doc sub-skills;
 - consultation and memory core packages;
 - SQLite persistence with FTS;
 - configurable semantic retrieval;

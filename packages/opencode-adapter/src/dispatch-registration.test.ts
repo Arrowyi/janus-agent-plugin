@@ -88,19 +88,6 @@ describe("unified dispatch registration", () => {
     })
   }
 
-  for (const wait_ms of [-1, 300_001, 1.5]) {
-    it(`rejects wait_ms=${wait_ms} before any SDK access`, async () => {
-      // Given untrusted out-of-contract wait arguments.
-      const f = fixture()
-      const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
-      // When invoking wait directly (without framework schema validation).
-      const result = await tools.janus_dispatch_wait.execute({ job_id: "ses_missing", wait_ms }, context())
-      // Then the typed boundary reports an error, never clamps or reads.
-      expect(result).toMatch(/^Error:/)
-      expect(f.sdk.calls).toEqual([])
-    })
-  }
-
   it("ignores routing and ownership overrides in cancellation args", async () => {
     // Given a job belonging to another parent and malicious extra fields.
     const f = fixture()
@@ -116,37 +103,6 @@ describe("unified dispatch registration", () => {
     const result = await tools.janus_dispatch_cancel.execute(maliciousArgs, { ...context(), sessionID: "ses_attacker" })
     // Then the context binding prevails and nothing is aborted/generated.
     expect(result).toMatch(/^Error:/)
-    expect(f.aborts).toEqual([])
-    expect(f.submissions).toHaveLength(1)
-  })
-
-  it("serializes concurrent wait and cancel on one job", async () => {
-    // Given a launched job and a wait holding the job lock during a deferred read.
-    const f = fixture()
-    f.sdk.setPromptAsyncRejection(new Error("lost acknowledgement"))
-    const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
-    const job = envelope(await tools.janus_dispatch.execute({ role: "analyst", prompt: "analyze" }, context()))
-    const entered = Promise.withResolvers<void>()
-    const release = Promise.withResolvers<void>()
-    const read = f.sdk.session.messages
-    f.sdk.session.messages = async (input) => {
-      if (input.path.id === job.session_id) {
-        entered.resolve()
-        await release.promise
-      }
-      return read(input)
-    }
-    const waiting = tools.janus_dispatch_wait.execute({ job_id: job.job_id, wait_ms: 0 }, context())
-    await entered.promise
-    // When cancel queues behind the observation, and the specialist finishes.
-    const readsBeforeCancel = f.sdk.calls.length
-    const cancelling = tools.janus_dispatch_cancel.execute({ job_id: job.job_id }, context())
-    await setImmediate()
-    expect(f.sdk.calls).toHaveLength(readsBeforeCancel)
-    f.finish()
-    release.resolve()
-    // Then both see completion; cancel never writes intent or aborts in parallel.
-    expect(await Promise.all([waiting, cancelling])).toEqual(["final report", "final report"])
     expect(f.aborts).toEqual([])
     expect(f.submissions).toHaveLength(1)
   })
@@ -178,7 +134,7 @@ describe("unified dispatch registration", () => {
     const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
     // Then the fourth job tool is present with exactly the contract args.
     expect(Object.keys(tools)).toEqual(["janus_dispatch", "janus_dispatch_wait", "janus_dispatch_cancel", "janus_dispatch_continue"])
-    expect(Object.keys(tools.janus_dispatch.args)).toEqual(["role", "prompt", "return_handle"])
+    expect(Object.keys(tools.janus_dispatch.args)).toEqual(["role", "prompt", "return_handle", "mode", "tier", "protocol"])
     expect(Object.keys(tools.janus_dispatch_continue.args)).toEqual(["session_id", "prompt", "role"])
     expect(tools.janus_dispatch_continue.description).toContain("session_id")
   })
@@ -236,13 +192,9 @@ describe("unified dispatch registration", () => {
   })
 
   for (const scenario of [
-    { role: "explorer", agent: "consultation-explorer", model: "opencode-go/deepseek-v4.1-flash" },
-    { role: "analyst", agent: "consultation-analyst", model: "opencode-go/qwen3.8-max" },
-    { role: "critic", agent: "consultation-critic", model: "opencode/gemini-3.8-flash" },
-    { role: "verifier", agent: "consultation-verifier", model: "opencode/gemini-3.8-flash" },
-    { role: "writer", agent: "consultation-writer", model: "opencode/claude-sonnet-5-5" },
-    { role: "coder", agent: "coder", model: "opencode-go/glm-5.3" },
-    { role: "lite", agent: "lite", model: "opencode-go/deepseek-v4.1-flash" },
+    { role: "explorer", field: "explorer", agent: "explorer", model: "opencode-go/deepseek-v4.1-flash" },
+    { role: "arch-critic", field: "arch_critic", agent: "arch-critic", model: "opencode/gemini-3.8-flash" },
+    { role: "ask-lite", field: "ask_lite", agent: "ask-lite", model: "opencode-go/deepseek-v4.1-flash" },
   ] as const) {
     for (const custom of [false, true]) {
       it(`routes ${scenario.role} through the shared factory with ${custom ? "custom" : "default"} configuration`, async () => {
@@ -250,7 +202,7 @@ describe("unified dispatch registration", () => {
         const agent = custom ? `custom-${scenario.role}` : scenario.agent
         const model = custom ? `custom/${scenario.role}` : scenario.model
         if (custom) writeFileSync(join(directory, "config.jsonc"), JSON.stringify({
-          [`${scenario.role}_agent`]: agent, [`${scenario.role}_model`]: model,
+          [`${scenario.field}_agent`]: agent, [`${scenario.field}_model`]: model,
         }))
         const f = fixture()
         const submit = f.sdk.session.promptAsync

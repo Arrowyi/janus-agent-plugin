@@ -117,7 +117,7 @@ describe("consultation dispatch reliability", () => {
 
   for (const scenario of [
     { role: "critic", config: { critic_enabled: false } },
-    { role: "verifier", config: { verifier_enabled: false } },
+    { role: "auditor", config: { auditor_enabled: false } },
     { role: "writer", config: { writer_enabled: false } },
   ] as const) {
     it(`rejects a disabled ${scenario.role} before creating a child session`, async () => {

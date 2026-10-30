@@ -14,7 +14,7 @@
 import { existsSync, renameSync, statSync } from "node:fs"
 import { join } from "node:path"
 
-import { writeSkillFile } from "./gen-skill.ts"
+import { writeSkillFiles } from "./gen-skill.ts"
 
 const REPO_ROOT = join(import.meta.dir, "..")
 const DIST_DIR = join(REPO_ROOT, "dist")
@@ -103,10 +103,10 @@ async function runJob(job: BuildJob): Promise<boolean> {
 
 async function main(): Promise<void> {
   console.log(`dist dir: ${DIST_DIR}`)
-  // Regenerate the shipped skill from skill-src before bundling so an installed
-  // build can never carry a stale SKILL.md.
-  const skillPath = await writeSkillFile()
-  console.log(`generated skill: ${skillPath}`)
+  // Regenerate the shipped skills from skill-src before bundling so an
+  // installed build can never carry a stale SKILL.md.
+  const skillPaths = await writeSkillFiles()
+  for (const skillPath of skillPaths) console.log(`generated skill: ${skillPath}`)
   let ok = true
   for (const job of jobs) {
     const success = await runJob(job)

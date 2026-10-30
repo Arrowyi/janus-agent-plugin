@@ -6,6 +6,7 @@ import {
   DEFAULT_WAIT_MS,
   PRODUCTION_WAIT_BUDGET_MS,
   parseContinueArgs,
+  parseDispatchRole,
   parseJournalRecord,
   parseWaitArgs,
   parseOutcomeEnvelope,
@@ -44,11 +45,42 @@ function assertError(result: { ok: true; value: unknown } | { ok: false; error: 
 describe("dispatch role constants", () => {
   it("exports roles, budget and default wait", () => {
     expect(DISPATCH_ROLES).toEqual([
-      "explorer", "analyst", "critic", "verifier", "writer",
-      "lite", "coder-lite", "coder", "build", "consultant",
+      "explorer", "analyst", "critic", "arch-critic", "auditor", "writer",
+      "ask-lite", "coder-lite", "coder", "consultant",
     ])
     expect(PRODUCTION_WAIT_BUDGET_MS).toBe(300_000)
     expect(DEFAULT_WAIT_MS).toBe(PRODUCTION_WAIT_BUDGET_MS)
+  })
+})
+
+describe("dispatch role aliases", () => {
+  it("normalizes the legacy verifier and lite role names", () => {
+    expect(parseDispatchRole("verifier")).toEqual({ ok: true, value: "auditor" })
+    expect(parseDispatchRole("lite")).toEqual({ ok: true, value: "ask-lite" })
+    expect(parseDispatchRole("auditor")).toEqual({ ok: true, value: "auditor" })
+    expect(parseDispatchRole("ask-lite")).toEqual({ ok: true, value: "ask-lite" })
+  })
+
+  it("rejects the removed build role with a migration hint", () => {
+    const result = parseDispatchRole("build")
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.message).toContain('tier: "deep"')
+  })
+
+  it("normalizes legacy verifier and lite values in a journal record", () => {
+    const verifier = assertOk(parseJournalRecord(makeJobSpec({ role: "auditor", agent_name: "auditor" })))
+    expect(verifier.kind).toBe("job-spec")
+    if (verifier.kind === "job-spec") expect(verifier.role).toBe("auditor")
+
+    const legacyVerifier = assertOk(parseJournalRecord({ ...makeJobSpec({ role: "auditor", agent_name: "auditor" }), role: "verifier" }))
+    expect(legacyVerifier.kind).toBe("job-spec")
+    if (legacyVerifier.kind === "job-spec") expect(legacyVerifier.role).toBe("auditor")
+
+    const legacyLite = assertOk(parseJournalRecord({ ...makeJobSpec({ role: "ask-lite", agent_name: "ask-lite" }), role: "lite" }))
+    if (legacyLite.kind === "job-spec") expect(legacyLite.role).toBe("ask-lite")
+
+    const legacyBuild = assertOk(parseJournalRecord({ ...makeJobSpec({ role: "coder", agent_name: "coder" }), role: "build" }))
+    if (legacyBuild.kind === "job-spec") expect(legacyBuild.role).toBe("build")
   })
 })
 

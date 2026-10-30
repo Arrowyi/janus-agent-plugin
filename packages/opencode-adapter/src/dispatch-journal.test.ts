@@ -702,6 +702,32 @@ describe("loadJob", () => {
     expect(error.reason).toBe("job-unavailable")
   })
 
+  it("binds a legacy verifier-titled job normalized to auditor", async () => {
+    // Given a pre-upgrade root whose persisted role was normalized on read.
+    const sdk = createJournalFakeSdk()
+    const root = await sdk.session.create({
+      body: { parentID: FAKE_PARENT_ID, title: "[consultation-dispatch:v1] verifier" },
+      query: { directory: FAKE_DIRECTORY },
+    })
+    if (root.data === undefined) throw new Error("missing root")
+    await sdk.session.prompt({
+      path: { id: root.data.id },
+      body: {
+        noReply: true,
+        messageID: "msg-legacy-role",
+        parts: [{ type: "text", synthetic: true, ignored: true, text: JSON.stringify(makeJobSpec({ role: "auditor", agent_name: "auditor" })) }],
+      },
+      query: { directory: FAKE_DIRECTORY },
+    })
+
+    // When recovering the legacy job through its original owner.
+    const result = await loadJob(sdk, { jobID: root.data.id, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+
+    // Then the normalized role still binds to the legacy title.
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.spec.role).toBe("auditor")
+  })
+
   it("rejects corrupt manifest records with invalid-job", async () => {
     const sdk = createJournalFakeSdk()
     const clock = createFakeClock(1_000_000)

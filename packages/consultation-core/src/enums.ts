@@ -23,25 +23,63 @@ export const SourceStanceSchema = z.enum(["supports", "contradicts", "qualifies"
  * Decision type the consultation is answering. Orthogonal to Tier (depth).
  * - select: choose among candidates (shopping, comparisons, picking a tool).
  * - verify: verdict on a proposition (rumors, claims, arguments).
- * - plan: produce an actionable plan (lifestyle, fitness, learning).
+ * - roadmap: produce an actionable personal plan (lifestyle, fitness, learning).
  * - research: understand a topic deeply (open-ended investigation) — produces a
  *   readable research report, not a decision brief.
  * - guide: composite operational package (recommendation + procedure +
  *   background) for an end-to-end goal — produces an operational playbook, not
  *   a single decision or a pure understanding report.
- * - author: produce a structured authored document (tutorial, architecture,
- *   explanation) from a section manifest and verified claims.
+ * - doc: produce a structured authored document (tutorial, architecture,
+ *   explanation) from a section manifest and verified claims. The old public
+ *   name `author` is accepted as an input alias.
  * - design: decide the future structure of a system (architecture, module
  *   boundaries, interfaces) and record the decision in a design record.
  */
 export const ConsultationModeSchema = z.enum([
   "select",
   "verify",
-  "plan",
+  "roadmap",
   "research",
   "guide",
-  "author",
+  "doc",
   "design",
+])
+
+/**
+ * Public mode input: accepts the two legacy names (`plan`, `author`) and
+ * normalizes them to the canonical schema values. Config and dispatch
+ * boundaries use this schema; the internal `ConsultationModeSchema` stays
+ * canonical so persisted/structured values have one form.
+ */
+export const ConsultationModeInputSchema = z
+  .string()
+  .transform((value) => value.trim().toLowerCase())
+  .pipe(z.enum(["select", "verify", "roadmap", "research", "guide", "doc", "design", "plan", "author"]))
+  .transform((value): ConsultationMode => {
+    if (value === "plan") return "roadmap"
+    if (value === "author") return "doc"
+    return value
+  })
+
+export function normalizeConsultationMode(value: string): ConsultationMode | undefined {
+  const normalized = value.trim().toLowerCase()
+  if (normalized === "plan") return "roadmap"
+  if (normalized === "author") return "doc"
+  return ConsultationModeSchema.safeParse(normalized).success
+    ? (normalized as ConsultationMode)
+    : undefined
+}
+
+/**
+ * Methodology protocol card prepended to the first turn of a dispatched
+ * session. These are explicit review modes, not free-form role names.
+ */
+export const CritiqueProtocolSchema = z.enum([
+  "counter_evidence",
+  "hypothesis_matrix",
+  "plan_robustness",
+  "design_premortem",
+  "code_plan_review",
 ])
 
 /**
@@ -66,5 +104,6 @@ export type Stability = z.infer<typeof StabilitySchema>
 export type SourceType = z.infer<typeof SourceTypeSchema>
 export type SourceStance = z.infer<typeof SourceStanceSchema>
 export type ConsultationMode = z.infer<typeof ConsultationModeSchema>
+export type CritiqueProtocol = z.infer<typeof CritiqueProtocolSchema>
 export type EpistemicStatus = z.infer<typeof EpistemicStatusSchema>
 export type SourceIntent = z.infer<typeof SourceIntentSchema>

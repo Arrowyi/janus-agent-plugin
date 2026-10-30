@@ -5,6 +5,12 @@ import { resolveAsset } from "./asset-paths.ts"
 
 const USER_MODIFIED_MARKER = "<!-- user-modified -->"
 
+export const CONSULTATION_SKILLS = [
+  "consultation",
+  "consultation-design",
+  "consultation-doc",
+] as const
+
 /**
  * Resolve the opencode config directory from environment variables.
  *
@@ -33,12 +39,12 @@ export function resolveOpencodeConfigDir(env: NodeJS.ProcessEnv): string {
  * A file whose first line is `<!-- user-modified -->` is never overwritten.
  * Writes are atomic (write tmp then rename).
  */
-export async function installConsultationSkill(env: NodeJS.ProcessEnv): Promise<void> {
+async function installSkill(env: NodeJS.ProcessEnv, skillName: string): Promise<void> {
   const configDir = resolveOpencodeConfigDir(env)
-  const targetDir = join(configDir, "skills", "consultation")
+  const targetDir = join(configDir, "skills", skillName)
   const targetFile = join(targetDir, "SKILL.md")
 
-  const assetPath = resolveAsset("skills/consultation/SKILL.md")
+  const assetPath = resolveAsset(`skills/${skillName}/SKILL.md`)
   const assetContent = await readFile(assetPath, "utf8")
 
   let existing: string | undefined
@@ -57,4 +63,14 @@ export async function installConsultationSkill(env: NodeJS.ProcessEnv): Promise<
   const tmpFile = `${targetFile}.tmp`
   await writeFile(tmpFile, assetContent, "utf8")
   await rename(tmpFile, targetFile)
+}
+
+/** Install the core skill plus the design and doc sub-skills. */
+export async function installConsultationSkills(env: NodeJS.ProcessEnv): Promise<void> {
+  for (const skillName of CONSULTATION_SKILLS) await installSkill(env, skillName)
+}
+
+/** Backwards-compatible core-skill installer. */
+export async function installConsultationSkill(env: NodeJS.ProcessEnv): Promise<void> {
+  await installSkill(env, "consultation")
 }

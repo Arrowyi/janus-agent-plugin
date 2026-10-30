@@ -35,7 +35,7 @@ User arguments: $ARGUMENTS
 - `退出` / `exit` / `0`: exit
 - Any other free text: map to the above modes by meaning; ask one question only when genuinely ambiguous
 
-Role names accept both English and Chinese short forms: `入口`=janus, `顾问`=consultant, `编码`=coder, `快答`=lite, `机械`=coder-lite, `检索`=explorer, `分析`=analyst, `反证`=critic, `审计`=verifier, `写作`=writer, `构建`=build.
+Role names accept both English and Chinese short forms: `入口`=janus, `顾问`=consultant, `编码`=coder, `快答`=ask-lite, `机械`=coder-lite, `检索`=explorer, `分析`=analyst, `反证`=critic, `架构`=arch-critic, `审计`=auditor, `写作`=writer. The family has 11 registered agents and 10 dispatch roles (janus is the primary entry and is not dispatchable).
 
 ## No-argument flow
 
@@ -60,7 +60,7 @@ When `4` is chosen, if this session has no recommendation yet, first ask once "R
 
 Read-only. Runtime truth takes precedence; do not cite any fixed snapshot.
 
-1. `opencode agent list` for the roster; then verify each one with `opencode debug agent <name>`. `agent list` may miss `janus` / `lite`.
+1. `opencode agent list` for the roster; then verify each one with `opencode debug agent <name>`. `agent list` may miss `janus` / `ask-lite`.
 2. `opencode models`, `opencode auth list`, then read OpenCode's provider enable/disable config to confirm which provider/models are available.
 3. Config path precedence:
    - `$JANUS_CONFIG`
@@ -69,19 +69,21 @@ Read-only. Runtime truth takes precedence; do not cite any fixed snapshot.
    Output the actual path.
 4. Role → field:
 
-   | Role | Field |
-   |---|---|
-   | janus | janus_model |
-   | consultant | agent_model (not consultant_model) |
-   | coder | coder_model |
-   | lite | lite_model |
-   | coder-lite | coder_lite_model |
-   | explorer | explorer_model |
-   | analyst | analyst_model |
-   | critic | critic_model |
-   | verifier | verifier_model |
-   | writer | writer_model |
-   | build | build_model (dispatch target only, no prompt) |
+   | Role | Field | Legacy alias |
+   |---|---|---|
+   | janus | janus_model | — |
+   | consultant | consultant_model | agent_model |
+   | coder | coder_model | — |
+   | ask-lite | ask_lite_model | lite_model |
+   | coder-lite | coder_lite_model | — |
+   | explorer | explorer_model | — |
+   | analyst | analyst_model | — |
+   | critic | critic_model | — |
+   | arch-critic | arch_critic_model | — |
+   | auditor | auditor_model | verifier_model |
+   | writer | writer_model | — |
+
+   Also inspect `mode_models` and `tier_models` (see "Advanced routing"). Non-model config fields such as `*_agent` and `*_enabled` use the same canonical/legacy mapping.
 
 5. Get the resolved model with `opencode debug agent <name>`. When the config value and the CLI disagree, report it; do not silently pick one.
 6. Resolve the effective prompt block for each model:
@@ -96,11 +98,33 @@ Read-only. Runtime truth takes precedence; do not cite any fixed snapshot.
 7. Anomalies:
    - In config but not in CLI → registration failure; check whether `opencode.jsonc` has an agent block with the same name, or `*_enabled=false`.
    - In CLI but not in config → report after tracing the source; check `~/.config/opencode/agent(s)/`, `.opencode/`.
-   - Resolved model differs from config → check the field name first; consultant uses `agent_model`.
+   - Resolved model differs from config → check the field name and the mode/tier override precedence: `mode_models` > `tier_models` > `<role>_model` > default.
 8. Output the table, at most 6 columns; do not dump raw command output.
 
 Normalization rule: drop the provider prefix before the last `/`, lowercase, keep only letters and digits.
 For example `opencode-go/deepseek-v4.1-flash` → `deepseekv41flash`, `opencode/gemini-3.8-flash` → `gemini38flash`, `opencode/claude-sonnet-5-5` → `claudesonnet55`.
+
+## Advanced routing
+
+Two optional nested maps let the user route a role differently per consultation mode and per depth tier. They apply to dispatched sessions (not to a direct agent selection), and precedence is:
+
+`mode_models[mode][role]` > `tier_models[tier][role]` > `<role>_model` > plugin default.
+
+Example:
+
+```jsonc
+{
+  "mode_models": {
+    "design": { "arch-critic": "provider/strong-reviewer" },
+    "doc": { "writer": "provider/long-context-writer" }
+  },
+  "tier_models": {
+    "deep": { "coder": "provider/strong-coding" }
+  }
+}
+```
+
+Legacy mode keys `plan`/`author` map to `roadmap`/`doc`; legacy role keys `verifier`/`lite` map to `auditor`/`ask-lite`. New keys win when both are present. A configured `writer_delegate_agent` keeps host model selection; mode/tier overrides apply to the bundled writer only.
 
 ## Model evaluation
 
@@ -109,9 +133,9 @@ Read-only. Answer: whether an agent's model should change, and why.
 - Evaluate the current model of every enabled agent.
 - Candidate pool: take only 3–5 mainstream or well-suited models per role family, and they must come from providers already configured on this machine; do not enumerate the whole catalog. Explain why these candidates were chosen, and when necessary why an obvious candidate was not.
 - Role-family dimensions:
-  - Judgment/audit (consultant, critic, verifier): hard-task capability first; challenger and challenged must stay in different model families.
+  - Judgment/audit (consultant, critic, arch-critic, auditor): hard-task capability first; challenger and challenged must stay in different model families.
   - Coding (coder, coder-lite): agentic/coding hard benchmarks + cost per task; coder-lite only takes fully specified mechanical tasks.
-  - Entry/quick answer (janus, lite): latency, tool-call stability, price; janus must also be judged on orchestration/routing.
+  - Entry/quick answer (janus, ask-lite): latency, tool-call stability, price; janus must also be judged on orchestration/routing.
   - Retrieval/writing (explorer, writer): long context, hallucination rate, output quality/verbosity.
 - For cost, use actual cost per task = list price × verbosity factor; distinguish Zen pay-as-you-go vs Go subscription quota.
 - For each candidate, mark whether it has an effective prompt block (user override / shipped / none). Candidates without a block may still be recommended, but mark them as a prompt-adaptation risk.
@@ -183,6 +207,7 @@ Write rules:
 - Do not write the suite agent blocks in `~/.config/opencode/opencode.jsonc`.
 - Do not write the install prefix, `assets/`, `dist/`, `packages/`.
 - `*_model` present → replace the value; absent → add the key.
+- `mode_models`/`tier_models` present and the nested key present → replace that value; absent → add the nested key; the map absent → create the object.
 - `model_prompts` present and key present → replace that key's value as a whole; key absent → add it; `model_prompts` absent → create the object.
 - Preserve JSONC comments and formatting; use targeted text edits, do not rewrite the whole file as JSON.
 - If the config file does not exist, first show the minimal content and confirm, then create it.

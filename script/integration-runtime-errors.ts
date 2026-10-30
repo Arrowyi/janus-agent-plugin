@@ -8,7 +8,7 @@ try {
   for (const status of [402, 429]) {
     provider.arm("writer", [{ kind: "error", status }])
     const parent = await host.createParent()
-    await host.api(`/session/${parent}/prompt_async`, { agent: "consultation-writer", model: { providerID: "fixture", modelID: "writer" }, parts: [{ type: "text", text: "controlled error fixture" }] })
+    await host.api(`/session/${parent}/prompt_async`, { agent: "writer", model: { providerID: "fixture", modelID: "writer" }, parts: [{ type: "text", text: "controlled error fixture" }] })
     const deadline = Date.now() + 120000
     let captured = false
     while (Date.now() < deadline) {

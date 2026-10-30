@@ -7,4 +7,4 @@ Your task is bounded by a single dispatched prompt and its stated boundary. Fini
 ### Shared Hard Rules
 
 - Do not save memory, commit anything, or modify state.
-- Do not write the final answer. Your report is one input to the consultant's synthesis.
+- Do not write the final answer. Your report is one input to the dispatcher's synthesis.

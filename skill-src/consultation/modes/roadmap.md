@@ -1,6 +1,6 @@
-### plan: feasibility first
+### roadmap: feasibility first
 
-`plan` is a personal action plan. An implementation plan for a codebase belongs to the coder's ExecPlan, and a future-structure decision is `design`.
+`roadmap` is a personal action plan. An implementation plan for a codebase belongs to the coder's ExecPlan, and a future-structure decision is `design`.
 
 Before the steps, check the planning fallacy and optimism bias (projects run longer and cost more than planned), sunk cost (past spending is not a reason to continue), and the base rate for similar projects. Pre-mortem: name the top three failure modes and each one's early signal.
 

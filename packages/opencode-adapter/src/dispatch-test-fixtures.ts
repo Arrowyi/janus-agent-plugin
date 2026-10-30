@@ -30,7 +30,7 @@ export function makeJobSpec(
     v: 1,
     kind: "job-spec",
     role: overrides.role ?? "analyst",
-    agent_name: overrides.agent_name ?? "consultation-analyst",
+    agent_name: overrides.agent_name ?? "analyst",
     model_chain: overrides.model_chain ?? ["opencode-go/qwen3.8-max"],
     prompt: overrides.prompt ?? "analyze this",
     parent_id: overrides.parent_id ?? FAKE_PARENT_ID,
@@ -42,17 +42,17 @@ export function makeJobSpec(
 }
 
 export const validRoleSpecs: Array<{ label: string; role: DispatchRole; record: JobSpec }> = [
-  { label: "explorer", role: "explorer", record: makeJobSpec({ role: "explorer", agent_name: "consultation-explorer", model_chain: ["opencode-go/deepseek-v4.1-flash"] }) },
-  { label: "analyst", role: "analyst", record: makeJobSpec({ role: "analyst", agent_name: "consultation-analyst", model_chain: ["opencode-go/qwen3.8-max"] }) },
-  { label: "critic", role: "critic", record: makeJobSpec({ role: "critic", agent_name: "consultation-critic", model_chain: ["opencode/gemini-3.8-flash"] }) },
-  { label: "verifier", role: "verifier", record: makeJobSpec({ role: "verifier", agent_name: "consultation-verifier", model_chain: ["opencode/gemini-3.8-flash"] }) },
-  { label: "writer-bundled", role: "writer", record: makeJobSpec({ role: "writer", agent_name: "consultation-writer", model_chain: ["opencode/claude-sonnet-5-5"] }) },
+  { label: "explorer", role: "explorer", record: makeJobSpec({ role: "explorer", agent_name: "explorer", model_chain: ["opencode-go/deepseek-v4.1-flash"] }) },
+  { label: "analyst", role: "analyst", record: makeJobSpec({ role: "analyst", agent_name: "analyst", model_chain: ["opencode-go/qwen3.8-max"] }) },
+  { label: "critic", role: "critic", record: makeJobSpec({ role: "critic", agent_name: "critic", model_chain: ["opencode/gemini-3.8-flash"] }) },
+  { label: "arch-critic", role: "arch-critic", record: makeJobSpec({ role: "arch-critic", agent_name: "arch-critic", model_chain: ["opencode/gemini-3.8-flash"] }) },
+  { label: "auditor", role: "auditor", record: makeJobSpec({ role: "auditor", agent_name: "auditor", model_chain: ["opencode/gemini-3.8-flash"] }) },
+  { label: "writer-bundled", role: "writer", record: makeJobSpec({ role: "writer", agent_name: "writer", model_chain: ["opencode/claude-sonnet-5-5"] }) },
   { label: "writer-delegate-model", role: "writer", record: makeJobSpec({ role: "writer", agent_name: "host-writer", model_chain: ["custom/model"] }) },
   { label: "writer-delegate-null", role: "writer", record: makeJobSpec({ role: "writer", agent_name: "host-writer", model_chain: [null] }) },
-  { label: "lite", role: "lite", record: makeJobSpec({ role: "lite", agent_name: "lite", model_chain: ["opencode-go/deepseek-v4.1-flash"] }) },
+  { label: "ask-lite", role: "ask-lite", record: makeJobSpec({ role: "ask-lite", agent_name: "ask-lite", model_chain: ["opencode-go/deepseek-v4.1-flash"] }) },
   { label: "coder", role: "coder", record: makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3"] }) },
   { label: "coder-lite", role: "coder-lite", record: makeJobSpec({ role: "coder-lite", agent_name: "coder-lite", model_chain: ["opencode-go/glm-5.3-flash"] }) },
-  { label: "build-host", role: "build", record: makeJobSpec({ role: "build", agent_name: "build", model_chain: [null] }) },
   { label: "consultant", role: "consultant", record: makeJobSpec({ role: "consultant", agent_name: "consultant", model_chain: ["opencode-go/glm-5.3"] }) },
 ]
 
@@ -323,7 +323,7 @@ function jobSpecWithProtoKey(extra: Record<string, unknown>): unknown {
     v: 1,
     kind: "job-spec",
     role: "explorer",
-    agent_name: "consultation-explorer",
+    agent_name: "explorer",
     model_chain: ["opencode-go/deepseek-v4.1-flash"],
     prompt: "hostile",
     parent_id: FAKE_PARENT_ID,

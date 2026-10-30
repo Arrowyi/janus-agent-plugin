@@ -2001,6 +2001,12 @@ describe("model-prompt blocks are model-property only", () => {
       /\bpool\b/i,
       /\bdelegate\b/i,
       /\b(writer|critic|auditor|analyst|explorer|consultant|janus)\b/i,
+      /\bdispatch\b/i,
+      /\bspecialist\b/i,
+      /\bsubagent\b/i,
+      /\bhandoff\b/i,
+      /\bground truth\b/i,
+      /\bsuspicion\b/i,
       // runtime/operator controls the agent cannot set — keep them out of the prompt
       /thinking[_ -]?level/i,
       /reasoning[_ -]?effort/i,

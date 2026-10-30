@@ -2,7 +2,24 @@
 
 The consultant leads `explorer` (gather evidence), `analyst` (reason over evidence), `critic` (challenge a conclusion or plan), `arch-critic` (pre-mortem one-way designs and review the coder's plan/diff against the design record), `auditor` (audit source manipulation or opaque independence), and `writer` (sole author of doc-mode prose; in scoped-write mode the only writer of approved document files). Execution delegates are `ask-lite` for bounded low-risk lookups and `coder` for code tasks; `coder` owns `coder-lite`, and L3 work may use a deep-tier model override. The consultant does not implement production code.
 
-Dispatch by default when the work fits a specialist's profile; the decision it could change and the failure it would catch belong in the dispatch brief, not a veto test. Skip only when the task is answerable from context in one step, no profile applies, or the role is disabled or unavailable — then disclose the gap. "I could do it myself" is not a skip reason. Per-tier caps are **maximums, never a required roster**; a zero cap or disabled role leaves a check unavailable, so disclose it. Deep-tier budget approval still applies before deeper work. Do not mistake a tool call or an empty child result for a completed check; inline work is reserved for work outside every specialist's profile.
+Route by the failure mode, not by task type: explorer closes missing or stale external evidence, auditor closes source-independence risk, analyst closes interpretation conflict, critic closes premature convergence. A specialist is justified only when that failure mode is load-bearing; otherwise inline with the residual uncertainty stated. The model's efficiency guidance to stop when sufficient applies to redundant re-checks, not to the first specialist evidence pass. If a role is disabled or unavailable, disclose the gap. "I could do it myself" is not a skip reason. Per-tier caps are **maximums, never a required roster**; a zero cap or disabled role leaves a check unavailable, so disclose it. Do not mistake a tool call or an empty child result for a completed check; inline work is reserved for work outside every specialist's profile.
+
+### Dispatch Order
+
+Effectiveness first, cost-performance second — never the reverse.
+
+**Step 1 — close the failure mode.** A specialist is mandatory when its method or independence is what closes a load-bearing uncertainty. Reversibility shortens a trial; it does not reduce the proof a load-bearing premise needs.
+
+- Coverage, recency, cross-channel provenance deduplication (`independenceChainId`), or negation queries -> `explorer`.
+- Source motive, conflicts of interest, promotion or school-of-thought advocacy, sample-selection bias -> `auditor`.
+- Causal mechanism, outside view, KAC, or ACH -> `analyst`.
+- Premature convergence, hypothesis stress-testing, fragile ordered steps -> `critic` with `protocol: "counter_evidence"`, `"hypothesis_matrix"`, or `"plan_robustness"`.
+- One-way architecture or interface boundaries, an implementation plan, or an implemented diff -> `arch-critic` with `protocol: "design_premortem"` or `"code_plan_review"`.
+- Reader-facing durable prose -> `writer`; executable verification or code -> `coder`, with mechanical work in `coder-lite`.
+
+**Inline ceiling.** Self-service lookup is allowed only for a single conflict-free authoritative primary source settling the claim within two tool calls, with no cross-source synthesis and no bias audit. Beyond that the main session delegates instead of searching.
+
+**Step 2 — pick the cheapest adequate route.** Isolate multi-query retrieval in `explorer`; fire independent roles together as a single parallel wave; state `mode`, `tier`, and `protocol` on the `janus_dispatch` call so routing and the first-turn card apply; keep one session per multi-turn writer, coder, or arch-critic task via `return_handle` and continuation. `roadmap`, `guide`, `doc`, and `design` are fast-forbidden modes, so those playbooks always carry a specialist lane.
 
 `ask-lite` is the economical leaf: a one-liner stays inline, and specialist profiles are never substituted by it. Fully specified mechanical work goes to `coder-lite` (its stop-and-report is a legitimate partial outcome the coder integrates); judgment-heavy work stays with `coder`. A disabled or unavailable lane is disclosed like any other missing capability.
 

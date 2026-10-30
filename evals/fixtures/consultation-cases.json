@@ -701,15 +701,15 @@
   },
   {
     "id": "C60",
-    "title": "Specialist-profile work is dispatched by default, not absorbed inline",
-    "given": "A consultation task needs graded evidence gathering that matches the explorer's profile, and the consultant could technically search the web itself.",
-    "when": "The consultant decides whether to dispatch and drafts the dispatch brief",
-    "then": "It dispatches the explorer by default because the work falls within that profile. The decision the work could change and the specific failure it would catch appear in the brief as context, not as a veto test; 'I could do it myself' is not a skip reason. Inline work happens only when the task is answerable from context in one step, no profile applies, or the role is disabled or unavailable, and an unavailable role is disclosed.",
+    "title": "A load-bearing gap is closed by the specialist whose method fits, not by inline search",
+    "given": "A consultation task has a load-bearing external-evidence gap; the consultant could run the searches itself, and closing the gap needs more than two lookups across sources that may share an origin.",
+    "when": "The consultant decides how to obtain the evidence",
+    "then": "It applies the lexicographic rule: Step 1 places the load-bearing gap with explorer because coverage, provenance deduplication, and negation queries are that role's method; Step 2 then picks the cheapest adequate route, an isolated explorer session with `mode`, `tier`, and `protocol` named, over inline searching. Reversibility or low stakes would shorten the trial step, never waive the retrieval floor, and an unavailable or disabled role is disclosed.",
     "grading": "model",
     "modes": [
       "research"
     ],
-    "notes": "Rubric: Reject absorbing a profile-matching evidence task inline just because the consultant could do it, and reject a dispatch brief with no decision or failure named. Require the default-dispatch reasoning plus explicit disclosure when a role is unavailable. Covers the P1 team-orchestration change."
+    "notes": "Rubric: Reject absorbing a load-bearing evidence task inline just because the consultant could do it, and reject a dispatch brief with no decision or failure named. Accept an inline choice only when the answer shows the claim is settled by one conflict-free primary record within two calls and states the residual uncertainty. Covers the D6 lexicographic dispatch rule."
   },
   {
     "id": "C61",
@@ -989,5 +989,29 @@
     "grading": "deterministic",
     "modes": [],
     "notes": "Covered by team.test.ts and prompt-contracts.test.ts."
+  },
+  {
+    "id": "C84",
+    "title": "An option selection uses the specialist floor for biased or multi-source evidence",
+    "given": "The user is choosing between candidate options — a purchase, a work or communication strategy, or a technical stack — and the decisive attributes come from current external sources plus a community ranking, a recommended method, and vendor or school-of-thought claims.",
+    "when": "The consultant handles the select consultation",
+    "then": "It dispatches explorer for the current attributes, outcomes, and base rates, and auditor in the same parallel wave because the ranking and the recommendation rest on experiential and promotional testimony; it adds analyst when the decisive question is whether the method has causal efficacy. It does not replace those checks with ad-hoc inline search, and its 证据策略 line names which role or protocol checked each load-bearing claim.",
+    "grading": "model",
+    "modes": [
+      "select"
+    ],
+    "notes": "Rubric: Inspect the tool trace and the evidence strategy. Reject a fully inline answer that treats a ranking or recommendation as independent evidence without saying why the audit was unnecessary; accept a justified inline choice for a single-source sub-claim whose residual uncertainty is stated."
+  },
+  {
+    "id": "C85",
+    "title": "A claim settled by one conflict-free primary record stays inline",
+    "given": "A load-bearing claim can be settled in at most two tool calls by a single conflict-free authoritative primary record (an official specification, statute, or local source file), with no cross-source comparison and no bias audit needed.",
+    "when": "The consultant judges whether the inline ceiling applies",
+    "then": "It answers inline, cites the record, and dispatches no specialist; it states the residual uncertainty the single record cannot cover.",
+    "grading": "model",
+    "modes": [
+      "select"
+    ],
+    "notes": "Rubric: Reject an unnecessary explorer or auditor dispatch. Accept a direct cited answer with the residual-uncertainty line."
   }
 ]

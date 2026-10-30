@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import type { RiskLevel, Tier } from "./enums.ts"
-import { routeTier } from "./tier-router.ts"
+import { FAST_FORBIDDEN_MODES, routeTier } from "./tier-router.ts"
 import type { TierRoutingInput } from "./tier-router.ts"
 
 const risks = ["low", "medium", "high"] as const satisfies readonly RiskLevel[]
@@ -37,16 +37,20 @@ const fastInput: TierRoutingInput = {
 }
 
 describe("routeTier mode constraint", () => {
-  test("guide, doc, and design never route to fast", () => {
-    for (const mode of ["guide", "doc", "design"] as const) {
+  test("roadmap, guide, doc, and design never route to fast", () => {
+    for (const mode of ["roadmap", "guide", "doc", "design"] as const) {
       expect(routeTier({ ...fastInput, mode })).toBe("standard")
     }
   })
 
   test("other modes keep the fast branch", () => {
-    for (const mode of ["select", "verify", "roadmap", "research"] as const) {
+    for (const mode of ["select", "verify", "research"] as const) {
       expect(routeTier({ ...fastInput, mode })).toBe("fast")
     }
+  })
+
+  test("the fast-forbidden set is exactly the roadmap/guide/doc/design group", () => {
+    expect([...FAST_FORBIDDEN_MODES].sort()).toEqual(["design", "doc", "guide", "roadmap"])
   })
 
   test("a mode constraint never lowers the tier", () => {

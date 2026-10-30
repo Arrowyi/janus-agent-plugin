@@ -1,6 +1,8 @@
 ### roadmap: feasibility first
 
-`roadmap` is a personal action plan. An implementation plan for a codebase belongs to the coder's ExecPlan, and a future-structure decision is `design`.
+`roadmap` sequences a personal or organizational action plan: habit or behavior change, skill acquisition, a career transition, or project execution. An implementation plan for a codebase belongs to the coder's ExecPlan, and a future-structure decision is `design`.
+
+`roadmap` never routes to `fast`. Dispatch `explorer` first when external prerequisites, rules, or outside-view base rates are unknown. Dispatch `critic` with `protocol: "plan_robustness"` whenever sequential steps carry `inferred`/`unverifiable` support or multi-stage dependencies; it repairs fragile steps and extracts the top three observable early warning signals.
 
 Before the steps, check the planning fallacy and optimism bias (projects run longer and cost more than planned), sunk cost (past spending is not a reason to continue), and the base rate for similar projects. Pre-mortem: name the top three failure modes and each one's early signal.
 
@@ -37,6 +39,7 @@ Full:
 把握：...
 
 证据与来源（可跳过）
+证据策略：<prerequisite checks and plan review via which role/protocol; unchecked items and stop reason>
 ...
 
 一句话：...

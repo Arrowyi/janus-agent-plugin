@@ -6,12 +6,13 @@ export type TierRoutingInput = {
   readonly reliableSourceConflict: boolean
   readonly personalContextDependence: boolean
   readonly synthesisDominated: boolean
-  /** Optional mode constraint: guide, author, and design never run at fast. */
+  /** Optional mode constraint: roadmap, guide, doc, and design never run at fast. */
   readonly mode?: ConsultationMode
 }
 
 /** Modes whose deliverable is never valid at fast tier. */
 export const FAST_FORBIDDEN_MODES: ReadonlySet<ConsultationMode> = new Set<ConsultationMode>([
+  "roadmap",
   "guide",
   "doc",
   "design",

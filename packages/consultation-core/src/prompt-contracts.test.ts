@@ -129,6 +129,7 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("signalsFired")
     expect(prompt).toContain("missingObservations")
     expect(prompt).toContain("independence")
+    expect(prompt).toContain("never ground truth")
     expect(prompt).not.toContain("signals: {")
 
     const parsed = SourceIntentAuditSchema.parse({
@@ -182,12 +183,20 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("do not force one mode to swallow the other")
   })
 
-  it("consultant dispatches specialist-profile work by default and mirrors the user's language", async () => {
+  it("consultant states the two-step lexicographic dispatch rule and reversibility orthogonality", async () => {
     const prompt = await readAgentPrompt("consultant.md")
 
-    expect(prompt).toContain(
-      "Dispatch by default when the work falls within a specialist's dedicated profile",
-    )
+    expect(prompt).toContain("Action reversibility is orthogonal to epistemic complexity")
+    expect(prompt).toContain("Step 1 — methodological floor")
+    expect(prompt).toContain("Step 2 — cost-performance among adequate methods")
+    expect(prompt).toContain("Hard boundary for `inline` and `ask-lite`")
+    expect(prompt).toContain("within two tool calls")
+    expect(prompt).toContain("single, conflict-free authoritative primary source")
+    expect(prompt).toContain("Pass `mode`, `tier`, and `protocol` explicitly to `janus_dispatch`")
+    expect(prompt).toContain("one parallel wave")
+    expect(prompt).toContain("Model-level guidance to stop when the answer looks sufficient does not override this rule")
+    expect(prompt).not.toContain("Dispatch by default")
+    expect(prompt).not.toContain("answerable from context in one step")
     expect(prompt).toContain(
       "Mirror the user's language; keep the anchor structure but translate labels.",
     )
@@ -198,6 +207,61 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("try every available route")
     expect(prompt).toContain("may be collected and used")
     expect(prompt).toContain("legal or compliance risk")
+  })
+
+  it("consultant records an evidence strategy and forbids fast for roadmap, guide, doc, and design", async () => {
+    const prompt = await readAgentPrompt("consultant.md")
+
+    expect(prompt).toContain("证据策略：<what was checked")
+    expect(prompt).toContain("Roadmap, guide, doc, and design never route to fast")
+  })
+
+  it("the skills bind the five protocol cards and the two-step dispatch baselines", async () => {
+    const skill = await readAllSkills()
+
+    for (const protocol of [
+      "counter_evidence",
+      "hypothesis_matrix",
+      "plan_robustness",
+      "design_premortem",
+      "code_plan_review",
+    ]) {
+      expect(skill).toContain(`protocol: "${protocol}"`)
+    }
+    expect(skill).toContain("Dispatch Order")
+    expect(skill).toContain("Inline ceiling")
+    expect(skill).toContain("never routes to `fast`")
+    expect(skill).toContain("Merged-Wave playbook")
+  })
+
+  it("the mode playbooks define general candidate classes rather than one product scenario", async () => {
+    const skill = await readAllSkills()
+
+    for (const text of [
+      "a behavioral pattern or habit",
+      "a technical stack or tool",
+      "a physical or digital product",
+      "rumor, empirical rule, or technical claim",
+      "habit or behavior change, skill acquisition",
+      "candidate framing that hides a better option",
+    ]) {
+      expect(skill).toContain(text)
+    }
+  })
+
+  it("janus limits inline work to single-source, conflict-free checks", async () => {
+    const prompt = await readAgentPrompt("janus.md")
+
+    expect(prompt).toContain("strictly single-source, conflict-free factual checks")
+    expect(prompt).toContain("selection among options (behavioral, strategic, technical, or product)")
+  })
+
+  it("coder binds arch-critic to code_plan_review for plan and diff review", async () => {
+    const prompt = await readAgentPrompt("coder.md")
+
+    expect(prompt).toContain('protocol: "code_plan_review"')
+    expect(prompt).toContain("janus_dispatch_continue")
+    expect(prompt).not.toContain("have a fresh-context subagent")
   })
 
   it("janus and writer route repository maintenance files to the coder", async () => {

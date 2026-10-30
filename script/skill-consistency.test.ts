@@ -222,11 +222,49 @@ describe("consultation mode consistency", () => {
       expect(consultant).toContain(`\`${role}\``)
       expect(skill).toContain(`\`${role}\``)
     }
-    expect(consultant).toContain("Dispatch by default when the work")
-    expect(skill).toContain("Dispatch by default when the work")
+    expect(consultant).toContain("Step 1 — methodological floor")
+    expect(skill).toContain("Route by the failure mode")
+    expect(skill).toContain("### Dispatch Order")
     // Single-copy lock: the full trigger table exists only in the skill.
     expect(skill.split("Dispatch when this concrete check applies").length - 1).toBe(1)
     expect(consultant).not.toContain("Dispatch when this concrete check applies")
+  })
+
+  test("the skill and the consultant prompt agree on the dispatch floor and inline ceiling", async () => {
+    const consultant = await readAsset("assets/agents/consultant.md")
+    const skill = await readAsset(skillPath("consultation"))
+
+    for (const text of [
+      "Reversibility and low stakes shrink the trial, never the evidence bar on a load-bearing premise",
+      "Inline ceiling",
+      "two calls or fewer",
+    ]) {
+      expect(skill).toContain(text)
+    }
+    expect(consultant).toContain("Action reversibility is orthogonal to epistemic complexity")
+    expect(consultant).toContain("within two tool calls")
+    for (const mode of ["roadmap", "guide", "doc", "design"]) {
+      expect(skill).toContain(mode)
+    }
+    expect(skill.toLowerCase()).toContain("never routes to `fast`")
+  })
+
+  test("the mode playbooks carry their general dispatch baselines", async () => {
+    const core = await readAsset(skillPath("consultation"))
+
+    expect(core).toContain("### select: choose and try")
+    expect(core).toContain("`protocol: \"counter_evidence\"`")
+    expect(core).toContain("`protocol: \"hypothesis_matrix\"`")
+    expect(core).toContain("`protocol: \"plan_robustness\"`")
+    expect(core).toContain("never routes to `fast`")
+    expect(core).toContain("Merged-Wave playbook")
+
+    const design = await readAsset(skillPath("consultation-design"))
+    expect(design).toContain('protocol: "design_premortem"')
+    expect(design).toContain('protocol: "code_plan_review"')
+
+    const doc = await readAsset(skillPath("consultation-doc"))
+    expect(doc).toContain('protocol: "counter_evidence"')
   })
 
   test("the consultant prompt and the skill agree on the channel policy", async () => {

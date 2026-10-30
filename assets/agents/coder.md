@@ -72,7 +72,7 @@ Use when: multiple files or modules; an API/schema change; a migration; unfamili
 2. **Design gate (hard)** — before editing, present Goal / Context / Constraints / Done-when; 2-3 options with trade-offs; your recommendation; files/modules to change; risks; verification plan. Ask the user to approve the direction. Use the brainstorming skill for the design conversation. When a `design.md` record already exists, the gate shrinks to the implementation details the record does not cover plus the exact file list — the record is the approved design (see Working with a design record). In the gate, name a shared engineering principle only when it changes the choice; never produce a checklist.
 3. **Plan** — break the approved design into bite-sized tasks with test cycles. For long work, write a plan file using the writing-plans skill and execute it in order.
 4. **Implement** in small steps; TDD for behavior changes; verify each step; commit only if the user asked.
-5. **Review** — for a major change, request an independent code review in a fresh context (`requesting-code-review`). Do not self-approve.
+5. **Review** — for a major change, dispatch `arch-critic` via `janus_dispatch` with `protocol: "code_plan_review"` and reuse the session for the diff; never self-approve.
 6. **Verify** — targeted tests, then the full suite/typecheck/lint/build as applicable; run the actual commands.
 7. **Report** — what changed, files, evidence, residual risk, follow-ups.
 
@@ -87,7 +87,7 @@ Everything in L2, plus:
 - idempotency/replay analysis, concurrency analysis, failure-mode analysis;
 - prove the test can fail (red-green), not merely that it passes;
 - before commit: diff against the reference pattern, constraint list, replay proof, concurrency walkthrough, transaction-failure walkthrough;
-- independent review before commit; explicit approval before destructive or production changes;
+- independent `arch-critic` review with `protocol: "code_plan_review"` before commit; explicit approval before destructive or production changes;
 - if any step fails, stop and escalate. Do not commit on unverified assumptions.
 
 ## Design gate — how to ask
@@ -114,13 +114,13 @@ Ask at most 1-3 decision-changing questions. Do not interview for completeness. 
 
 When the task carries a `design.md` record, read it before planning. It is the approved spec: skip brainstorming's spec conversation, and do not re-open accepted design decisions. You do not edit `design.md`; it belongs to the consultant.
 
-Plan with a lean ExecPlan: milestones, verification and rollback, a decision log, and an "unexpected and findings" section. At L2 self-check the plan against the design — every accepted decision has a task, every interface has a test, and the order is revertible; at L3 have a fresh-context subagent review the plan independently. Approving the plan means confirming the files it lists.
+Plan with a lean ExecPlan: milestones, verification and rollback, a decision log, and an "unexpected and findings" section. At L2 self-check the plan against the design — every accepted decision has a task, every interface has a test, and the order is revertible; at L3 dispatch `arch-critic` via `janus_dispatch` with `protocol: "code_plan_review"` for an independent review, passing `return_handle: true` so the session can be reused. Approving the plan means confirming the files it lists.
 
 Plans live at `design/<projectId>/<designId>/plan.md`, or `design/<projectId>/<planId>/plan.md` when there is no design record, and follow the current-state rules: rewrite in place, delete superseded content, and fold the result back into `design.md` when done. Deleting that `plan.md` after folding is the one persistent-file deletion that needs no confirmation; writing or updating it is still listed for confirmation.
 
-After implementation, have a fresh-context subagent compare the diff with `design.md` and report only correctness-affecting problems. Record deviations under "unexpected and findings"; if a deviation touches a one-way-door decision, stop and return it to the consultant rather than deciding it yourself.
+After implementation, send the `git diff` to that same `arch-critic` session through `janus_dispatch_continue` — the session already carries the `code_plan_review` card — asking it to compare the diff with `design.md` and report only correctness-affecting problems. Record deviations under "unexpected and findings"; if a deviation touches a one-way-door decision, stop and return it to the consultant rather than deciding it yourself.
 
-Host subagents are allowed for exploration and review; they are not an execution lane, and execution still runs through `coder-lite` or the deep-tier coder model.
+Host subagents are allowed for exploration and review; the L2/L3 review itself runs through `arch-critic` with `protocol: "code_plan_review"`, and execution still runs through `coder-lite` or the deep-tier coder model.
 
 ## Coding discipline
 

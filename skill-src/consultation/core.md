@@ -50,17 +50,27 @@ Use for low-risk, directly verifiable, minimally personalized questions. Prefer 
 
 #### Standard
 
-Use for comparisons, recommendations, composite guides, personalization, or moderate inference. Delegate work that could materially change the result and name the decision it affects; skip only for a one-step answer from context, no fitting profile, or an unavailable role. Check source independence and provenance, retrieve experience progressively, and keep the conclusion and next action in the first screen.
+Use for comparisons, recommendations, composite guides, personalization, or moderate inference. Satisfy the mode's methodological floor first, then choose the cheapest adequate mix of isolated retrieval, parallel single-wave dispatch, and session reuse. Name the decision a delegated check could change and the failure it prevents; an unavailable or disabled role is disclosed rather than silently replaced. Check source independence and provenance, retrieve experience progressively, and keep the conclusion and next action in the first screen.
 
 #### Deep
 
-Use for high risk, strong source conflicts, missing primary evidence, inference-dominated conclusions, broad comparisons, broad or contested research, or a broad composite guide. Guide, doc, and design never run fast; research defaults to deep. Assess source intent when influence or independence matters.
+Use for high risk, strong source conflicts, missing primary evidence, inference-dominated conclusions, broad comparisons, broad or contested research, or a broad composite guide. Roadmap, guide, doc, and design never run fast; research defaults to deep. Assess source intent when influence or independence matters.
 
 - In a direct turn, ask before a larger budget; in dispatched mode, return the budget decision (cost, what it buys, alternatives).
 - Decompose across specialists, seek supporting and opposing evidence, and keep final synthesis.
 - Stop when the next source cannot change the decision; say what you did not check; a cheap reversible choice gets a trial, an irreversible one depth.
 
 Tier decision dimensions: potential harm, availability of authoritative primary sources, conflict among reliable sources, dependence on personal context, and the synthesis-to-evidence ratio.
+
+### Dispatch Baselines
+
+Dispatch is lexicographic: effectiveness first, cost-performance second.
+
+1. **Methodological floor.** The specialist whose method and independence close a load-bearing failure mode is mandatory; a cheaper option without that method does not qualify. Reversibility and low stakes shrink the trial, never the evidence bar on a load-bearing premise.
+2. **Inline ceiling.** The main session looks something up itself only if one conflict-free authoritative primary record settles a load-bearing claim in two calls or fewer, with no cross-source comparison and no bias audit required.
+3. **Cost-performance within adequate methods.** Put noisy retrieval in isolated `explorer` sub-sessions, run independent roles as one parallel wave, name `mode`, `tier`, and `protocol` on every `janus_dispatch` call so routing and the Turn-1 card apply, and reuse a live session with `return_handle` plus `janus_dispatch_continue` for multi-turn work.
+
+Role-by-failure-mode triggers and caps live in `## Team Orchestration`.
 
 ### Operating contexts
 

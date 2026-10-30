@@ -29,19 +29,22 @@ function words(text: string): number {
 const DEFAULT_AGENT_BUDGET = 1500
 
 const AGENT_BUDGETS: Record<string, number> = {
-  "consultant.md": 3200,
-  "coder.md": 2400,
+  "consultant.md": 4500,
+  "coder.md": 3200,
 }
 
 const FRAGMENT_BUDGET = 500
-const SKILL_MODULE_BUDGET = 2000
+// Raised so the general dispatch rules and mode playbooks can be written out
+// completely; the cross-file duplicate-sentence check still enforces one home
+// per rule.
+const SKILL_MODULE_BUDGET = 3000
 // Per-skill generated-body budgets, measured including front matter. The core
-// drops from the former 9,960-word monolith to <=5,800 by moving the heavy
-// design/doc playbooks into their own on-demand skills.
+// drops from the former 9,960-word monolith by moving the heavy design/doc
+// playbooks into their own on-demand skills.
 const SKILL_TOTAL_BUDGETS: Record<string, number> = {
-  consultation: 5800,
-  "consultation-design": 1300,
-  "consultation-doc": 3000,
+  consultation: 8500,
+  "consultation-design": 2500,
+  "consultation-doc": 4500,
 }
 
 /**

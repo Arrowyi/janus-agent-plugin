@@ -28,6 +28,8 @@ Prioritize claims whose failure would teach the wrong model: API signatures and 
 
 Adversarial roles are proportionate, never a fixed roster: the explorer gathers missing authoritative evidence; the analyst resolves complex mechanisms or conflicting source interpretations; the critic runs for `strict` verification, conflicting evidence, high-risk material, failed execution that challenges the explanation, or a material uncertainty it could resolve even in `light`/`targeted` work; the auditor runs when user-generated, promotional, or purportedly independent evidence has uncertain influence or provenance. Skip only when a role's check is demonstrably unnecessary.
 
+Keep the long-lived editorial context clean: send more than two external lookups or broad cross-module exploration to `explorer`, non-trivial runnable code verification to `coder`, and any `strict` or disputed-mechanism challenge to `critic` via `janus_dispatch` with `protocol: "counter_evidence"`.
+
 ### Permission policy
 
 Staged and confirmation-based, depending only on capabilities exposed by the current host:

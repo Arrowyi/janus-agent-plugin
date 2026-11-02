@@ -30,6 +30,7 @@ import {
   computeProjectId,
   resolveAuthorStateDir,
   resolveDesignStateDir,
+  resolveHandoffStateDir,
   resolveSimpleWorkspaceDir as resolveSimpleWorkspaceDirLocal,
   injectRuntimeBindings,
   injectCommonPrinciples,
@@ -76,13 +77,16 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
   }
 }
 
+const DESIGN_BINDING = { designStateDir: "/xdg/data/janus-agent/design", projectId: "my-project-a1b2c3d4" }
+const HANDOFF_BINDING = { handoffStateDir: "/xdg/data/janus-agent/handoff", projectId: "my-project-a1b2c3d4" }
+
 describe("buildConsultantRuntimeBindings", () => {
   it("includes the memory MCP server line with tool names when memory is enabled", () => {
     // given
     const config = makeConfig({ memory_enabled: true })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-abcdef123456")
+    const block = buildConsultantRuntimeBindings(config, "oc-abcdef123456", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
@@ -99,7 +103,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-abcdef123456")
+    const block = buildConsultantRuntimeBindings(config, "oc-abcdef123456", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("oc-abcdef123456")
@@ -111,7 +115,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig({ memory_enabled: false })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("Memory: DISABLED by configuration (saving and recall are unavailable)")
@@ -123,7 +127,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig({ consultant_critic_model: "openrouter/qwen-max" })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("consultant-critic `consultant-critic`")
@@ -136,7 +140,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("opencode/claude-sonnet-5-5")
@@ -147,7 +151,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("Consultant model")
@@ -165,7 +169,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("round_cap=3")
@@ -185,7 +189,7 @@ describe("buildConsultantRuntimeBindings", () => {
     })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("round_cap=2")
@@ -205,7 +209,7 @@ describe("buildConsultantRuntimeBindings", () => {
     })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("standard(e5,a2,c1,au1)")
@@ -217,7 +221,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig({ consultant_critic_enabled: false })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("consultant-critic DISABLED by configuration")
@@ -228,7 +232,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
 
     // then
     expect(block).toContain("Economical leaf: `simple` (`opencode-go/deepseek-v4.1-flash`)")
@@ -237,7 +241,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const disabled = makeConfig({ simple_enabled: false })
 
     // when
-    const disabledBlock = buildConsultantRuntimeBindings(disabled, "oc-ns")
+    const disabledBlock = buildConsultantRuntimeBindings(disabled, "oc-ns", HANDOFF_BINDING)
 
     // then
     expect(disabledBlock).toContain("Economical leaf: simple DISABLED by configuration")
@@ -248,7 +252,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
 
     // then — those bindings belong to architect, coder, and author
     expect(block).not.toContain("Coding delegate")
@@ -261,15 +265,12 @@ describe("buildConsultantRuntimeBindings", () => {
 })
 
 describe("buildArchitectRuntimeBindings", () => {
-  it("reports the design team, design directory, caps, and simple leaf", () => {
+  it("reports the design team, design directory, handoff binding, caps, and simple leaf", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildArchitectRuntimeBindings(config, "oc-ns", {
-      designStateDir: "/xdg/data/janus-agent/design",
-      projectId: "my-project-a1b2c3d4",
-    })
+    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING, HANDOFF_BINDING)
 
     // then
     expect(block).toContain("janus-memory")
@@ -282,6 +283,9 @@ describe("buildArchitectRuntimeBindings", () => {
     expect(block).toContain("Design state dir: `/xdg/data/janus-agent/design`")
     expect(block).toContain("my-project-a1b2c3d4/<designId>/design.md")
     expect(block).toContain("you are the only role that writes the design record")
+    expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
+    expect(block).toContain("Handoff discipline")
+    expect(block).toContain("Handoff wakeup")
     expect(block).toContain("Memory namespace: `oc-ns`")
     expect(block).not.toContain("Writer write mode")
     expect(block).not.toContain("author-writer")
@@ -292,8 +296,8 @@ describe("buildArchitectRuntimeBindings", () => {
     const config = makeConfig({ coder_reviewer_enabled: false })
 
     // when
-    const block = buildArchitectRuntimeBindings(config, "oc-ns", {
-      designStateDir: "/xdg/data/janus-agent/design",
+    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING, {
+      handoffStateDir: "/xdg/data/janus-agent/handoff",
       projectId: "p-12345678",
     })
 
@@ -302,25 +306,19 @@ describe("buildArchitectRuntimeBindings", () => {
   })
 
   it("reports the memory-disabled variant and namespace", () => {
-    const block = buildArchitectRuntimeBindings(makeConfig({ memory_enabled: false }), "oc-ns")
+    const block = buildArchitectRuntimeBindings(
+      makeConfig({ memory_enabled: false }),
+      "oc-ns",
+      DESIGN_BINDING,
+      HANDOFF_BINDING,
+    )
     expect(block).toContain("Memory: DISABLED by configuration (saving and recall are unavailable)")
     expect(block).toContain("Memory namespace: `oc-ns`")
-  })
-
-  it("warns when no project directory is known", () => {
-    // given
-    const config = makeConfig()
-
-    // when
-    const block = buildArchitectRuntimeBindings(config, "oc-ns")
-
-    // then
-    expect(block).toContain("no project directory supplied")
   })
 })
 
 describe("buildAuthorRuntimeBindings", () => {
-  it("reports the documentation team, writer mode, brief and design dirs, and the writer-session rule", () => {
+  it("reports the documentation team, writer mode, brief, design, and handoff dirs, and the writer-session rule", () => {
     // given
     const config = makeConfig()
 
@@ -329,7 +327,8 @@ describe("buildAuthorRuntimeBindings", () => {
       config,
       "oc-ns",
       { authorStateDir: "/xdg/data/janus-agent/author", projectId: "my-project-a1b2c3d4" },
-      { designStateDir: "/xdg/data/janus-agent/design", projectId: "my-project-a1b2c3d4" },
+      DESIGN_BINDING,
+      HANDOFF_BINDING,
     )
 
     // then
@@ -345,6 +344,7 @@ describe("buildAuthorRuntimeBindings", () => {
     expect(block).toContain("author-writer reads it and never writes it")
     expect(block).toContain("Design state dir: `/xdg/data/janus-agent/design`")
     expect(block).toContain("read-only reference for architecture documents")
+    expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
     expect(block).toContain("writer_session_id")
     expect(block).toContain("Memory namespace: `oc-ns`")
   })
@@ -354,7 +354,13 @@ describe("buildAuthorRuntimeBindings", () => {
     const config = makeConfig({ writer_docs_roots: [] })
 
     // when
-    const block = buildAuthorRuntimeBindings(config, "oc-ns")
+    const block = buildAuthorRuntimeBindings(
+      config,
+      "oc-ns",
+      { authorStateDir: "/xdg/data/janus-agent/author", projectId: "my-project-a1b2c3d4" },
+      DESIGN_BINDING,
+      HANDOFF_BINDING,
+    )
 
     // then
     expect(block).toContain("Writer write mode: `read-only`")
@@ -366,36 +372,26 @@ describe("buildAuthorRuntimeBindings", () => {
     const config = makeConfig({ writer_delegate_agent: "host-writer" })
 
     // when
-    const block = buildAuthorRuntimeBindings(config, "oc-ns")
+    const block = buildAuthorRuntimeBindings(
+      config,
+      "oc-ns",
+      { authorStateDir: "/xdg/data/janus-agent/author", projectId: "my-project-a1b2c3d4" },
+      DESIGN_BINDING,
+      HANDOFF_BINDING,
+    )
 
     // then
     expect(block).toContain("delegated to `host-writer`")
   })
-
-  it("omits the author and design directory lines when no binding is supplied", () => {
-    // given
-    const config = makeConfig()
-
-    // when
-    const block = buildAuthorRuntimeBindings(config, "oc-ns")
-
-    // then
-    expect(block).not.toContain("Author state dir")
-    expect(block).not.toContain("Design state dir")
-    expect(block.endsWith("Memory namespace: `oc-ns`")).toBe(true)
-  })
 })
 
 describe("buildCoderRuntimeBindings", () => {
-  it("reports the research floor, reviewer, escalation path, and design record", () => {
+  it("reports the research floor, reviewer, escalation path, design record, and handoff binding", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildCoderRuntimeBindings(config, {
-      designStateDir: "/xdg/data/janus-agent/design",
-      projectId: "my-project-a1b2c3d4",
-    })
+    const block = buildCoderRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
 
     // then
     expect(block).toContain("Coder model")
@@ -405,6 +401,9 @@ describe("buildCoderRuntimeBindings", () => {
     expect(block).toContain('protocol: "code_plan_review"')
     expect(block).toContain("hand it to the `architect`")
     expect(block).toContain("Design record: `/xdg/data/janus-agent/design/my-project-a1b2c3d4`")
+    expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
+    expect(block).toContain("Handoff discipline")
+    expect(block).toContain("Handoff wakeup")
     expect(block).not.toContain("Memory namespace")
   })
 
@@ -413,7 +412,7 @@ describe("buildCoderRuntimeBindings", () => {
     const config = makeConfig({ common_explorer_enabled: false, coder_reviewer_enabled: false })
 
     // when
-    const block = buildCoderRuntimeBindings(config)
+    const block = buildCoderRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
 
     // then
     expect(block).toContain("Research floor: common-explorer DISABLED by configuration")
@@ -599,6 +598,17 @@ describe("resolveDesignStateDir", () => {
   })
 })
 
+describe("resolveHandoffStateDir", () => {
+  it("resolves to $XDG_DATA_HOME/janus-agent/handoff with a HOME fallback", () => {
+    expect(resolveHandoffStateDir({ XDG_DATA_HOME: "/xdg-data" } as NodeJS.ProcessEnv)).toBe(
+      "/xdg-data/janus-agent/handoff",
+    )
+    expect(resolveHandoffStateDir({ HOME: "/home/test-user" } as NodeJS.ProcessEnv)).toBe(
+      "/home/test-user/.local/share/janus-agent/handoff",
+    )
+  })
+})
+
 describe("registerConsultantAgent", () => {
   it("registers config.agent.consultant with mode primary and a prompt containing the consultant.md body", async () => {
     // given
@@ -606,7 +616,7 @@ describe("registerConsultantAgent", () => {
     const pluginConfig = makeConfig()
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-testnamespace")
+    await registerConsultantAgent(config, pluginConfig, "oc-testnamespace", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     expect(config.agent).toBeDefined()
@@ -622,7 +632,7 @@ describe("registerConsultantAgent", () => {
     const pluginConfig = makeConfig()
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-testnamespace")
+    await registerConsultantAgent(config, pluginConfig, "oc-testnamespace", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const consultant = config.agent?.["consultant"] as { prompt: string }
@@ -641,7 +651,7 @@ describe("registerConsultantAgent", () => {
     const pluginConfig = makeConfig()
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-mynamespace")
+    await registerConsultantAgent(config, pluginConfig, "oc-mynamespace", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const consultant = config.agent?.["consultant"] as { prompt: string }
@@ -655,7 +665,7 @@ describe("registerConsultantAgent", () => {
     const pluginConfig = makeConfig({ consultant_model: "anthropic/claude-sonnet" })
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-ns")
+    await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const consultant = config.agent?.["consultant"] as { mode: string; model?: string }
@@ -668,7 +678,7 @@ describe("registerConsultantAgent", () => {
     const pluginConfig = makeConfig()
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-ns")
+    await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const consultant = config.agent?.["consultant"] as { model?: string }
@@ -684,7 +694,7 @@ describe("registerConsultantAgent", () => {
     const pluginConfig = makeConfig()
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-ns")
+    await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const consultant = config.agent?.["consultant"] as { prompt: string }
@@ -697,7 +707,7 @@ describe("registerConsultantAgent", () => {
     const pluginConfig = makeConfig()
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-ns")
+    await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const consultant = config.agent?.["consultant"] as { prompt: string }
@@ -705,25 +715,28 @@ describe("registerConsultantAgent", () => {
     expect(consultant.prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
   })
 
-  it("holds no business-state directory permission and no author/design/ writer bindings", async () => {
+  it("holds only the handoff directory as business state and no author/design/writer bindings", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-ns")
+    await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const consultant = config.agent?.["consultant"] as {
       prompt: string
       permission: Record<string, unknown>
     }
-    expect(consultant.permission).toEqual({})
+    expect(consultant.permission).toEqual({
+      external_directory: { "/tmp/home/.local/share/janus-agent/handoff/**": "allow" },
+    })
     expect(consultant.prompt).not.toContain("Author state dir")
     expect(consultant.prompt).not.toContain("Design state dir")
     expect(consultant.prompt).not.toContain("Writer write mode")
     expect(consultant.prompt).not.toContain("Coding delegate")
     expect(consultant.prompt).toContain("Economical leaf: `simple`")
+    expect(consultant.prompt).toContain("Handoff state dir: `/tmp/home/.local/share/janus-agent/handoff/")
   })
 })
 
@@ -748,9 +761,13 @@ describe("registerArchitect", () => {
     expect(architect.prompt).toContain("# Architect")
     expect(architect.model).toBe("opencode-go/gemini-4-argon")
     expect(architect.prompt).toContain("Design state dir")
+    expect(architect.prompt).toContain("Handoff state dir")
     expect(architect.prompt).toContain("design_premortem")
     expect(architect.permission).toEqual({
-      external_directory: { "/home/test-user/.local/share/janus-agent/design/**": "allow" },
+      external_directory: {
+        "/home/test-user/.local/share/janus-agent/design/**": "allow",
+        "/home/test-user/.local/share/janus-agent/handoff/**": "allow",
+      },
     })
   })
 
@@ -795,11 +812,13 @@ describe("registerAuthor", () => {
     expect(author.prompt).toContain("# Author")
     expect(author.model).toBe("opencode-go/gemini-4-argon")
     expect(author.prompt).toContain("Author state dir")
+    expect(author.prompt).toContain("Handoff state dir")
     expect(author.prompt).toContain("writer_session_id")
     expect(author.permission).toEqual({
       external_directory: {
         "/home/test-user/.local/share/janus-agent/author/**": "allow",
         "/home/test-user/.local/share/janus-agent/design/**": "allow",
+        "/home/test-user/.local/share/janus-agent/handoff/**": "allow",
       },
     })
   })
@@ -1564,7 +1583,7 @@ describe("registerCoder", () => {
     const pluginConfig = makeConfig()
 
     // when
-    await registerCoder(config, pluginConfig)
+    await registerCoder(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const coder = config.agent?.["coder"] as {
@@ -1597,7 +1616,7 @@ describe("registerCoder", () => {
     const asset = await readFile(resolveAsset("agents/coder.md"), "utf8")
 
     // when
-    await registerCoder(config, pluginConfig)
+    await registerCoder(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then — one copy in the assembled prompt, none duplicated in the role asset
     const coder = config.agent?.["coder"] as { prompt: string }
@@ -1613,14 +1632,14 @@ describe("registerCoder", () => {
     const pluginConfig = makeConfig({ coder_model: "test/coder-model" })
 
     // when
-    await registerCoder(config, pluginConfig)
+    await registerCoder(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const coder = config.agent?.["coder"] as { model: string }
     expect(coder.model).toBe("test/coder-model")
   })
 
-  it("grants external access to the design state dir and names the project design dir", async () => {
+  it("grants external access to the design and handoff state dirs and names both project dirs", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const projectId = computeProjectId("/tmp/my-project")
@@ -1636,21 +1655,13 @@ describe("registerCoder", () => {
     }
     const external = coder.permission.external_directory as Record<string, string>
     expect(external["/home/test-user/.local/share/janus-agent/design/**"]).toBe("allow")
+    expect(external["/home/test-user/.local/share/janus-agent/handoff/**"]).toBe("allow")
     expect(coder.prompt).toContain(
       `Design record: \`/home/test-user/.local/share/janus-agent/design/${projectId}\``,
     )
-  })
-
-  it("omits the design binding line when the project directory is unknown", async () => {
-    // given
-    const config: { agent?: Record<string, unknown> } = {}
-
-    // when
-    await registerCoder(config, makeConfig())
-
-    // then
-    const coder = config.agent?.["coder"] as { prompt: string }
-    expect(coder.prompt).not.toContain("Design record:")
+    expect(coder.prompt).toContain(
+      `Handoff state dir: \`/home/test-user/.local/share/janus-agent/handoff/${projectId}\``,
+    )
   })
 })
 
@@ -1768,12 +1779,12 @@ describe("registerCoderLite", () => {
 })
 
 describe("buildJanusRuntimeBindings", () => {
-  it("reports own model, the simple/consultant/coder routes, the primary architect/author entries, and job-tool discipline", () => {
+  it("reports own model, the simple/consultant/coder routes, the primary architect/author entries, the handoff binding, and job-tool discipline", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildJanusRuntimeBindings(config)
+    const block = buildJanusRuntimeBindings(config, HANDOFF_BINDING)
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
@@ -1784,6 +1795,9 @@ describe("buildJanusRuntimeBindings", () => {
     expect(block).toContain("`architect` (agent `architect`, `opencode-go/gemini-4-argon`)")
     expect(block).toContain("`author` (agent `author`, `opencode-go/gemini-4-argon`)")
     expect(block).toContain("not dispatchable")
+    expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
+    expect(block).toContain("Handoff discipline")
+    expect(block).toContain("Handoff wakeup")
     expect(block).toContain("janus_dispatch_wait")
     expect(block).not.toContain("`explorer` (agent")
     expect(block).not.toContain("`build` (agent")
@@ -1796,7 +1810,7 @@ describe("buildJanusRuntimeBindings", () => {
     const config = makeConfig({ simple_enabled: false, architect_enabled: false, author_enabled: false, coder_enabled: false })
 
     // when
-    const block = buildJanusRuntimeBindings(config)
+    const block = buildJanusRuntimeBindings(config, HANDOFF_BINDING)
 
     // then
     expect(block).toContain("simple DISABLED by configuration")
@@ -1807,13 +1821,13 @@ describe("buildJanusRuntimeBindings", () => {
 })
 
 describe("registerJanus", () => {
-  it("registers mode all with the janus.md body and bindings, no memory", async () => {
+  it("registers mode all with the janus.md body, bindings, and the handoff dir, no memory", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
 
     // when
-    await registerJanus(config, pluginConfig)
+    await registerJanus(config, pluginConfig, "/tmp/my-project", { HOME: "/home/test-user" } as NodeJS.ProcessEnv)
 
     // then
     const janus = config.agent?.["janus"] as {
@@ -1826,9 +1840,13 @@ describe("registerJanus", () => {
     expect(janus.mode).toBe("all")
     expect(janus.model).toBe("opencode-go/glm-5.3-flash")
     expect(janus.description).toContain("Daily-driver primary")
+    expect(janus.permission).toEqual({
+      external_directory: { "/home/test-user/.local/share/janus-agent/handoff/**": "allow" },
+    })
     expect(janus.prompt).toContain("# Janus")
     expect(janus.prompt).toContain("## Routing")
     expect(janus.prompt).toContain("## General work")
+    expect(janus.prompt).toContain("Handoff state dir: `/home/test-user/.local/share/janus-agent/handoff/")
     // Model adaptation is injected per request; the asset keeps the inert
     // placeholder.
     expect(janus.prompt).toContain("<!-- MODEL-PROMPT")
@@ -1844,7 +1862,7 @@ describe("registerJanus", () => {
     const pluginConfig = makeConfig()
 
     // when
-    await registerJanus(config, pluginConfig)
+    await registerJanus(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const janus = config.agent?.["janus"] as { prompt: string }
@@ -1862,7 +1880,7 @@ describe("registerJanus", () => {
     const pluginConfig = makeConfig({ janus_model: "test/janus-m" })
 
     // when
-    await registerJanus(config, pluginConfig)
+    await registerJanus(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const janus = config.agent?.["janus"] as { model: string }
@@ -1877,7 +1895,7 @@ describe("registerJanus", () => {
     const pluginConfig = makeConfig()
 
     // when
-    await registerJanus(config, pluginConfig)
+    await registerJanus(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const janus = config.agent?.["janus"] as { prompt: string }
@@ -1890,7 +1908,7 @@ describe("registerJanus", () => {
     const pluginConfig = makeConfig({ janus_model: "my-provider/other-model" })
 
     // when
-    await registerJanus(config, pluginConfig)
+    await registerJanus(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const janus = config.agent?.["janus"] as { prompt: string }
@@ -1917,11 +1935,11 @@ describe("common operating principles injection", () => {
 
     try {
       // when — register the full thirteen-role family into one config
-      await registerJanus(config, pluginConfig)
-      await registerConsultantAgent(config, pluginConfig, "oc-ns")
+      await registerJanus(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+      await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
       await registerArchitect(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
       await registerAuthor(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
-      await registerCoder(config, pluginConfig)
+      await registerCoder(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
       await registerCoderLite(config, pluginConfig)
       await registerSimple(config, pluginConfig, "oc-ns")
       await registerCommonExplorer(config, pluginConfig)
@@ -2047,7 +2065,7 @@ describe("common operating principles injection", () => {
     const policy = (await readFile(resolveAsset("principles/channel-policy.md"), "utf8")).trim()
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-ns")
+    await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
     await registerCommonExplorer(config, pluginConfig)
     await registerConsultantAnalyst(config, pluginConfig)
     await registerConsultantCritic(config, pluginConfig)
@@ -2101,7 +2119,7 @@ describe("existing agents carry the inert MODEL-PROMPT placeholder", () => {
     const pluginConfig = makeConfig({ consultant_model: "my-provider/no-block-model" })
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-ns")
+    await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const consultant = config.agent?.["consultant"] as { prompt: string }
@@ -2118,7 +2136,7 @@ describe("existing agents carry the inert MODEL-PROMPT placeholder", () => {
     })
 
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-ns")
+    await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
 
     // then
     const consultant = config.agent?.["consultant"] as { prompt: string }

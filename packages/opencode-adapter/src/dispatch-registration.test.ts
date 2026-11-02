@@ -110,8 +110,10 @@ describe("unified dispatch registration", () => {
   it("names all job-control tools in assembled runtime bindings", () => {
     // Given default role configuration.
     const config = JanusPluginConfigSchema.parse({})
+    const design = { designStateDir: "/xdg/data/janus-agent/design", projectId: "proj-a1b2c3d4" }
+    const handoff = { handoffStateDir: "/xdg/data/janus-agent/handoff", projectId: "proj-a1b2c3d4" }
     // When building runtime bindings consumed by the consultant.
-    const bindings = buildConsultantRuntimeBindings(config, "oc-test")
+    const bindings = buildConsultantRuntimeBindings(config, "oc-test", handoff)
     // Then routing-bearing structural tool names are available (no prose pin);
     // the consultant bindings carry the job-tools list, not the author-mode
     // writer-session policy.
@@ -120,10 +122,10 @@ describe("unified dispatch registration", () => {
     ])
     expect(bindings).toContain("`return_handle: true`")
     expect(bindings).not.toContain("`writer_session_id`")
-    const coderBindings = buildCoderRuntimeBindings(config)
+    const coderBindings = buildCoderRuntimeBindings(config, design, handoff)
     expect(coderBindings).toContain("`janus_dispatch_continue`")
     expect(coderBindings).toContain("`return_handle: true`")
-    const janusBindings = buildJanusRuntimeBindings(config)
+    const janusBindings = buildJanusRuntimeBindings(config, handoff)
     expect(janusBindings).toContain("`janus_dispatch_continue`")
     expect(janusBindings).toContain("`return_handle: true`")
   })

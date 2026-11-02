@@ -54,7 +54,7 @@ describe("createJanusConfigHook", () => {
     }
   })
 
-  it("splits business-state permissions across architect, author, and coder, leaving the consultant without them", async () => {
+  it("splits business-state permissions: handoff shared by all five primaries, design/author dirs owned per team", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
@@ -72,13 +72,28 @@ describe("createJanusConfigHook", () => {
       // then
       const designDir = join(tmpHome, ".local/share/janus-agent/design")
       const authorDir = join(tmpHome, ".local/share/janus-agent/author")
+      const handoffDir = join(tmpHome, ".local/share/janus-agent/handoff")
       const projectId = computeProjectId(projectDir)
       const consultant = config.agent?.["consultant"] as { prompt: string; permission: Record<string, unknown> }
       const architect = config.agent?.["architect"] as { prompt: string; permission: Record<string, unknown> }
       const author = config.agent?.["author"] as { prompt: string; permission: Record<string, unknown> }
       const coder = config.agent?.["coder"] as { prompt: string; permission: Record<string, unknown> }
+      const janus = config.agent?.["janus"] as { prompt: string; permission: Record<string, unknown> }
 
-      expect(consultant.permission).toEqual({})
+      // The handoff dir is the one business-state dir shared by all five primaries.
+      for (const entry of [consultant, architect, author, coder, janus]) {
+        const external = entry.permission.external_directory as Record<string, string>
+        expect(external[`${handoffDir}/**`]).toBe("allow")
+        expect(entry.prompt).toContain(`Handoff state dir: \`${handoffDir}/${projectId}\``)
+        expect(entry.prompt).toContain("Handoff discipline")
+        expect(entry.prompt).toContain("Handoff wakeup")
+      }
+
+      // Consultant keeps only the handoff dir; the other state dirs stay with
+      // their owning teams.
+      expect(consultant.permission).toEqual({
+        external_directory: { [`${handoffDir}/**`]: "allow" },
+      })
       expect(consultant.prompt).not.toContain("Design state dir")
       expect(consultant.prompt).not.toContain("Author state dir")
 
@@ -97,8 +112,14 @@ describe("createJanusConfigHook", () => {
       expect(coderExternal[`${designDir}/**`]).toBe("allow")
       expect(coder.prompt).toContain(`Design record: \`${designDir}/${projectId}\``)
 
+      // Janus is an orchestrator, not a team: only the handoff dir.
+      expect(janus.permission).toEqual({
+        external_directory: { [`${handoffDir}/**`]: "allow" },
+      })
+
       expect(existsSync(designDir)).toBe(true)
       expect(existsSync(authorDir)).toBe(true)
+      expect(existsSync(handoffDir)).toBe(true)
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
     }
@@ -595,7 +616,7 @@ describe("createJanusConfigHook", () => {
   })
 
 
-  it("installs both slash commands when install_commands is true", async () => {
+  it("installs all three slash commands when install_commands is true", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
@@ -612,12 +633,13 @@ describe("createJanusConfigHook", () => {
       // then
       expect(existsSync(join(tmpHome, "commands", "janus-memory.md"))).toBe(true)
       expect(existsSync(join(tmpHome, "commands", "janus-models.md"))).toBe(true)
+      expect(existsSync(join(tmpHome, "commands", "janus-handoff.md"))).toBe(true)
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
     }
   })
 
-  it("installs neither slash command when install_commands is false", async () => {
+  it("installs no slash command when install_commands is false", async () => {
     // given
     const tmpHome = makeTempHome()
     const janusConfigDir = join(tmpHome, ".config", "janus-agent")
@@ -637,6 +659,7 @@ describe("createJanusConfigHook", () => {
       // then
       expect(existsSync(join(tmpHome, "commands", "janus-memory.md"))).toBe(false)
       expect(existsSync(join(tmpHome, "commands", "janus-models.md"))).toBe(false)
+      expect(existsSync(join(tmpHome, "commands", "janus-handoff.md"))).toBe(false)
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
     }

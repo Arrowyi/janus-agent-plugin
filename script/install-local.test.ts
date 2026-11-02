@@ -57,8 +57,9 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/engineering-principles.md")
   })
 
-  test("requires the janus-models command asset", () => {
+  test("requires the janus-models and janus-handoff command assets", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/commands/janus-models.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/commands/janus-handoff.md")
   })
 
   test("requires the bundled entry points, role assets, protocols, and three skills", () => {

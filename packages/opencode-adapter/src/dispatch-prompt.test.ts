@@ -150,7 +150,7 @@ describe("dispatch prompt routing contract", () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     // when
-    await registerConsultantAgent(config, pluginConfig, "oc-dispatch-prompt")
+    await registerConsultantAgent(config, pluginConfig, "oc-dispatch-prompt", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
     // then
     const prompt = promptSchema.parse(config.agent?.["consultant"]).prompt
     for (const tool of controls) expect(prompt).toContain(`\`${tool}\``)

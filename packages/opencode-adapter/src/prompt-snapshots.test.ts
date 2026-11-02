@@ -104,13 +104,13 @@ async function assembleAll(): Promise<Map<string, string>> {
   const config: { agent?: Record<string, unknown> } = {}
   const pluginConfig = makeConfig()
 
-  await registerConsultantAgent(config, pluginConfig, SNAPSHOT_NAMESPACE)
+  await registerConsultantAgent(config, pluginConfig, SNAPSHOT_NAMESPACE, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
   await registerArchitect(config, pluginConfig, SNAPSHOT_NAMESPACE, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
   await registerAuthor(config, pluginConfig, SNAPSHOT_NAMESPACE, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
   await registerCoder(config, pluginConfig, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
   await registerSimple(config, pluginConfig, SNAPSHOT_NAMESPACE)
   await registerCoderLite(config, pluginConfig)
-  await registerJanus(config, pluginConfig)
+  await registerJanus(config, pluginConfig, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
   await registerCommonExplorer(config, pluginConfig)
   await registerConsultantAnalyst(config, pluginConfig)
   await registerConsultantCritic(config, pluginConfig)

@@ -2,7 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { MEMORY_COMMAND_PREFIX, MODELS_COMMAND_PREFIX, installMemoryCommands, installModelsCommand } from "./command-installer.ts"
+import {
+  HANDOFF_COMMAND_PREFIX,
+  MEMORY_COMMAND_PREFIX,
+  MODELS_COMMAND_PREFIX,
+  installHandoffCommand,
+  installMemoryCommands,
+  installModelsCommand,
+} from "./command-installer.ts"
 import { resolveAsset } from "./asset-paths.ts"
 
 const directories: string[] = []
@@ -113,6 +120,61 @@ describe("installModelsCommand", () => {
     await writeFile(target, "<!-- user-modified -->\ncustom", "utf8")
     // when
     await installModelsCommand(envFor(configDir))
+    const after = await readFile(target, "utf8")
+    // then
+    expect(after).toBe("<!-- user-modified -->\ncustom")
+  })
+})
+
+describe("installHandoffCommand", () => {
+  test("writes the shipped janus-handoff command with the full subcommand surface", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    // when
+    await installHandoffCommand(envFor(configDir))
+    const file = await readFile(join(configDir, "commands", `${HANDOFF_COMMAND_PREFIX}.md`), "utf8")
+    const asset = await readFile(resolveAsset("commands/janus-handoff.md"), "utf8")
+    // then
+    expect(file).toBe(asset)
+    expect(file).toContain("handoff state directory")
+    expect(file).toContain("## 1. Current Truth Snapshot")
+    expect(file).toContain("## 2. Handoff Ledger (Newest First)")
+    expect(file).toContain("first 120 lines")
+    expect(file).toContain("`use <id|n>`")
+    expect(file).toContain("`archive <n|range>`")
+    expect(file).toContain("`unarchive <n>`")
+    expect(file).toContain("`delete`")
+    expect(file).toContain("`export <n> [path]`")
+    expect(file).toContain("`import <path>`")
+    expect(file).toContain("删 2，4，5")
+    expect(file).toContain("删 4~9")
+    expect(file).toContain("留 5，7")
+    expect(file).toContain("never silently auto-select")
+    const frontmatter = file.split("---")[1] ?? ""
+    expect(frontmatter).not.toContain("agent:")
+  })
+
+  test("is idempotent: a second call leaves the file unchanged", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    await installHandoffCommand(envFor(configDir))
+    const first = await readFile(join(configDir, "commands", `${HANDOFF_COMMAND_PREFIX}.md`), "utf8")
+    // when
+    await installHandoffCommand(envFor(configDir))
+    const second = await readFile(join(configDir, "commands", `${HANDOFF_COMMAND_PREFIX}.md`), "utf8")
+    // then
+    expect(second).toBe(first)
+  })
+
+  test("does not overwrite a user-modified command file", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    const commandsDir = join(configDir, "commands")
+    await mkdir(commandsDir, { recursive: true })
+    const target = join(commandsDir, `${HANDOFF_COMMAND_PREFIX}.md`)
+    await writeFile(target, "<!-- user-modified -->\ncustom", "utf8")
+    // when
+    await installHandoffCommand(envFor(configDir))
     const after = await readFile(target, "utf8")
     // then
     expect(after).toBe("<!-- user-modified -->\ncustom")

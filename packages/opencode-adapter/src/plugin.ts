@@ -19,7 +19,7 @@ import {
 import { createJanusDispatchTools } from "./dispatch-tool.ts"
 import { registerMemoryMcp } from "./mcp-registration.ts"
 import { installConsultationSkills } from "./skill-installer.ts"
-import { installMemoryCommands, installModelsCommand } from "./command-installer.ts"
+import { installHandoffCommand, installMemoryCommands, installModelsCommand } from "./command-installer.ts"
 import { computeNamespace } from "./namespace.ts"
 
 /**
@@ -38,8 +38,9 @@ export function createJanusConfigHook(
     const pluginConfig = await loadPluginConfig(env)
     const namespace = computeNamespace(project.id, directory)
 
-    // The directory supplies the author-brief and design-record project ids.
-    await registerConsultantAgent(config, pluginConfig, namespace)
+    // The directory supplies the author-brief, design-record, and handoff
+    // project ids.
+    await registerConsultantAgent(config, pluginConfig, namespace, directory, env)
 
     if (pluginConfig.architect_enabled) {
       await registerArchitect(config, pluginConfig, namespace, directory, env)
@@ -62,7 +63,7 @@ export function createJanusConfigHook(
     }
 
     if (pluginConfig.janus_enabled) {
-      await registerJanus(config, pluginConfig)
+      await registerJanus(config, pluginConfig, directory, env)
     }
 
     if (pluginConfig.common_explorer_enabled) {
@@ -100,6 +101,7 @@ export function createJanusConfigHook(
     if (pluginConfig.install_commands) {
       await installMemoryCommands(env)
       await installModelsCommand(env)
+      await installHandoffCommand(env)
     }
   }
 }

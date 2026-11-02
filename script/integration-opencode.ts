@@ -19,8 +19,9 @@
  *   (e) Assert via HTTP: GET /config responds 200 and its JSON contains the
  *       `consultant` agent key, the `author-writer` agent key, and the
  *       `janus-memory` mcp key.
- *   (f) Assert the consultation skill file and the janus-models command file
- *       were installed in the sandbox config directory.
+ *   (f) Assert the consultation skill file and the janus-models and
+ *       janus-handoff command files were installed in the sandbox config
+ *       directory.
  *   (g) Assert NOTHING was written into the plugin repo directory during the
  *       run by comparing `git status --porcelain` before and after.
  *   (h) Kill the server, print a PASS/FAIL evidence summary per assertion,
@@ -219,6 +220,7 @@ async function main(): Promise<void> {
 
           const designStateDir = join(sandboxData, "janus-agent", "design")
           const authorStateDir = join(sandboxData, "janus-agent", "author")
+          const handoffStateDir = join(sandboxData, "janus-agent", "handoff")
           const projectId = computeProjectId(sandboxProj)
           const coderExternal = readAgentPermission(json, "coder")?.["external_directory"] as
             | Record<string, string>
@@ -285,6 +287,47 @@ async function main(): Promise<void> {
               ? `design base dir for ${projectId}`
               : "coder prompt MISSING design binding",
           })
+
+          // The handoff dir is the one business-state dir shared by all five
+          // primary entries.
+          for (const role of ["janus", "consultant", "architect", "coder", "author"]) {
+            const external = readAgentPermission(json, role)?.["external_directory"] as
+              | Record<string, string>
+              | undefined
+            assertions.push({
+              name: `${role} grants external access to the handoff state dir`,
+              pass: external?.[`${handoffStateDir}/**`] === "allow",
+              detail: external?.[`${handoffStateDir}/**`] ?? "handoff state dir not allowed",
+            })
+            const prompt = readAgentPrompt(json, role)
+            const hasHandoffBinding =
+              prompt !== undefined && prompt.includes(`Handoff state dir: \`${handoffStateDir}/${projectId}\``)
+            assertions.push({
+              name: `${role} prompt names the handoff state dir and project id`,
+              pass: hasHandoffBinding,
+              detail: hasHandoffBinding
+                ? `handoff dir for ${projectId}`
+                : `${role} prompt MISSING handoff binding`,
+            })
+          }
+          const handoffDirExists = existsSync(handoffStateDir)
+          assertions.push({
+            name: "handoff state directory created",
+            pass: handoffDirExists,
+            detail: handoffDirExists ? handoffStateDir : `NOT FOUND: ${handoffStateDir}`,
+          })
+          const leafWithoutHandoff = ["simple", "coder-lite", "common-explorer", "consultant-analyst"]
+          for (const role of leafWithoutHandoff) {
+            const external = readAgentPermission(json, role)?.["external_directory"] as
+              | Record<string, string>
+              | undefined
+            const lacksHandoff = external === undefined || external[`${handoffStateDir}/**`] === undefined
+            assertions.push({
+              name: `${role} holds no handoff state dir permission`,
+              pass: lacksHandoff,
+              detail: lacksHandoff ? "no handoff dir allow rule" : "unexpected handoff dir allow rule",
+            })
+          }
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err)
@@ -352,6 +395,31 @@ async function main(): Promise<void> {
           name: "installed janus-models command contains the workflow dimensions",
           pass: hasInventory && hasModelEval && hasPromptEval && hasExecute,
           detail: `Inventory=${hasInventory} Model evaluation=${hasModelEval} Prompt evaluation=${hasPromptEval} Execute changes=${hasExecute}`,
+        })
+      }
+      const handoffCommandPath = join(sandboxConfig, "opencode", "commands", "janus-handoff.md")
+      const handoffCommandExists = existsSync(handoffCommandPath)
+      assertions.push({
+        name: "janus-handoff command installed in sandbox config",
+        pass: handoffCommandExists,
+        detail: handoffCommandExists ? handoffCommandPath : `NOT FOUND: ${handoffCommandPath}`,
+      })
+
+      if (handoffCommandExists) {
+        const handoffCommandText = readFileSync(handoffCommandPath, "utf8")
+        const hasContract =
+          handoffCommandText.includes("## 1. Current Truth Snapshot") &&
+          handoffCommandText.includes("## 2. Handoff Ledger (Newest First)")
+        const hasSubcommands =
+          handoffCommandText.includes("`use <id|n>`") &&
+          handoffCommandText.includes("`archive <n|range>`") &&
+          handoffCommandText.includes("`delete`") &&
+          handoffCommandText.includes("`export <n> [path]`") &&
+          handoffCommandText.includes("`import <path>`")
+        assertions.push({
+          name: "installed janus-handoff command contains the document contract and subcommand surface",
+          pass: hasContract && hasSubcommands,
+          detail: `contract=${hasContract} subcommands=${hasSubcommands}`,
         })
       }
       const liteWorkspace = join(sandboxData, "janus-agent", "lite")

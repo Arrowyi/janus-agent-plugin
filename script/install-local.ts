@@ -58,6 +58,7 @@ export const REQUIRED_INSTALLED_FILES = [
   "assets/principles/channel-policy.md",
   "assets/principles/engineering-principles.md",
   "assets/commands/janus-models.md",
+  "assets/commands/janus-handoff.md",
   "assets/protocols/counter_evidence.md",
   "assets/protocols/hypothesis_matrix.md",
   "assets/protocols/plan_robustness.md",

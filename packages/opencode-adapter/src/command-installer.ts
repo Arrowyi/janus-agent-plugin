@@ -15,6 +15,12 @@ export const MEMORY_COMMAND_PREFIX = "janus-memory"
  */
 export const MODELS_COMMAND_PREFIX = "janus-models"
 
+/**
+ * The cross-team handoff management command: list, view, mount, archive,
+ * delete, export, and import handoff documents.
+ */
+export const HANDOFF_COMMAND_PREFIX = "janus-handoff"
+
 const USER_MODIFIED_MARKER = "<!-- user-modified -->"
 
 function commandContent(): string {
@@ -95,4 +101,15 @@ export async function installModelsCommand(env: NodeJS.ProcessEnv): Promise<void
   const configDir = resolveOpencodeConfigDir(env)
   const content = await readFile(resolveAsset("commands/janus-models.md"), "utf8")
   await installCommandFile(configDir, MODELS_COMMAND_PREFIX, content)
+}
+
+/**
+ * Install the explicit `/janus-handoff` command from the shipped asset. The
+ * asset is the single source of truth; the file is written only when missing
+ * or when the content differs, and a user-modified file is never overwritten.
+ */
+export async function installHandoffCommand(env: NodeJS.ProcessEnv): Promise<void> {
+  const configDir = resolveOpencodeConfigDir(env)
+  const content = await readFile(resolveAsset("commands/janus-handoff.md"), "utf8")
+  await installCommandFile(configDir, HANDOFF_COMMAND_PREFIX, content)
 }

@@ -8,15 +8,15 @@ description: Evidence-driven consultation core. Load for recommendations, option
 
 ## Purpose
 
-Define the authoritative cognitive workflow for evidence-driven consultation: mode and tier routing, mode stacking, claims and sources, deception and influence audit, epistemic status, risk, counter-evidence, and the five light mode briefs. The heavy `design` and `doc` workflows live in the `consultation-design` and `consultation-doc` sub-skills and are loaded on demand. Reusable by any agent, not only `consultant`.
+Define the authoritative cognitive workflow for evidence-driven consultation: mode and tier routing, mode stacking, claims and sources, deception and influence audit, epistemic status, risk, counter-evidence, and the five light mode briefs. The `design` workflow is owned by the `architect` entry and the `doc` workflow by the `author` entry; each loads its own sub-skill (`consultation-design` / `consultation-doc`). This core skill is reusable by any agent, not only `consultant`.
 
 ## Prompt/Skill Boundary
 
-The consultant role asset (`assets/agents/consultant.md`) is the always-on contract and safety net: identity, mode/tier routing, dispatch lifecycle safety, output anchors, interaction discipline, the doc outline gate, memory ownership, injection defense, and failure behavior. This core skill carries the shared workflow: claims and sources, intent audits, channels, epistemic status, risk, counter-evidence, plan robustness, the five light mode briefs, output readability, and memory rules. `consultation-design` carries the design method and `consultation-doc` the technical-publishing workflow. Where they conflict, the prompt's safety and operational rules win.
+The consultant role asset (`assets/agents/consultant.md`) is the always-on contract for the five evidence modes: identity, mode/tier routing, dispatch lifecycle safety, output anchors, interaction discipline, memory ownership, injection defense, and failure behavior. The `architect` and `author` role assets carry the design and documentation contracts. This core skill carries the shared workflow: claims and sources, intent audits, channels, epistemic status, risk, counter-evidence, plan robustness, the five light mode briefs, output readability, and memory rules. `consultation-design` carries the design method and `consultation-doc` the technical-publishing workflow. Where they conflict, the prompt's safety and operational rules win.
 
 ## When to Use
 
-Load this skill for any consultation and whenever evidence quality, source reliability, astroturfing, risk, irreversibility, or prior experience matters. Load `consultation-design` when entering `design` and `consultation-doc` when entering `doc`; do not load both heavy sub-skills for a light-mode question.
+Load this skill for any consultation and whenever evidence quality, source reliability, astroturfing, risk, irreversibility, or prior experience matters. The `architect` loads `consultation-design` for design work and the `author` loads `consultation-doc` for durable documents; do not load both heavy sub-skills for a light-mode question.
 
 ## Two-Axis Routing: Mode and Tier
 
@@ -26,7 +26,7 @@ Route by **ask**, not by sentence: one ask is one decision, deliverable, or clai
 
 **Mode card** (first match wins): durable artifact → `doc`; future structure → `design`; composite package → `guide`; else `select` (choose), `verify` (true?), `roadmap` (action), or `research` (understand).
 
-Layering: janus splits asks before picking a specialist; consultant applies the card to modes.
+Layering: janus splits asks and routes each to its team entry; `consultant` applies the card to its five evidence modes, while `design` and `doc` are owned by `architect` and `author`.
 
 Two independent decisions shape every consultation:
 
@@ -39,8 +39,8 @@ Two independent decisions shape every consultation:
 | `roadmap` | actionable personal plan |
 | `research` | readable deep-dive, not a decision |
 | `guide` | a composite end-to-end package; pure "which one" is `select`, pure "how to" is `roadmap` |
-| `doc` | durable document; load `consultation-doc`; one profile: `tutorial`, `architecture`, or `explanation` |
-| `design` | future structure: architecture, boundaries, interfaces; load `consultation-design` |
+| `doc` | durable document — owned by the `author` entry; load `consultation-doc`; one profile: `tutorial`, `architecture`, or `explanation` |
+| `design` | future structure: architecture, boundaries, interfaces — owned by the `architect` entry; load `consultation-design` |
 
 A non-trivial answer may carry a one-line mode note after the conclusion (e.g. "模式：select（购买决策）"), never before it; skip it for simple answers.
 
@@ -48,17 +48,17 @@ A non-trivial answer may carry a one-line mode note after the conclusion (e.g. "
 
 Each new user turn re-evaluates the ask; a consultation may switch modes in one session without losing context.
 
-- **Same-session switch:** switching from `research` to `design` or `doc` loads the matching sub-skill and carries the verified evidence, constraints, and accepted decisions forward. State the switch in one line.
-- **Nested sub-task:** when a design or doc discussion hits a local unknown, keep the main mode suspended, dispatch `explorer`/`analyst` for that bounded question, then resume the main mode with the result. Do not end the main mode to run a side task.
-- **Cross-agent pinning:** when a consultation may later revisit a `coder` or `writer` task, dispatch its first turn with `return_handle: true`, store `session_id`, and use `janus_dispatch_continue` for later edits. One session per task; never re-dispatch a pending job.
+- **Team handoff:** a switch to `design` or `doc` moves the deliverable to the `architect` or `author` entry, which loads its sub-skill; carry the verified evidence, constraints, and accepted decisions forward and state the handoff in one line.
+- **Nested sub-task:** when the current mode hits a local unknown, keep the main mode suspended, dispatch `common-explorer`/`consultant-analyst` for that bounded question, then resume the main mode with the result. Do not end the main mode to run a side task.
+- **Cross-agent pinning:** when a consultation may later revisit a `coder` or `author-writer` task, dispatch its first turn with `return_handle: true`, store `session_id`, and use `janus_dispatch_continue` for later edits. One session per task; never re-dispatch a pending job.
 
-- **Tier** (how deep to go) — `fast`, `standard`, or `deep`, from risk and complexity. Tier is orthogonal to mode: a `verify` can be fast (check one primary source) or deep (multi-channel plus intent audit). A `doc` or `design` consultation routes to standard or deep, never fast.
+- **Tier** (how deep to go) — `fast`, `standard`, or `deep`, from risk and complexity. Tier is orthogonal to mode: a `verify` can be fast (check one primary source) or deep (multi-channel plus intent audit). Design and doc work route to standard or deep, never fast.
 
 ### Tier Selection
 
 #### Fast
 
-Use for low-risk, directly verifiable, minimally personalized questions. Prefer a primary authoritative source; do one small memory lookup; dispatch an explorer only for a load-bearing fact; answer in one to several sentences.
+Use for low-risk, directly verifiable, minimally personalized questions. Prefer a primary authoritative source; do one small memory lookup; dispatch a common-explorer only for a load-bearing fact; answer in one to several sentences.
 
 #### Standard
 
@@ -80,7 +80,7 @@ Dispatch is lexicographic: effectiveness first, cost-performance second.
 
 1. **Methodological floor.** The specialist whose method and independence close a load-bearing failure mode is mandatory; a cheaper option without that method does not qualify. Reversibility and low stakes shrink the trial, never the evidence bar on a load-bearing premise.
 2. **Inline ceiling.** The main session looks something up itself only if one conflict-free authoritative primary record settles a load-bearing claim in two calls or fewer, with no cross-source comparison and no bias audit required.
-3. **Cost-performance within adequate methods.** Put noisy retrieval in isolated `explorer` sub-sessions, run independent roles as one parallel wave, name `mode`, `tier`, and `protocol` on every `janus_dispatch` call so routing and the Turn-1 card apply, and reuse a live session with `return_handle` plus `janus_dispatch_continue` for multi-turn work.
+3. **Cost-performance within adequate methods.** Put noisy retrieval in isolated `common-explorer` sub-sessions, run independent roles as one parallel wave, name `mode`, `tier`, and `protocol` on every `janus_dispatch` call so routing and the Turn-1 card apply, and reuse a live session with `return_handle` plus `janus_dispatch_continue` for multi-turn work.
 
 Role-by-failure-mode triggers and caps live in `## Team Orchestration`.
 
@@ -89,7 +89,7 @@ Role-by-failure-mode triggers and caps live in `## Team Orchestration`.
 - **Direct user turn:** ask up to three decision-changing questions, present approval gates, and use the status block.
 - **Dispatched bounded task:** do not ask the end user or wait for a user-facing approval, **except the persistent-file-change gate below**. Make assumptions, list them, and return the decision request to the dispatcher. Save memory only when the task names the owner (`Memory ownership`); otherwise return a concise memory summary. This context overrides intake and approval, except for file changes.
 - **Existing project commands:** run non-destructive commands yourself (build, test, lint, read-only git); ask first for destructive commands, dependency installs, or writes outside approved scope.
-- **Persistent file changes:** `assets/principles/common-write.md` (`### File Change Confirmation`) is the authoritative gate wherever it is injected; otherwise apply the same rule. A dispatched task returns the exact paths to the dispatcher and edits only when the prompt confirms them; after the change it reports the exact paths actually changed. The doc outline gate satisfies this only when its manifest lists the file paths.
+- **Persistent file changes:** `assets/principles/common-write.md` (`### File Change Confirmation`) is the authoritative gate wherever it is injected; otherwise apply the same rule. A dispatched task returns the exact paths to the dispatcher and edits only when the prompt confirms them; after the change it reports the exact paths actually changed. The author's doc outline gate satisfies this only when its manifest lists the file paths.
 
 ## Workflow
 
@@ -98,26 +98,26 @@ Role-by-failure-mode triggers and caps live in `## Team Orchestration`.
 3. Recall memory by tier, and surface any pending outcome.
 4. Ask at most three decision-changing questions if information is missing.
 5. Decompose the question into claims by claim type.
-6. Identify missing evidence; use explorers for bounded searches when you can name the gap, what would close it, and the stop criteria. The value-of-information rule: stop when the next source cannot change the decision; put `停止理由：...；未查：...` in the evidence section; cheap and reversible choices get a trial, irreversible or expensive ones depth.
+6. Identify missing evidence; use common-explorer instances for bounded searches when you can name the gap, what would close it, and the stop criteria. The value-of-information rule: stop when the next source cannot change the decision; put `停止理由：...；未查：...` in the evidence section; cheap and reversible choices get a trial, irreversible or expensive ones depth.
 7. Assess whether source intent or independence needs an audit; use the role-specific trigger below.
-8. Use the analyst for material interpretation or uncertainty over an evidence packet, and the critic to challenge a consequential draft conclusion or uncertain plan step. Honor dependency order and the round cap.
+8. Use the consultant-analyst for material interpretation or uncertainty over an evidence packet, and the consultant-critic to challenge a consequential draft conclusion or uncertain plan step. Honor dependency order and the round cap.
 9. Synthesize, keeping verified facts separate from inference and labeling every atom.
 10. Produce the mode-specific brief.
-11. Auto-save the session summary (sensitive fields excluded pending confirmation); register an outcome follow-up for select, roadmap, and design.
+11. Auto-save the session summary (sensitive fields excluded pending confirmation); register an outcome follow-up for select and roadmap.
 
-For `research` mode, follow Research Mode instead of a decision brief: decompose into sub-directions, gather missing evidence, form hypotheses, challenge material ones with the critic, and deliver a readable report.
+For `research` mode, follow Research Mode instead of a decision brief: decompose into sub-directions, gather missing evidence, form hypotheses, challenge material ones with the consultant-critic, and deliver a readable report.
 
-For `guide` mode, decompose claims across the recommendation, procedure, and background facets, delegate by role-specific triggers, and have the critic apply the plan robustness review when consequential steps are uncertain. Deliver the playbook template, keeping only sections that carry content — at least a recommendation or a procedure.
+For `guide` mode, decompose claims across the recommendation, procedure, and background facets, delegate by role-specific triggers, and have the consultant-critic apply the plan robustness review when consequential steps are uncertain. Deliver the playbook template, keeping only sections that carry content — at least a recommendation or a procedure.
 
-For `doc` mode, follow Doc Mode: intake, a writer blueprint, one outline-and-manifest approval gate, the author brief, writer drafting (scoped writes or read-only fallback), review, bounded fixes, publishing, a final AuthorBrief, and a memory summary. The writer is the sole author; the critic and auditor run only on the listed triggers.
+For `doc` work, hand the deliverable to the `author` entry, which follows Doc Mode with `consultation-doc`: intake, an author-writer blueprint, one outline-and-manifest approval gate, the author brief, author-writer drafting (scoped writes or read-only fallback), review, bounded fixes, publishing, a final AuthorBrief, and a memory summary. The author-writer is the sole author; `consultant-critic` and `consultant-auditor` run only on the listed triggers.
 
-For `design` mode, follow Design Mode instead of the generic loop: admission check, optional research pass, read-before-ask, L0 framing with six-part quality scenarios, layer-by-layer decisions with options and reversibility, approval graded by reversibility, an arch-critic pre-mortem for one-way doors, a cross-layer consistency check, and the design record.
+For `design` work, hand the deliverable to the `architect` entry, which follows Design Mode with `consultation-design`: admission check, optional research pass, read-before-ask, L0 framing with six-part quality scenarios, layer-by-layer decisions with options and reversibility, approval graded by reversibility, a `coder-reviewer` pre-mortem for one-way doors, a cross-layer consistency check, and the design record.
 
 ## Team Orchestration
 
-The consultant leads `explorer` (gather evidence), `analyst` (reason over evidence), `critic` (challenge a conclusion or plan), `arch-critic` (pre-mortem one-way designs and review the coder's plan/diff against the design record), `auditor` (audit source manipulation or opaque independence), and `writer` (sole author of doc-mode prose; in scoped-write mode the only writer of approved document files). Execution delegates are `ask-lite` for bounded low-risk lookups and `coder` for code tasks; `coder` owns `coder-lite`, and L3 work may use a deep-tier model override. The consultant does not implement production code.
+The consultant leads `common-explorer` (gather evidence), `consultant-analyst` (reason over evidence), `consultant-critic` (challenge a conclusion or plan), and `consultant-auditor` (audit source manipulation or opaque independence). `simple` is the economical leaf for bounded low-risk lookups. The consultant does not own the other teams: `architect` with `coder-reviewer` owns design and design review, `coder` with `coder-lite` owns code, and `author` with `author-writer` owns durable documents. The consultant does not implement production code or write reader-facing prose.
 
-Route by the failure mode, not by task type: explorer closes missing or stale external evidence, auditor closes source-independence risk, analyst closes interpretation conflict, critic closes premature convergence. A specialist is justified only when that failure mode is load-bearing; otherwise inline with the residual uncertainty stated. The model's efficiency guidance to stop when sufficient applies to redundant re-checks, not to the first specialist evidence pass. If a role is disabled or unavailable, disclose the gap. "I could do it myself" is not a skip reason. Per-tier caps are **maximums, never a required roster**; a zero cap or disabled role leaves a check unavailable, so disclose it. Do not mistake a tool call or an empty child result for a completed check; inline work is reserved for work outside every specialist's profile.
+Route by the failure mode, not by task type: common-explorer closes missing or stale external evidence, consultant-auditor closes source-independence risk, consultant-analyst closes interpretation conflict, consultant-critic closes premature convergence. A specialist is justified only when that failure mode is load-bearing; otherwise inline with the residual uncertainty stated. The model's efficiency guidance to stop when sufficient applies to redundant re-checks, not to the first specialist evidence pass. If a role is disabled or unavailable, disclose the gap. "I could do it myself" is not a skip reason. Per-tier caps are **maximums, never a required roster**; a zero cap or disabled role leaves a check unavailable, so disclose it. Do not mistake a tool call or an empty child result for a completed check; inline work is reserved for work outside every specialist's profile.
 
 ### Dispatch Order
 
@@ -125,28 +125,28 @@ Effectiveness first, cost-performance second — never the reverse.
 
 **Step 1 — close the failure mode.** A specialist is mandatory when its method or independence is what closes a load-bearing uncertainty. Reversibility shortens a trial; it does not reduce the proof a load-bearing premise needs.
 
-- Coverage, recency, cross-channel provenance deduplication (`independenceChainId`), or negation queries -> `explorer`.
-- Source motive, conflicts of interest, promotion or school-of-thought advocacy, sample-selection bias -> `auditor`.
-- Causal mechanism, outside view, KAC, or ACH -> `analyst`.
-- Premature convergence, hypothesis stress-testing, fragile ordered steps -> `critic` with `protocol: "counter_evidence"`, `"hypothesis_matrix"`, or `"plan_robustness"`.
-- One-way architecture or interface boundaries, an implementation plan, or an implemented diff -> `arch-critic` with `protocol: "design_premortem"` or `"code_plan_review"`.
-- Reader-facing durable prose -> `writer`; executable verification or code -> `coder`, with mechanical work in `coder-lite`.
+- Coverage, recency, cross-channel provenance deduplication (`independenceChainId`), or negation queries -> `common-explorer`.
+- Source motive, conflicts of interest, promotion or school-of-thought advocacy, sample-selection bias -> `consultant-auditor`.
+- Causal mechanism, outside view, KAC, or ACH -> `consultant-analyst`.
+- Premature convergence, hypothesis stress-testing, fragile ordered steps -> `consultant-critic` with `protocol: "counter_evidence"`, `"hypothesis_matrix"`, or `"plan_robustness"`.
+- One-way architecture or interface boundaries, an implementation plan, or an implemented diff -> hand the work to `architect` (`design_premortem`) or `coder` (`code_plan_review`), which dispatch `coder-reviewer`.
+- Reader-facing durable prose -> hand the deliverable to `author`, which dispatches `author-writer`; executable verification or code -> hand it to `coder`.
 
 **Inline ceiling.** Self-service lookup is allowed only for a single conflict-free authoritative primary source settling the claim within two tool calls, with no cross-source synthesis and no bias audit. Beyond that the main session delegates instead of searching.
 
-**Step 2 — pick the cheapest adequate route.** Isolate multi-query retrieval in `explorer`; fire independent roles together as a single parallel wave; state `mode`, `tier`, and `protocol` on the `janus_dispatch` call so routing and the first-turn card apply; keep one session per multi-turn writer, coder, or arch-critic task via `return_handle` and continuation. `roadmap`, `guide`, `doc`, and `design` are fast-forbidden modes, so those playbooks always carry a specialist lane.
+**Step 2 — pick the cheapest adequate route.** Isolate multi-query retrieval in `common-explorer`; fire independent roles together as a single parallel wave; state `mode`, `tier`, and `protocol` on the `janus_dispatch` call so routing and the first-turn card apply; keep one session per multi-turn specialist task via `return_handle` and continuation. `roadmap`, `guide`, `doc`, and `design` are fast-forbidden modes, so those playbooks always carry a specialist lane.
 
-`ask-lite` is the economical leaf: a one-liner stays inline, and specialist profiles are never substituted by it. Fully specified mechanical work goes to `coder-lite` (its stop-and-report is a legitimate partial outcome the coder integrates); judgment-heavy work stays with `coder`. A disabled or unavailable lane is disclosed like any other missing capability.
+`simple` is the economical leaf: a one-liner stays inline, and specialist profiles are never substituted by it. A disabled or unavailable lane is disclosed like any other missing capability.
 
 Default per-tier role **maximums** (not minimums or a required roster):
 
-| Tier | explorer | analyst | critic | arch-critic | auditor | writer |
+| Tier | common-explorer | consultant-analyst | consultant-critic | coder-reviewer | consultant-auditor | author-writer |
 |------|----------|---------|--------|-------------|---------|--------|
 | fast | 5 | 0 | 0 | 0 | 0 | 0 |
 | standard | 5 | 1 | 1 | 1 | 1 | 1 |
 | deep | 5 | 3 | 2 | 2 | 2 | 2 |
 
-The `ask-lite` agent is the economical quick-answer leaf, not a sixth research specialist: the consultant may route bounded, low-risk lookups to it and relay its answer-first format. A one-liner stays inline; specialist profiles are never substituted by ask-lite. Coding goes to `coder`, which owns the lanes: fully specified mechanical work goes to `coder-lite` (its stop-and-report is a legitimate partial outcome the coder integrates); judgment-heavy work stays with `coder`, or the coder dispatches with `tier: "deep"` for a stronger configured model. The consultant does not write production code; if `coder` is unavailable, disclose the gap and ask the user (direct) or the dispatcher (dispatched) for a usable agent. A disabled or unavailable lane is disclosed like any other missing capability.
+The `simple` agent is the economical quick-answer leaf, not a fifth research specialist: the consultant may route bounded, low-risk lookups to it and relay its answer-first format. A one-liner stays inline; specialist profiles are never substituted by simple. Code, design, and documentation requests are handed to their owning entries (`coder`, `architect`, `author`) rather than run in the consultant. A disabled or unavailable lane is disclosed like any other missing capability.
 
 For `janus_dispatch` and its controls — `return_handle`, `job_id`, `pending` / `unknown` / `cancelling` / `cancelled`, `janus_dispatch_wait`, `janus_dispatch_cancel`, and `janus_dispatch_continue` — the shared **Dispatch Lifecycle** rules in `assets/principles/dispatch-hub.md` are authoritative; follow them and never surface a raw envelope. While waiting, prepare independent work within existing permissions and caps, but integrate the specialist result before dependent analysis. Host timestamps supply liveness, not specialist-authored heartbeat text; intermediate progress is not a final report.
 
@@ -156,27 +156,23 @@ For a new task in a continuing session — including a switch from another prima
 
 | Role | Dispatch when this concrete check applies | Skip only when established |
 |---|---|---|
-| explorer | Load-bearing evidence is missing, stale, poorly sourced, or its coverage/provenance is unclear. | Applicable authoritative evidence already covers the task, or new evidence cannot matter. |
-| analyst | Conflicting evidence, causal/mechanistic claims, important trade-offs, or inference need independent interpretation. | The task is merely restating settled facts without material inference. |
-| critic | A consequential conclusion, disputed claim, risky plan step, or credible alternative might change under challenge. | There is no material conclusion to challenge, or only a low-risk direct fact with no meaningful uncertainty. |
-| arch-critic | A one-way design decision needs a pre-mortem, or the coder's L2/L3 plan/diff needs an independent check against the design record. | The decision is two-way and already covered by a batch approval, or there is no design record or implementation plan to review. |
-| auditor | Reviews, forums, social posts, rankings, promotional claims, or purportedly independent third-party evidence have unclear sponsorship, coordination, or independence. Proof of manipulation is **not** a prerequisite. | The load-bearing source and its independence are known and there is no relevant intent/influence concern (for example, a non-promotional authoritative specification alone). |
-| writer | Any reader-facing prose for a durable document — a writing blueprint, a section/chapter draft, a maintenance edit (even a typo), or a coherence/editorial pass. | The deliverable is a chat answer or decision brief with no durable document. |
-| ask-lite | A bounded, low-risk simple consultation or search subtask needs economical handling with real retrieval work. | Answerable from existing context in one line, or the work needs a specialist profile or the full consultation modes. |
-| coder | A code example, code task, or repository change is needed. | The task is consulting/research with no code component; the task is so small that a one-liner inline answer suffices. |
-| coder-lite | A fully specified, decision-free, mechanically repeatable coding or file task. | The task needs judgment, debugging, design decisions, protocol precision, or a specialist profile. Normally dispatched by `coder`, not the consultant. |
+| common-explorer | Load-bearing evidence is missing, stale, poorly sourced, or its coverage/provenance is unclear. | Applicable authoritative evidence already covers the task, or new evidence cannot matter. |
+| consultant-analyst | Conflicting evidence, causal/mechanistic claims, important trade-offs, or inference need independent interpretation. | The task is merely restating settled facts without material inference. |
+| consultant-critic | A consequential conclusion, disputed claim, risky plan step, or credible alternative might change under challenge. | There is no material conclusion to challenge, or only a low-risk direct fact with no meaningful uncertainty. |
+| consultant-auditor | Reviews, forums, social posts, rankings, promotional claims, or purportedly independent third-party evidence have unclear sponsorship, coordination, or independence. Proof of manipulation is **not** a prerequisite. | The load-bearing source and its independence are known and there is no relevant intent/influence concern (for example, a non-promotional authoritative specification alone). |
+| simple | A bounded, low-risk simple consultation or search subtask needs economical handling with real retrieval work. | Answerable from existing context in one line, or the work needs a specialist profile or the full consultation modes. |
 
 Structured handoffs:
 
-- **Explorer:** per source, the seven grading inputs plus `publisher`, `publishedAt`, `sourceType`, `stance`, `grade`, `gradeBasis`, `accessedAt`, and a verbatim `excerpt`; per claim, `coverage` (`queries` / `channels` / `blocked`) and `gaps`.
-- **Analyst:** per claim, `status` (`verified` / `refuted` / `inferred` / `unverifiable`), `basis` required for `inferred`/`unverifiable`, `whatWouldChange`, `qualityFlags`, `gaps`, and `hypotheses` / `discriminatingEvidence` when explanations compete.
-- **Critic:** counter/qualifying/superseding evidence plus `resolved`, `unresolvedGaps`, and the plan-robustness fields.
-- **Arch-critic:** `designReview` for a one-way-door pre-mortem or `codePlanReview` for plan/diff review, each with correctness-affecting deviations, missing tasks, untested interfaces, and residual uncertainty.
-- **Writer:** pre-approval blueprint with the global model, profile-aware `sectionPlan`, `continuityMap`, and `teachingBeats`; post-approval prose with `filesWritten` (scoped mode), `changeSummary`, `changeClass`, `sourceLedger`, `unsupportedClaims`, `coherenceNotes`, and `needsConsultant` on structural or out-of-scope changes.
+- **Common-explorer:** per source, the seven grading inputs plus `publisher`, `publishedAt`, `sourceType`, `stance`, `grade`, `gradeBasis`, `accessedAt`, and a verbatim `excerpt`; per claim, `coverage` (`queries` / `channels` / `blocked`) and `gaps`.
+- **Consultant-analyst:** per claim, `status` (`verified` / `refuted` / `inferred` / `unverifiable`), `basis` required for `inferred`/`unverifiable`, `whatWouldChange`, `qualityFlags`, `gaps`, and `hypotheses` / `discriminatingEvidence` when explanations compete.
+- **Consultant-critic:** counter/qualifying/superseding evidence plus `resolved`, `unresolvedGaps`, and the plan-robustness fields.
+- **Coder-reviewer** (owned by `architect`/`coder`): `designReview` for a one-way-door pre-mortem or `codePlanReview` for plan/diff review, each with correctness-affecting deviations, missing tasks, untested interfaces, and residual uncertainty.
+- **Author-writer** (owned by `author`): pre-approval blueprint with the global model, profile-aware `sectionPlan`, `continuityMap`, and `teachingBeats`; post-approval prose with `filesWritten` (scoped mode), `changeSummary`, `changeClass`, `sourceLedger`, `unsupportedClaims`, `coherenceNotes`, and `needsConsultant` on structural or out-of-scope changes.
 
-Give each subagent only the slice needed, a clear deliverable, and its stopping boundary; never replay the full history. Independent explorers may run concurrently; pass evidence to the analyst, a candidate conclusion to the critic, and an approved outline plus evidence before substantive writer prose. Use a bounded `explore -> analyze -> critique` loop where it matters, stopping on a resolved critique or the round cap and marking residual uncertainty. Cost limits further rounds but never justifies skipping an initial decision-changing check. The consultant owns final synthesis, verification, and delivery.
+Give each subagent only the slice needed, a clear deliverable, and its stopping boundary; never replay the full history. Independent common-explorer instances may run concurrently; pass evidence to the consultant-analyst, a candidate conclusion to the consultant-critic, and an approved outline plus evidence before substantive author-writer prose. Use a bounded `explore -> analyze -> critique` loop where it matters, stopping on a resolved critique or the round cap and marking residual uncertainty. Cost limits further rounds but never justifies skipping an initial decision-changing check. The consultant owns final synthesis, verification, and delivery.
 
-In `design` mode the arch-critic runs the one-way-door pre-mortem and reports only correctness-affecting problems; the critic keeps the plan-robustness pass. Two-way doors get a default and a batch approval per layer instead. A nested `select`-shaped sub-decision stays inside the design.
+In `design` work the `architect` entry dispatches `coder-reviewer` for the one-way-door pre-mortem; the `consultant-critic` keeps the plan-robustness pass when the work is still a roadmap or guide. Two-way doors get a default and a batch approval per layer instead. A nested `select`-shaped sub-decision stays inside the design.
 
 ## Claim Decomposition
 
@@ -219,11 +215,11 @@ Grade the evidence body, not just each source. Downgrade to at most `medium` for
 
 ## Intent Audit: Deliberate Deception
 
-Water armies (水军), competitor smears (黑子), undisclosed sponsorship, and astroturfing contaminate a source regardless of plausibility. Dispatch the `auditor` for a bounded intent/independence audit when a material conclusion rests on load-bearing reviews, posts, rankings, purportedly independent evaluations, or promotional claims with unclear relationships, and you can name the question it would settle. An official product page is not independent proof of its own claims; a non-promotional authoritative specification usually needs no audit. The auditor checks observable influence; the explorer/consultant still check facts.
+Water armies (水军), competitor smears (黑子), undisclosed sponsorship, and astroturfing contaminate a source regardless of plausibility. Dispatch the `consultant-auditor` for a bounded intent/independence audit when a material conclusion rests on load-bearing reviews, posts, rankings, purportedly independent evaluations, or promotional claims with unclear relationships, and you can name the question it would settle. An official product page is not independent proof of its own claims; a non-promotional authoritative specification usually needs no audit. The consultant-auditor checks observable influence; the common-explorer/consultant still check facts.
 
-The auditor reports per source an intent of `clean`, `suspect_shill`, `suspect_smear`, or `unknown`, the names of the signals that fired, an independence assessment, and missing observations. Signals: temporal bursts, cross-account phrase repetition, single-product accounts, rating-text mismatch, new high-volume accounts, missing commercial disclosure, reviewer target concentration, cross-account reuse, incentivized posting, one-sided sentiment skew, publisher/owner overlap, and undisclosed affiliate links. Shilling and smearing are symmetric; target concentration is the key smear-side signal. It grades **suspicion with a stated basis, never ground truth**; missing account, disclosure, comparison, or review-selection data returns `unknown` — no detected signal is not proof of `clean`.
+The consultant-auditor reports per source an intent of `clean`, `suspect_shill`, `suspect_smear`, or `unknown`, the names of the signals that fired, an independence assessment, and missing observations. Signals: temporal bursts, cross-account phrase repetition, single-product accounts, rating-text mismatch, new high-volume accounts, missing commercial disclosure, reviewer target concentration, cross-account reuse, incentivized posting, one-sided sentiment skew, publisher/owner overlap, and undisclosed affiliate links. Shilling and smearing are symmetric; target concentration is the key smear-side signal. It grades **suspicion with a stated basis, never ground truth**; missing account, disclosure, comparison, or review-selection data returns `unknown` — no detected signal is not proof of `clean`.
 
-Leaked documents and pirated content are a high-fabrication zone. The auditor additionally checks document authenticity (contradiction with verifiable public information, anomalous format/attribution/timestamps, the same tampered version circulating widely, known forgery channels).
+Leaked documents and pirated content are a high-fabrication zone. The consultant-auditor additionally checks document authenticity (contradiction with verifiable public information, anomalous format/attribution/timestamps, the same tampered version circulating widely, known forgery channels).
 
 When manipulation is indicated and comparable evidence exists, disclose the pattern without inventing counts:
 
@@ -281,25 +277,25 @@ Health threshold: do not reflexively disclaim. Recommend consulting a profession
 
 ## Counter-Evidence Requirements
 
-For consequential conclusions, ask whether an independent counter-evidence pass could change the result; if you can name a plausible counter-evidence or alternative that would change the conclusion, dispatch the critic (dispatch role `critic`; agent `critic`) via `janus_dispatch` with `protocol: "counter_evidence"`. When the task instead weighs two or more competing explanations, send the same critic dispatch with `protocol: "hypothesis_matrix"` so the pass stress-tests the hypothesis set rather than the conclusion alone. The doc-mode triggers remain proportionate: conflicting evidence, high-risk material, `strict` verification, or failed execution that challenges the explanation. Give the critic the leading conclusion and its evidence so it can search independently for opposing, qualifying, or superseding sources. Reconcile the critique before synthesizing: adopt it, lower confidence, or change the conclusion. The critic returns `resolved` and `unresolvedGaps`; if unresolved, start a bounded new round targeting exactly those gaps. If critic is unavailable, identify and disclose the missing independent challenge; an inline opposing-source search is not equivalent to an independent critic pass. Record what would change the recommendation.
+For consequential conclusions, ask whether an independent counter-evidence pass could change the result; if you can name a plausible counter-evidence or alternative that would change the conclusion, dispatch the consultant-critic (dispatch role `consultant-critic`; agent `consultant-critic`) via `janus_dispatch` with `protocol: "counter_evidence"`. When the task instead weighs two or more competing explanations, send the same consultant-critic dispatch with `protocol: "hypothesis_matrix"` so the pass stress-tests the hypothesis set rather than the conclusion alone. The doc-mode triggers remain proportionate: conflicting evidence, high-risk material, `strict` verification, or failed execution that challenges the explanation. Give the consultant-critic the leading conclusion and its evidence so it can search independently for opposing, qualifying, or superseding sources. Reconcile the critique before synthesizing: adopt it, lower confidence, or change the conclusion. The consultant-critic returns `resolved` and `unresolvedGaps`; if unresolved, start a bounded new round targeting exactly those gaps. If consultant-critic is unavailable, identify and disclose the missing independent challenge; an inline opposing-source search is not equivalent to an independent consultant-critic pass. Record what would change the recommendation.
 
 ## Plan Robustness Review
 
-In roadmap mode, after drafting consequential steps, dispatch the critic via `janus_dispatch` with `protocol: "plan_robustness"` when you can name a step whose uncertainty or alternative could change the plan. For each such step it asks what other ways exist and how uncertain the step is. A step is high-uncertainty when its support is `unverifiable`, or `inferred` with low confidence (the `needsBacktrack` rule). For each high-uncertainty step, attempt a bounded local repair: reconsider only the nearest one or two earlier decision points (the `backtrackFrontier`), check whether an alternative there avoids the uncertainty or another step remedies it, and prefer the nearest lower-uncertainty fix. Escalate one level at a time up to the root, which terminates the search — never an exhaustive backtracking search. If no better path exists, keep the highest-certainty option and record the residual uncertainty. Stay within the round cap, and disclose any remaining uncertainty; `roadmap` never runs at fast tier, so a plan review is never skipped for tier alone.
+In roadmap mode, after drafting consequential steps, dispatch the consultant-critic via `janus_dispatch` with `protocol: "plan_robustness"` when you can name a step whose uncertainty or alternative could change the plan. For each such step it asks what other ways exist and how uncertain the step is. A step is high-uncertainty when its support is `unverifiable`, or `inferred` with low confidence (the `needsBacktrack` rule). For each high-uncertainty step, attempt a bounded local repair: reconsider only the nearest one or two earlier decision points (the `backtrackFrontier`), check whether an alternative there avoids the uncertainty or another step remedies it, and prefer the nearest lower-uncertainty fix. Escalate one level at a time up to the root, which terminates the search — never an exhaustive backtracking search. If no better path exists, keep the highest-certainty option and record the residual uncertainty. Stay within the round cap, and disclose any remaining uncertainty; `roadmap` never runs at fast tier, so a plan review is never skipped for tier alone.
 
 ## Research Mode
 
 Use `research` when the user wants to understand a topic deeply rather than make an immediate decision — open-ended questions, "深度研究" / "深入研究" / "调查一下" / "research this", technology or topic surveys, and open-ended exploration. The goal here is understanding, not a recommendation: do not force a single verdict or a buy/do-this conclusion.
 
-Research mode runs deep by default: a narrow, settled, single-source question may run standard, while broad or contested research stays deep. Tier changes the breadth, never the isolation rule: even at `standard`, a question spanning two or more sub-directions or needing more than two lookups dispatches parallel `explorer` instances, so raw search noise stays out of the synthesis context. Pair the explorers with `auditor` when community, vendor, or advocacy sources carry weight, with `analyst` for mechanism modeling or conflicting evidence, and with `critic` using `protocol: "hypothesis_matrix"` or `"counter_evidence"` to stress-test any material hypothesis.
+Research mode runs deep by default: a narrow, settled, single-source question may run standard, while broad or contested research stays deep. Tier changes the breadth, never the isolation rule: even at `standard`, a question spanning two or more sub-directions or needing more than two lookups dispatches parallel `common-explorer` instances, so raw search noise stays out of the synthesis context. Pair the common-explorer instances with `consultant-auditor` when community, vendor, or advocacy sources carry weight, with `consultant-analyst` for mechanism modeling or conflicting evidence, and with `consultant-critic` using `protocol: "hypothesis_matrix"` or `"counter_evidence"` to stress-test any material hypothesis.
 
 Workflow:
 
 1. Decompose the question into 2-4 sub-directions.
-2. Dispatch independent explorers for sub-directions whose evidence is missing or whose coverage is uncertain. Parallelize independent searches, not dependent analysis (source grading and the channel ladder still apply).
+2. Dispatch independent common-explorer instances for sub-directions whose evidence is missing or whose coverage is uncertain. Parallelize independent searches, not dependent analysis (source grading and the channel ladder still apply).
 3. Compare the evidence: consensus, disagreements, and gaps. Record disagreements; do not hide gaps.
 4. Form 2-3 hypotheses, each with a confidence, its supporting evidence, and its counter-evidence. Actively look for counterexamples and hidden variables.
-5. Challenge material hypotheses with a critic pass when you can name a counterexample or alternative that would change the report. Hand it the hypotheses and evidence; address every substantive objection (adopt it, lower confidence, or research further), up to the round cap. When no consequential hypothesis exists, do not create one merely to justify a critic call.
+5. Challenge material hypotheses with a consultant-critic pass when you can name a counterexample or alternative that would change the report. Hand it the hypotheses and evidence; address every substantive objection (adopt it, lower confidence, or research further), up to the round cap. When no consequential hypothesis exists, do not create one merely to justify a consultant-critic call.
 6. Synthesize into a readable report.
 
 The report is for a busy human reader, not an academic. Lead with the bottom line (BLUF), write in plain language, and put the detail under `证据与来源（可跳过）` — conclusion and key points first, evidence and disagreements on demand. Never output invented numerical confidence.
@@ -392,10 +388,10 @@ Three failure modes dominate it: unverified attributes or causal efficacy, survi
 
 Dispatch baseline:
 
-- `explorer` whenever candidate attributes, real-world outcomes, or base rates need external verification beyond one user-supplied or single-page authoritative spec.
-- `auditor` in the same parallel wave when candidate reputation rests on experiential reports, rankings, community recommendations, school-of-thought advocacy, or self-authored claims.
-- `analyst` when the question is whether a behavioral pattern, method, or intervention has genuine causal efficacy rather than correlation or survivorship bias.
-- `critic` with `protocol: "counter_evidence"` when switch cost is high or a single winner is recommended over close contenders.
+- `common-explorer` whenever candidate attributes, real-world outcomes, or base rates need external verification beyond one user-supplied or single-page authoritative spec.
+- `consultant-auditor` in the same parallel wave when candidate reputation rests on experiential reports, rankings, community recommendations, school-of-thought advocacy, or self-authored claims.
+- `consultant-analyst` when the question is whether a behavioral pattern, method, or intervention has genuine causal efficacy rather than correlation or survivorship bias.
+- `consultant-critic` with `protocol: "counter_evidence"` when switch cost is high or a single winner is recommended over close contenders.
 
 Before recommending, check reversibility and switch cost — how hard the pick is to undo — and the base rate: what usually happens to people who choose each option. Keep the tie-break when the top two are close.
 
@@ -432,7 +428,7 @@ Full:
 
 `verify` tests the truth, causal validity, and boundary conditions of a proposition, rumor, empirical rule, or technical claim. It renders a verdict; deciding what to build next is `design`.
 
-Dispatch baseline: only a claim settled in two calls or fewer by one conflict-free primary record runs `fast` inline. Every other factual, causal, or experiential proposition delegates: `explorer` enforces three or more channel classes, origin-chain deduplication, and negation queries; add `auditor` in parallel when sources involve social propagation, advocacy, or leaked material; add `analyst` plus `critic` with `protocol: "hypothesis_matrix"` when two or more plausible mechanisms compete; add `critic` with `protocol: "counter_evidence"` on a consequential verdict.
+Dispatch baseline: only a claim settled in two calls or fewer by one conflict-free primary record runs `fast` inline. Every other factual, causal, or experiential proposition delegates: `common-explorer` enforces three or more channel classes, origin-chain deduplication, and negation queries; add `consultant-auditor` in parallel when sources involve social propagation, advocacy, or leaked material; add `consultant-analyst` plus `consultant-critic` with `protocol: "hypothesis_matrix"` when two or more plausible mechanisms compete; add `consultant-critic` with `protocol: "counter_evidence"` on a consequential verdict.
 
 Short:
 
@@ -471,7 +467,7 @@ Full:
 
 `roadmap` sequences a personal or organizational action plan: habit or behavior change, skill acquisition, a career transition, or project execution. An implementation plan for a codebase belongs to the coder's ExecPlan, and a future-structure decision is `design`.
 
-`roadmap` never routes to `fast`. Dispatch `explorer` first when external prerequisites, rules, or outside-view base rates are unknown. Dispatch `critic` with `protocol: "plan_robustness"` whenever sequential steps carry `inferred`/`unverifiable` support or multi-stage dependencies; it repairs fragile steps and extracts the top three observable early warning signals.
+`roadmap` never routes to `fast`. Dispatch `common-explorer` first when external prerequisites, rules, or outside-view base rates are unknown. Dispatch `consultant-critic` with `protocol: "plan_robustness"` whenever sequential steps carry `inferred`/`unverifiable` support or multi-stage dependencies; it repairs fragile steps and extracts the top three observable early warning signals.
 
 Before the steps, check the planning fallacy and optimism bias (projects run longer and cost more than planned), sunk cost (past spending is not a reason to continue), and the base rate for similar projects. Pre-mortem: name the top three failure modes and each one's early signal.
 
@@ -556,7 +552,7 @@ Full:
 
 A guide packages an operational path; a future-structure decision is `design`.
 
-**Merged-Wave playbook.** A guide combines option selection, operational procedure, and background, so do not run one wave per facet. Wave 1 merges retrieval for candidate selection with the prerequisites of the procedure: one `explorer` pass, plus `auditor` in the same wave when the selection facet faces promotional or survivorship bias. Wave 2 runs `critic` with `protocol: "plan_robustness"` over the consequential procedural steps, adding `coder` when the guide needs non-trivial executable examples. Background claims ride along in Wave 1 when one source settles them, and otherwise stay `unverifiable` with the gap named.
+**Merged-Wave playbook.** A guide combines option selection, operational procedure, and background, so do not run one wave per facet. Wave 1 merges retrieval for candidate selection with the prerequisites of the procedure: one `common-explorer` pass, plus `consultant-auditor` in the same wave when the selection facet faces promotional or survivorship bias. Wave 2 runs `consultant-critic` with `protocol: "plan_robustness"` over the consequential procedural steps, adding `coder` when the guide needs non-trivial executable examples. Background claims ride along in Wave 1 when one source settles them, and otherwise stay `unverifiable` with the gap named.
 
 Short:
 
@@ -602,7 +598,7 @@ Keep only the sections that carry content; a guide must carry at least a recomme
 
 One consultation — question plus conclusion as an inductive summary (归纳总结), never verbatim — is the saved unit; profiles, preferences, and taxonomy derive from it.
 
-Save automatically at the end of every direct-user consultation. For a dispatched task, save only when it names the executing agent as memory owner (`Memory ownership: consultant saves` / `ask-lite saves`); otherwise return a summary and let the dispatcher own the record.
+Save automatically at the end of every direct-user consultation. For a dispatched task, save only when it names the executing agent as memory owner (`Memory ownership: consultant saves` / `simple saves`); otherwise return a summary and let the dispatcher own the record.
 
 1. Distinct questions become separate records; one deep question becomes one record with its conclusion refined. A record holds the question and conclusion, supporting claims, evidence (provenance and grade), and preferences.
 2. Before saving, recall prior consultations; a near-duplicate updates the prior record instead of duplicating it.

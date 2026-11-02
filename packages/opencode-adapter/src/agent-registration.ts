@@ -17,7 +17,7 @@ interface MutableConfig {
   agent?: Record<string, unknown>
 }
 
-interface ConsultantAgentEntry {
+interface PrimaryAgentEntry {
   mode: "primary"
   prompt: string
   model: string
@@ -54,35 +54,41 @@ const CHANNEL_POLICY_ASSET = "principles/channel-policy.md"
 
 const ENGINEERING_PRINCIPLES_ASSET = "principles/engineering-principles.md"
 
-const EXPLORER_DESCRIPTION =
-  "Search and information-gathering specialist. Gathers graded sources for specific claims and returns a structured report. Dispatched by the consultant and may fan out to multiple instances."
+const COMMON_EXPLORER_DESCRIPTION =
+  "Shared research floor for all three teams: searches external documentation and open-source practice and surveys the local codebase for bounded questions. Dispatched by consultant, architect, coder, and author; read-only and a leaf that never dispatches."
 
-const ANALYST_DESCRIPTION =
-  "Independent analysis pass. Reasons over gathered evidence when interpretation, conflicting sources, or important trade-offs could change the conclusion; returns a structured analysis. Model diversity is a runtime property reported in bindings, not a role guarantee."
+const CONSULTANT_ANALYST_DESCRIPTION =
+  "Consultation team analyst. Reasons over gathered evidence when interpretation, conflicting sources, or important trade-offs could change the conclusion; returns a structured analysis. Model diversity is a runtime property reported in bindings, not a role guarantee."
 
-const CRITIC_DESCRIPTION =
-  "Adversarial counter-evidence and plan-robustness reviewer. Independently searches for opposing, qualifying, and superseding sources when a consequential conclusion or uncertain plan step needs challenge; runs the counter_evidence, hypothesis_matrix, and plan_robustness protocol cards and reports only correctness-affecting problems."
+const CONSULTANT_CRITIC_DESCRIPTION =
+  "Consultation team challenger. Independently searches for opposing, qualifying, and superseding sources when a consequential conclusion or uncertain plan step needs challenge; runs the counter_evidence, hypothesis_matrix, and plan_robustness protocol cards and reports only correctness-affecting problems."
 
-const AUDITOR_DESCRIPTION =
-  "Source intent and influence specialist. Audits user reviews, promotional claims, and purportedly independent third-party material when sponsorship, coordination, or provenance is relevant or uncertain; reports observable signals and missing evidence rather than assuming clean."
+const CONSULTANT_AUDITOR_DESCRIPTION =
+  "Consultation team source-intent specialist. Audits user reviews, promotional claims, and purportedly independent third-party material when sponsorship, coordination, or provenance is relevant or uncertain; reports observable signals and missing evidence rather than assuming clean."
 
-const ARCH_CRITIC_DESCRIPTION =
-  "Architecture and engineering reviewer. Independently pre-mortems one-way design decisions and reviews the coder's L2/L3 plan.md, then the implemented git diff, against the accepted design record; applies the shared software-engineering principles and reports only correctness-affecting problems."
+const CODER_REVIEWER_DESCRIPTION =
+  "R&D team reviewer with two duties: pre-mortems one-way design decisions for the architect (design_premortem) and independently reviews the coder's plan.md and implemented git diff (code_plan_review) against the accepted design record; reports only correctness-affecting problems."
 
-const WRITER_DESCRIPTION =
-  "Scoped-write author executor for `doc` consultations and the sole author of reader-facing prose. Produces the pre-approval writing blueprint, drafts and maintains approved document files under the configured writer roots, and runs coherence and editorial passes; targeted web lookups with a source ledger only — no shell, no dispatch, no memory."
+const AUTHOR_WRITER_DESCRIPTION =
+  "Documentation team's scoped-write author executor and the sole author of reader-facing prose. Produces the pre-approval writing blueprint, drafts and maintains approved document files under the configured writer roots, and runs coherence and editorial passes; targeted web lookups with a source ledger only — no shell, no dispatch, no memory."
 
-const ASK_LITE_DESCRIPTION =
-  "Economical quick-answer entry (DeepSeek V4.1-Flash by default) for low-risk facts, concepts, and simple how-to. A leaf: never dispatches; escalates multi-source/contested questions to the consultant, coding to the coder, and general questions to janus."
+const SIMPLE_DESCRIPTION =
+  "Economical quick-answer entry (DeepSeek V4.1-Flash by default) for low-risk facts, concepts, and simple how-to. A leaf: never dispatches; escalates multi-source/contested questions to the consultant, architecture questions to the architect, coding to the coder, documents to the author, and general questions to janus."
 
 const CODER_DESCRIPTION =
-  "Coding entry point and execution specialist. Owns coding, debugging, refactoring, tests, and repository work; selects a direct, brief-plan, design-gate, or quality-gate process by task weight; dispatches coder-lite for mechanical work and can take a deep-tier model override for L3 work."
+  "R&D team's coding and maintenance entry, starting from a bug, feature, or refactor (or taking over an accepted design.md). Owns coding, debugging, refactoring, tests, and repository work; selects a direct, brief-plan, design-gate, or quality-gate process by task weight; dispatches coder-lite for mechanical work, coder-reviewer for plan/diff review, and can take a deep-tier model override for L3 work. Escalates to architect when research or a cross-module architecture change is needed."
 
 const CODER_LITE_DESCRIPTION =
   "Cheap mechanical coding executor (GLM-5.3-Flash by default) for fully specified, decision-free, mechanically repeatable coding tasks: batch renames/moves, copy-adapt from existing in-repo patterns, formatting and lint fixes, boilerplate from explicit templates, simple tests following existing patterns, spec-complete CRUD glue. Stops and reports up on anything ambiguous, judgment-heavy, debugging, protocol-precision, cross-module, or security-sensitive — never attempts them."
 
+const ARCHITECT_DESCRIPTION =
+  "R&D team's solution and architecture entry, starting from a one-sentence requirement: runs brainstorming ⇄ convergence ⇄ system/module design with the user, dispatches common-explorer for research, and sends one-way decisions to coder-reviewer for a design pre-mortem. The only role that writes design.md."
+
+const AUTHOR_DESCRIPTION =
+  "Documentation team's editor-in-chief entry: owns doc-mode profiles (tutorial / architecture / explanation), the outline approval gate, the author brief, verification of load-bearing claims, and publishing. Dispatches author-writer for prose and coder for executable verification; reviews the writer's diff and reuses writer sessions."
+
 const JANUS_DESCRIPTION =
-  "Daily-driver primary and default entry point. Handles general questions, light tasks, and routing: dispatches consultant for evidence work, coder for coding, and ask-lite for quick answers. Does not do deep research or heavy coding itself."
+  "Daily-driver primary and default entry point. Handles general questions, light tasks, and routing: sends quick answers to simple, evidence work to consultant, architecture work to architect, coding to coder, and durable documents to author. Does not do deep research or heavy coding itself."
 
 interface CodingLaneEntry {
   mode: "subagent"
@@ -134,17 +140,16 @@ interface AllModeAgentEntry {
 }
 
 /**
- * Resolve ask-lite's pre-approved writable workspace directory:
- * `ask_lite_workspace_dir` (legacy `lite_workspace_dir`) >
- * `$XDG_DATA_HOME/janus-agent/lite` > `$HOME/.local/share/janus-agent/lite`.
- * The directory name stays `lite` so an existing workspace survives the
- * ask-lite rename.
+ * Resolve simple's pre-approved writable workspace directory:
+ * `simple_workspace_dir` > `$XDG_DATA_HOME/janus-agent/lite` >
+ * `$HOME/.local/share/janus-agent/lite`. The directory name stays `lite` so an
+ * existing workspace directory survives the rename.
  */
-export function resolveAskLiteWorkspaceDir(
+export function resolveSimpleWorkspaceDir(
   pluginConfig: JanusPluginConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  if (pluginConfig.ask_lite_workspace_dir !== undefined) return pluginConfig.ask_lite_workspace_dir
+  if (pluginConfig.simple_workspace_dir !== undefined) return pluginConfig.simple_workspace_dir
   const home = env.HOME !== undefined && env.HOME.length > 0 ? env.HOME : homedir()
   const dataHome =
     env.XDG_DATA_HOME !== undefined && env.XDG_DATA_HOME.length > 0
@@ -156,7 +161,7 @@ export function resolveAskLiteWorkspaceDir(
 /**
  * Resolve the fixed author state directory:
  * `$XDG_DATA_HOME/janus-agent/author` > `$HOME/.local/share/janus-agent/author`.
- * The consultant writes author briefs there; the writer only reads them.
+ * The author writes author briefs there; author-writer only reads them.
  */
 export function resolveAuthorStateDir(env: NodeJS.ProcessEnv = process.env): string {
   const home = env.HOME !== undefined && env.HOME.length > 0 ? env.HOME : homedir()
@@ -170,7 +175,8 @@ export function resolveAuthorStateDir(env: NodeJS.ProcessEnv = process.env): str
 /**
  * Resolve the fixed design state directory:
  * `$XDG_DATA_HOME/janus-agent/design` > `$HOME/.local/share/janus-agent/design`.
- * The consultant writes design records there; the coder only reads them.
+ * The architect writes design records there; the coder reads them and writes
+ * plan.md beside them.
  */
 export function resolveDesignStateDir(env: NodeJS.ProcessEnv = process.env): string {
   const home = env.HOME !== undefined && env.HOME.length > 0 ? env.HOME : homedir()
@@ -182,10 +188,11 @@ export function resolveDesignStateDir(env: NodeJS.ProcessEnv = process.env): str
 }
 
 /**
- * Compute the stable per-project id used in author brief paths:
- * sanitized project basename + first 8 hex of a sha256 over the resolved
- * absolute directory, e.g. `my-project-a1b2c3d4`. Same directory always
- * yields the same id; two projects sharing a basename differ in the hash.
+ * Compute the stable per-project id used in author brief and design record
+ * paths: sanitized project basename + first 8 hex of a sha256 over the
+ * resolved absolute directory, e.g. `my-project-a1b2c3d4`. Same directory
+ * always yields the same id; two projects sharing a basename differ in the
+ * hash.
  */
 export function computeProjectId(directory: string): string {
   const absolute = resolve(directory)
@@ -200,11 +207,24 @@ export function computeProjectId(directory: string): string {
 }
 
 /**
- * ask-lite's permissions: read tools allowed, its own workspace writable
- * without asking, everything else asks, and dispatch denied (leaf node).
- * Pattern objects put the `"*"` catch-all first (last matching rule wins).
+ * Tool-level dispatch denial shared by every leaf role. `task: "deny"` blocks
+ * the host's built-in subagent tool; these four rules block the plugin's own
+ * dispatch tools so a leaf can never recurse into the dispatch lifecycle.
  */
-export function buildAskLitePermission(workspaceDir: string): Record<string, unknown> {
+export const LEAF_DISPATCH_DENY = {
+  janus_dispatch: "deny",
+  janus_dispatch_wait: "deny",
+  janus_dispatch_cancel: "deny",
+  janus_dispatch_continue: "deny",
+} as const
+
+/**
+ * simple's permissions: read tools allowed, its own workspace writable
+ * without asking, everything else asks, and both dispatch surfaces denied
+ * (leaf node). Pattern objects put the `"*"` catch-all first (last matching
+ * rule wins).
+ */
+export function buildSimplePermission(workspaceDir: string): Record<string, unknown> {
   return {
     webfetch: "allow",
     websearch: "allow",
@@ -212,15 +232,16 @@ export function buildAskLitePermission(workspaceDir: string): Record<string, unk
     bash: { "*": "ask", ...READONLY_BASH_RULES },
     external_directory: { [`${workspaceDir}/**`]: "allow" },
     task: "deny",
+    ...LEAF_DISPATCH_DENY,
   }
 }
 
 /**
- * Build the runtime bindings block injected into the ask-lite agent prompt.
- * Reports the memory MCP server, ask-lite's model, the escalation targets, the
+ * Build the runtime bindings block injected into the simple agent prompt.
+ * Reports the memory MCP server, simple's model, the escalation targets, the
  * pre-approved workspace, the memory namespace, and the leaf rule.
  */
-export function buildAskLiteRuntimeBindings(
+export function buildSimpleRuntimeBindings(
   pluginConfig: JanusPluginConfig,
   workspaceDir: string,
   namespace: string,
@@ -229,34 +250,36 @@ export function buildAskLiteRuntimeBindings(
     ? "- Memory MCP server name: `janus-memory` (tools: memory_recall, memory_expand, memory_prepare, memory_commit, memory_manage)"
     : "- Memory: DISABLED by configuration (saving and recall are unavailable)"
 
-  const modelLine = `- Ask-lite model: \`${resolveRoleModel(pluginConfig, "ask-lite")}\``
+  const modelLine = `- Simple model: \`${resolveRoleModel(pluginConfig, "simple")}\``
 
   const consultantLine = `- Consultant: \`${pluginConfig.consultant_agent}\` (\`${resolveRoleModel(pluginConfig, "consultant")}\`) — escalate multi-source evidence, decisions, and documents`
+  const architectLine = `- Architect: \`${pluginConfig.architect_agent}\` (\`${resolveRoleModel(pluginConfig, "architect")}\`) — escalate architecture and one-sentence-requirement design work`
   const coderLine = `- Coder: \`${pluginConfig.coder_agent}\` (\`${resolveRoleModel(pluginConfig, "coder")}\`) — escalate coding and repository work`
+  const authorLine = `- Author: \`${pluginConfig.author_agent}\` (\`${resolveRoleModel(pluginConfig, "author")}\`) — escalate durable-document requests`
   const janusLine = `- Janus: \`${pluginConfig.janus_agent}\` (\`${resolveRoleModel(pluginConfig, "janus")}\`) — escalate general questions that need more context`
 
   const workspaceLine = `- Your writable workspace: \`${workspaceDir}\` — the only location where creating files is pre-approved; every other write asks first`
 
   const namespaceLine = `- Memory namespace: \`${namespace}\``
 
-  return `## Runtime Bindings (injected by opencode-adapter)\n${memoryLine}\n${modelLine}\n${consultantLine}\n${coderLine}\n${janusLine}\n- You are a leaf: do not dispatch another agent; escalate instead.\n${workspaceLine}\n${namespaceLine}`
+  return `## Runtime Bindings (injected by opencode-adapter)\n${memoryLine}\n${modelLine}\n${consultantLine}\n${architectLine}\n${coderLine}\n${authorLine}\n${janusLine}\n- You are a leaf: do not dispatch another agent; escalate instead.\n${workspaceLine}\n${namespaceLine}`
 }
 
 /**
- * Register the `ask-lite` agent (mode "all": user-selectable entry, but a leaf
- * that never dispatches). Reads `assets/agents/ask-lite.md`, injects the runtime
+ * Register the `simple` agent (mode "all": user-selectable entry, but a leaf
+ * that never dispatches). Reads `assets/agents/simple.md`, injects the runtime
  * bindings block, attempts to create the workspace directory (non-fatal), and
  * never clobbers a pre-existing user-defined entry.
  */
-export async function registerAskLite(
+export async function registerSimple(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
   namespace: string,
 ): Promise<void> {
-  const agentName = pluginConfig.ask_lite_agent
+  const agentName = pluginConfig.simple_agent
   if (config.agent?.[agentName]) return
 
-  const workspaceDir = resolveAskLiteWorkspaceDir(pluginConfig)
+  const workspaceDir = resolveSimpleWorkspaceDir(pluginConfig)
   try {
     mkdirSync(workspaceDir, { recursive: true })
   } catch {
@@ -264,16 +287,16 @@ export async function registerAskLite(
   }
 
   const assembledPrompt = await assemblePrompt({
-    assetFile: "agents/ask-lite.md",
-    runtimeBlock: buildAskLiteRuntimeBindings(pluginConfig, workspaceDir, namespace),
+    assetFile: "agents/simple.md",
+    runtimeBlock: buildSimpleRuntimeBindings(pluginConfig, workspaceDir, namespace),
   })
 
   const entry: AllModeAgentEntry = {
     mode: "all",
-    description: ASK_LITE_DESCRIPTION,
+    description: SIMPLE_DESCRIPTION,
     prompt: assembledPrompt,
-    model: resolveRoleModel(pluginConfig, "ask-lite"),
-    permission: buildAskLitePermission(workspaceDir),
+    model: resolveRoleModel(pluginConfig, "simple"),
+    permission: buildSimplePermission(workspaceDir),
   }
 
   if (!config.agent) config.agent = {}
@@ -287,13 +310,15 @@ export async function registerAskLite(
 const DISPATCH_JOB_TOOLS_LINE =
   "- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id`, `session_id`, and the success `text`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..300000, default 300000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch a pending job and never continue a pending job — wait on it first."
 
-const CONSULTANT_WRITER_SESSION_LINE =
-  " In author mode, store the first writer dispatch envelope's `session_id` as `writer_session_id` in the brief and use `janus_dispatch_continue` for that document's maintenance edits (one writer session per document, no cross-document reuse); on a lost, foreign, or busy writer session, wait or make a fresh dispatch with the brief and update the stored id."
+const AUTHOR_WRITER_SESSION_LINE =
+  " In doc mode, store the first author-writer dispatch envelope's `session_id` as `writer_session_id` in the brief and use `janus_dispatch_continue` for that document's maintenance edits (one writer session per document, no cross-document reuse); on a lost, foreign, or busy writer session, wait or make a fresh dispatch with the brief and update the stored id."
 
 /**
- * coder's runtime bindings: its own model, the coding lanes it may dispatch,
- * and the job-tool discipline. No memory namespace (coding sessions use the
- * repo's AGENTS.md, not consultation memory).
+ * coder's runtime bindings: its own model, the coding lanes and research /
+ * review specialists it may dispatch, the dynamic escalation path to the
+ * architect, the design record, and the job-tool discipline. No memory
+ * namespace (coding sessions use the repo's AGENTS.md, not consultation
+ * memory).
  */
 export function buildCoderRuntimeBindings(
   pluginConfig: JanusPluginConfig,
@@ -305,12 +330,19 @@ export function buildCoderRuntimeBindings(
     : "- Mechanical lane: coder-lite DISABLED by configuration"
   const deepModel = resolveRoleModel(pluginConfig, "coder", { tier: "deep" })
   const deepLine = `- L3 model uplift: dispatch with \`tier: "deep"\` to use \`${deepModel}\`; configure \`tier_models.deep.coder\` to change it`
+  const explorerLine = pluginConfig.common_explorer_enabled
+    ? `- Research floor: \`${pluginConfig.common_explorer_agent}\` (\`${resolveRoleModel(pluginConfig, "common-explorer")}\`) for bounded external/local research`
+    : "- Research floor: common-explorer DISABLED by configuration"
+  const reviewerLine = pluginConfig.coder_reviewer_enabled
+    ? `- Independent reviewer: \`${pluginConfig.coder_reviewer_agent}\` (\`${resolveRoleModel(pluginConfig, "coder-reviewer")}\`) with \`protocol: "code_plan_review"\` for the plan.md and the implemented git diff`
+    : "- Independent reviewer: coder-reviewer DISABLED by configuration"
+  const architectLine = `- Escalation path: if investigation or discussion shows the task needs new research or a cross-module architecture change, stop and hand it to the \`architect\` primary entry (user-facing handoff; architect is not dispatchable).`
   const designLine =
     design !== undefined
       ? `- Design record: \`${design.designStateDir}/${design.projectId}\` — read \`design.md\` and write \`plan.md\` there; you never edit \`design.md\``
       : undefined
   const dispatchLine = DISPATCH_JOB_TOOLS_LINE
-  const lines = [modelLine, coderLiteLine, deepLine]
+  const lines = [modelLine, coderLiteLine, deepLine, explorerLine, reviewerLine, architectLine]
   if (designLine !== undefined) lines.push(designLine)
   lines.push(dispatchLine)
   return `## Runtime Bindings (injected by opencode-adapter)\n${lines.join("\n")}`
@@ -366,6 +398,7 @@ export function buildCoderLitePermission(): Record<string, unknown> {
     webfetch: "allow",
     websearch: "allow",
     task: "deny",
+    ...LEAF_DISPATCH_DENY,
   }
 }
 
@@ -404,23 +437,30 @@ export async function registerCoderLite(
  *
  * Janus is the daily-driver primary and does not attach to memory, so its
  * block reports only what it needs to orchestrate: its own model, the
- * entry/specialist targets it routes to (consultant, coder, ask-lite,
- * explorer), and the dispatch job-tool discipline. No memory namespace, no
- * workspace.
+ * dispatchable entries (simple, consultant, coder) plus the two primary
+ * entries the user must switch to (architect, author), and the dispatch
+ * job-tool discipline. No memory namespace, no workspace.
  */
 export function buildJanusRuntimeBindings(pluginConfig: JanusPluginConfig): string {
   const modelLine = `- Janus model: \`${resolveRoleModel(pluginConfig, "janus")}\``
 
-  const consultantLine = `- \`consultant\` (agent \`${pluginConfig.consultant_agent}\`, \`${resolveRoleModel(pluginConfig, "consultant")}\`) — evidence-graded research, decisions, durable documents; dispatch via \`janus_dispatch\` (role="consultant")`
-  const coderLine = `- \`coder\` (agent \`${pluginConfig.coder_agent}\`, \`${resolveRoleModel(pluginConfig, "coder")}\`) — coding, debugging, refactoring, tests, repo work; dispatch via \`janus_dispatch\` (role="coder")`
-  const liteLine = pluginConfig.ask_lite_enabled
-    ? `- \`ask-lite\` (agent \`${pluginConfig.ask_lite_agent}\`, \`${resolveRoleModel(pluginConfig, "ask-lite")}\`) — quick facts, concepts, simple how-to`
-    : "- Economical entry: ask-lite DISABLED by configuration"
-  const explorerLine = `- \`explorer\` (agent \`${pluginConfig.explorer_agent}\`, \`${resolveRoleModel(pluginConfig, "explorer")}\`) — bounded evidence gathering with a specific claim list and search plan`
+  const simpleLine = pluginConfig.simple_enabled
+    ? `- \`simple\` (agent \`${pluginConfig.simple_agent}\`, \`${resolveRoleModel(pluginConfig, "simple")}\`) — low-risk facts, concepts, simple how-to; dispatch via \`janus_dispatch\` (role="simple")`
+    : "- Economical entry: simple DISABLED by configuration"
+  const consultantLine = `- \`consultant\` (agent \`${pluginConfig.consultant_agent}\`, \`${resolveRoleModel(pluginConfig, "consultant")}\`) — evidence-graded research, decisions, guides; dispatch via \`janus_dispatch\` (role="consultant")`
+  const coderLine = pluginConfig.coder_enabled
+    ? `- \`coder\` (agent \`${pluginConfig.coder_agent}\`, \`${resolveRoleModel(pluginConfig, "coder")}\`) — bugs, features, refactors, tests, repo work; dispatch via \`janus_dispatch\` (role="coder")`
+    : "- Coding entry: coder DISABLED by configuration"
+  const architectLine = pluginConfig.architect_enabled
+    ? `- \`architect\` (agent \`${pluginConfig.architect_agent}\`, \`${resolveRoleModel(pluginConfig, "architect")}\`) — architecture and system design from a one-sentence requirement; a primary entry the user selects (not dispatchable)`
+    : "- Architecture entry: architect DISABLED by configuration"
+  const authorLine = pluginConfig.author_enabled
+    ? `- \`author\` (agent \`${pluginConfig.author_agent}\`, \`${resolveRoleModel(pluginConfig, "author")}\`) — tutorials, courses, architecture write-ups, durable documents; a primary entry the user selects (not dispatchable)`
+    : "- Documentation entry: author DISABLED by configuration"
 
   const dispatchLine = DISPATCH_JOB_TOOLS_LINE
 
-  return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${consultantLine}\n${coderLine}\n${liteLine}\n${explorerLine}\n${dispatchLine}`
+  return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${simpleLine}\n${consultantLine}\n${coderLine}\n${architectLine}\n${authorLine}\n${dispatchLine}`
 }
 
 /**
@@ -478,15 +518,15 @@ export interface DesignBinding {
  * Build the runtime bindings block that the adapter injects into the
  * consultant agent prompt.
  *
- * Reports: the memory MCP server (or DISABLED), the consultant model, the
- * team subagents with their models, the writer write mode and author brief
- * location, and the memory namespace.
+ * The consultant is the consultation-team entry only: it reports the memory
+ * MCP server (or DISABLED), its own model, its four team specialists, the
+ * simple leaf, the dispatch job-tool discipline, the research caps, and the
+ * memory namespace. It has no author, writer, coder, or design binding and no
+ * business-state directory permission.
  */
-export function buildRuntimeBindings(
+export function buildConsultantRuntimeBindings(
   pluginConfig: JanusPluginConfig,
   namespace: string,
-  author?: AuthorBinding,
-  design?: DesignBinding,
 ): string {
   const memoryLine = pluginConfig.memory_enabled
     ? "- Memory MCP server name: `janus-memory` (tools: memory_recall, memory_expand, memory_prepare, memory_commit, memory_manage)"
@@ -495,85 +535,46 @@ export function buildRuntimeBindings(
   const consultantModelLine = `- Consultant model: \`${resolveRoleModel(pluginConfig, "consultant")}\``
 
   const roleParts = [
-    pluginConfig.explorer_enabled
-      ? `explorer \`${pluginConfig.explorer_agent}\` (${resolveRoleModel(pluginConfig, "explorer")})`
-      : "explorer DISABLED by configuration",
-    pluginConfig.analyst_enabled
-      ? `analyst \`${pluginConfig.analyst_agent}\` (${resolveRoleModel(pluginConfig, "analyst")})`
-      : "analyst DISABLED by configuration",
+    pluginConfig.common_explorer_enabled
+      ? `common-explorer \`${pluginConfig.common_explorer_agent}\` (${resolveRoleModel(pluginConfig, "common-explorer")})`
+      : "common-explorer DISABLED by configuration",
+    pluginConfig.consultant_analyst_enabled
+      ? `consultant-analyst \`${pluginConfig.consultant_analyst_agent}\` (${resolveRoleModel(pluginConfig, "consultant-analyst")})`
+      : "consultant-analyst DISABLED by configuration",
+    pluginConfig.consultant_critic_enabled
+      ? `consultant-critic \`${pluginConfig.consultant_critic_agent}\` (${resolveRoleModel(pluginConfig, "consultant-critic")})`
+      : "consultant-critic DISABLED by configuration",
+    pluginConfig.consultant_auditor_enabled
+      ? `consultant-auditor \`${pluginConfig.consultant_auditor_agent}\` (${resolveRoleModel(pluginConfig, "consultant-auditor")})`
+      : "consultant-auditor DISABLED by configuration",
   ]
-  roleParts.push(
-    pluginConfig.critic_enabled
-      ? `critic \`${pluginConfig.critic_agent}\` (${resolveRoleModel(pluginConfig, "critic")})`
-      : "critic DISABLED by configuration",
-  )
-  roleParts.push(
-    pluginConfig.arch_critic_enabled
-      ? `arch-critic \`${pluginConfig.arch_critic_agent}\` (${resolveRoleModel(pluginConfig, "arch-critic")})`
-      : "arch-critic DISABLED by configuration",
-  )
-  roleParts.push(
-    pluginConfig.auditor_enabled
-      ? `auditor \`${pluginConfig.auditor_agent}\` (${resolveRoleModel(pluginConfig, "auditor")})`
-      : "auditor DISABLED by configuration",
-  )
-  roleParts.push(
-    pluginConfig.writer_delegate_agent !== undefined
-      ? `writer delegated to \`${pluginConfig.writer_delegate_agent}\``
-      : pluginConfig.writer_enabled
-        ? `writer \`${pluginConfig.writer_agent}\` (${resolveRoleModel(pluginConfig, "writer")})`
-        : "writer DISABLED by configuration",
-  )
   const teamLine = `- Team subagents: ${roleParts.join(", ")}`
 
-  const liteLine = pluginConfig.ask_lite_enabled
-    ? `- Economical leaf: \`${pluginConfig.ask_lite_agent}\` (\`${resolveRoleModel(pluginConfig, "ask-lite")}\`) for bounded quick-answer tasks`
-    : "- Economical leaf: ask-lite DISABLED by configuration"
-  const coderLine = pluginConfig.coder_enabled
-    ? `- Coding delegate: \`${pluginConfig.coder_agent}\` (\`${resolveRoleModel(pluginConfig, "coder")}\`) for code examples and bounded code tasks; it owns the coding lanes`
-    : "- Coding delegate: coder DISABLED by configuration"
+  const simpleLine = pluginConfig.simple_enabled
+    ? `- Economical leaf: \`${pluginConfig.simple_agent}\` (\`${resolveRoleModel(pluginConfig, "simple")}\`) for bounded quick-answer tasks`
+    : "- Economical leaf: simple DISABLED by configuration"
 
   const caps = resolveTeamCaps(pluginConfig)
   const tiers = resolveTierRoleCaps(pluginConfig)
   const costGuard = resolveCostGuardUsd(pluginConfig)
 
   const capsLine = `- Team maximums (not targets): round_cap=${caps.round_cap}, explorer<=${caps.explorer_cap}, critic_searches<=${caps.critic_search_cap} per round`
-  const tierMatrixLine = `- Tier role maximums (not a required roster): fast(e${tiers.fast.explorer},a${tiers.fast.analyst},c${tiers.fast.critic},ac${tiers.fast.arch_critic},au${tiers.fast.auditor},w${tiers.fast.writer}) standard(e${tiers.standard.explorer},a${tiers.standard.analyst},c${tiers.standard.critic},ac${tiers.standard.arch_critic},au${tiers.standard.auditor},w${tiers.standard.writer}) deep(e${tiers.deep.explorer},a${tiers.deep.analyst},c${tiers.deep.critic},ac${tiers.deep.arch_critic},au${tiers.deep.auditor},w${tiers.deep.writer})`
+  const tierMatrixLine = `- Tier role maximums (not a required roster): fast(e${tiers.fast.common_explorer},a${tiers.fast.consultant_analyst},c${tiers.fast.consultant_critic},au${tiers.fast.consultant_auditor}) standard(e${tiers.standard.common_explorer},a${tiers.standard.consultant_analyst},c${tiers.standard.consultant_critic},au${tiers.standard.consultant_auditor}) deep(e${tiers.deep.common_explorer},a${tiers.deep.consultant_analyst},c${tiers.deep.consultant_critic},au${tiers.deep.consultant_auditor})`
   const costLine = `- Cost guard: ~$${costGuard} per provider (advisory, converge when approaching)`
 
   const namespaceLine = `- Memory namespace: \`${namespace}\``
-  const dispatchLine = DISPATCH_JOB_TOOLS_LINE + CONSULTANT_WRITER_SESSION_LINE
-
-  const writerRoots = normalizeWriterDocsRoots(pluginConfig.writer_docs_roots)
-  const writerModeLine =
-    writerRoots.length > 0
-      ? `- Writer write mode: \`scoped\` — the writer is the sole author of reader-facing prose and the sole writer of approved document files under ${writerRoots.map((root) => `\`${root}\``).join(", ")} (\`writer_docs_roots\`); you do not edit those roots in scoped mode`
-      : "- Writer write mode: `read-only` (`writer_docs_roots` is empty) — the writer returns prose or patches; you apply and publish the returned text as the disclosed publisher"
-
-  const authorLine =
-    author !== undefined
-      ? `- Author state dir: \`${author.authorStateDir}\`; project id: \`${author.projectId}\` — create and update the author brief at \`${author.authorStateDir}/${author.projectId}/<docId>/brief.md\`; the writer reads it and never writes it`
-      : undefined
-
-  const designLine =
-    design !== undefined
-      ? `- Design state dir: \`${design.designStateDir}\`; project id: \`${design.projectId}\` — designs live at \`${design.designStateDir}/${design.projectId}/<designId>/design.md\`; you write and maintain the design record, the coder reads it`
-      : undefined
+  const dispatchLine = DISPATCH_JOB_TOOLS_LINE
 
   const lines = [
     "## Runtime Bindings (injected by opencode-adapter)",
     memoryLine,
     consultantModelLine,
     teamLine,
-    liteLine,
-    coderLine,
+    simpleLine,
     dispatchLine,
     capsLine,
     tierMatrixLine,
     costLine,
-    writerModeLine,
-    ...(authorLine !== undefined ? [authorLine] : []),
-    ...(designLine !== undefined ? [designLine] : []),
     namespaceLine,
   ]
   return lines.join("\n")
@@ -710,52 +711,30 @@ async function assemblePrompt(options: PromptAssembly): Promise<string> {
 /**
  * Register the `consultant` primary agent into the OpenCode config.
  *
- * Reads `assets/agents/consultant.md`, injects the runtime bindings block
- * (including the author state dir, project id, and writer write mode when
- * the project `directory` is supplied), and sets
- * `config.agent[consultant_agent]` with `mode: "primary"` and the resolved
- * consultant model. A pre-existing user-defined consultant agent entry is left
- * untouched (never clobbered).
+ * The consultant owns the consultation team only. It reads
+ * `assets/agents/consultant.md`, injects the consultation-team runtime
+ * bindings, and holds no business-state directory permission (author briefs
+ * belong to `author`, design records to `architect`). A pre-existing
+ * user-defined consultant entry is left untouched.
  */
 export async function registerConsultantAgent(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
   namespace: string,
-  directory?: string,
-  env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   if (config.agent?.[pluginConfig.consultant_agent]) return
 
-  const authorStateDir = resolveAuthorStateDir(env)
-  const designStateDir = resolveDesignStateDir(env)
-  for (const dir of [authorStateDir, designStateDir]) {
-    try {
-      mkdirSync(dir, { recursive: true })
-    } catch {
-      // Non-fatal: the permission still ships; the write may ask later.
-    }
-  }
-  const projectId = directory !== undefined ? computeProjectId(directory) : undefined
-  const author: AuthorBinding | undefined =
-    projectId !== undefined ? { authorStateDir, projectId } : undefined
-  const design: DesignBinding | undefined =
-    projectId !== undefined ? { designStateDir, projectId } : undefined
   const assembledPrompt = await assemblePrompt({
     assetFile: "agents/consultant.md",
     fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET, CHANNEL_POLICY_ASSET],
-    runtimeBlock: buildRuntimeBindings(pluginConfig, namespace, author, design),
+    runtimeBlock: buildConsultantRuntimeBindings(pluginConfig, namespace),
   })
 
-  const entry: ConsultantAgentEntry = {
+  const entry: PrimaryAgentEntry = {
     mode: "primary",
     prompt: assembledPrompt,
     model: resolveRoleModel(pluginConfig, "consultant"),
-    permission: {
-      external_directory: {
-        [`${authorStateDir}/**`]: "allow",
-        [`${designStateDir}/**`]: "allow",
-      },
-    },
+    permission: {},
   }
 
   if (!config.agent) config.agent = {}
@@ -766,7 +745,8 @@ export async function registerConsultantAgent(
  * Register a read-only team subagent. Reads the role asset, sets
  * `mode: "subagent"`, a fixed model, a description, and a `permission.edit`
  * of "deny" so the role can gather and critique but never edit. Read-only
- * roles keep the common baseline but skip the common-write gate. A
+ * roles keep the common baseline but skip the common-write gate, and every
+ * dispatch tool is denied at the permission layer (leaf node). A
  * pre-existing user-defined entry under the same name is left untouched.
  */
 async function registerReadOnlySubagent(
@@ -794,90 +774,90 @@ async function registerReadOnlySubagent(
     description: options.description,
     prompt,
     model: options.model,
-    permission: { edit: "deny", bash: "deny", task: "deny" },
+    permission: { edit: "deny", bash: "deny", task: "deny", ...LEAF_DISPATCH_DENY },
   }
 
   if (!config.agent) config.agent = {}
   config.agent[options.name] = entry
 }
 
-export async function registerExplorer(
+export async function registerCommonExplorer(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
 ): Promise<void> {
   await registerReadOnlySubagent(config, {
-    name: pluginConfig.explorer_agent,
-    description: EXPLORER_DESCRIPTION,
-    assetFile: "agents/explorer.md",
-    model: resolveRoleModel(pluginConfig, "explorer"),
+    name: pluginConfig.common_explorer_agent,
+    description: COMMON_EXPLORER_DESCRIPTION,
+    assetFile: "agents/common-explorer.md",
+    model: resolveRoleModel(pluginConfig, "common-explorer"),
     pluginConfig,
     extraFragments: [SOURCE_CRITERIA_ASSET],
   })
 }
 
-export async function registerAnalyst(
+export async function registerConsultantAnalyst(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
 ): Promise<void> {
   await registerReadOnlySubagent(config, {
-    name: pluginConfig.analyst_agent,
-    description: ANALYST_DESCRIPTION,
-    assetFile: "agents/analyst.md",
-    model: resolveRoleModel(pluginConfig, "analyst"),
+    name: pluginConfig.consultant_analyst_agent,
+    description: CONSULTANT_ANALYST_DESCRIPTION,
+    assetFile: "agents/consultant-analyst.md",
+    model: resolveRoleModel(pluginConfig, "consultant-analyst"),
     pluginConfig,
     extraFragments: [REASONING_FAILURES_ASSET, CLAIM_TYPES_ASSET],
   })
 }
 
-export async function registerCritic(
+export async function registerConsultantCritic(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
 ): Promise<void> {
   await registerReadOnlySubagent(config, {
-    name: pluginConfig.critic_agent,
-    description: CRITIC_DESCRIPTION,
-    assetFile: "agents/critic.md",
-    model: resolveRoleModel(pluginConfig, "critic"),
+    name: pluginConfig.consultant_critic_agent,
+    description: CONSULTANT_CRITIC_DESCRIPTION,
+    assetFile: "agents/consultant-critic.md",
+    model: resolveRoleModel(pluginConfig, "consultant-critic"),
     pluginConfig,
     extraFragments: [REASONING_FAILURES_ASSET, SOURCE_CRITERIA_ASSET],
   })
 }
 
-export async function registerArchCritic(
+export async function registerCoderReviewer(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
 ): Promise<void> {
   await registerReadOnlySubagent(config, {
-    name: pluginConfig.arch_critic_agent,
-    description: ARCH_CRITIC_DESCRIPTION,
-    assetFile: "agents/arch-critic.md",
-    model: resolveRoleModel(pluginConfig, "arch-critic"),
+    name: pluginConfig.coder_reviewer_agent,
+    description: CODER_REVIEWER_DESCRIPTION,
+    assetFile: "agents/coder-reviewer.md",
+    model: resolveRoleModel(pluginConfig, "coder-reviewer"),
     pluginConfig,
     extraFragments: [ENGINEERING_PRINCIPLES_ASSET],
   })
 }
 
-export async function registerAuditor(
+export async function registerConsultantAuditor(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
 ): Promise<void> {
   await registerReadOnlySubagent(config, {
-    name: pluginConfig.auditor_agent,
-    description: AUDITOR_DESCRIPTION,
-    assetFile: "agents/auditor.md",
-    model: resolveRoleModel(pluginConfig, "auditor"),
+    name: pluginConfig.consultant_auditor_agent,
+    description: CONSULTANT_AUDITOR_DESCRIPTION,
+    assetFile: "agents/consultant-auditor.md",
+    model: resolveRoleModel(pluginConfig, "consultant-auditor"),
     pluginConfig,
   })
 }
 
 /**
- * writer's permissions. With roots: edit is denied everywhere except the
- * configured writer roots (`"*": "deny"` first, allow rules after — last
- * matching rule wins), bash and dispatch are denied, web lookups are
- * allowed, and `external_directory` grants access to the fixed author state
- * dir so the writer can read the brief (writes there still hit
+ * author-writer's permissions. With roots: edit is denied everywhere except
+ * the configured writer roots (`"*": "deny"` first, allow rules after — last
+ * matching rule wins), bash and every dispatch tool are denied, web lookups
+ * are allowed, and `external_directory` grants access to the fixed author
+ * state dir so the writer can read the brief (writes there still hit
  * `edit: "*" -> deny`). With `roots: []` (read-only fallback) edit is denied
- * outright and the writer returns prose for the consultant to publish.
+ * outright and the writer returns prose for the author to publish.
  *
  * Root allow rules are emitted both project-relative (`userdoc/**`) and, when
  * the project `directory` is known, anchored to it in absolute form (the
@@ -887,7 +867,7 @@ export async function registerAuditor(
  * realpath'd absolute paths, so a relative-only allow rule never matches
  * those calls and the write falls through to the catch-all deny.
  */
-export function buildWriterPermission(
+export function buildAuthorWriterPermission(
   roots: string[],
   authorStateDir: string,
   directory?: string,
@@ -899,6 +879,7 @@ export function buildWriterPermission(
       task: "deny",
       webfetch: "allow",
       websearch: "allow",
+      ...LEAF_DISPATCH_DENY,
     }
   }
   const edit: Record<string, string> = { "*": "deny" }
@@ -916,6 +897,7 @@ export function buildWriterPermission(
     webfetch: "allow",
     websearch: "allow",
     external_directory: { [`${authorStateDir}/**`]: "allow" },
+    ...LEAF_DISPATCH_DENY,
   }
 }
 
@@ -943,57 +925,57 @@ function writerRootAnchors(directory: string | undefined): string[] {
 }
 
 /**
- * Build the runtime bindings block injected into the writer agent prompt:
+ * Build the runtime bindings block injected into the author-writer prompt:
  * its model, write mode (`scoped` with roots, `read-only` without), the
  * writable roots, the author state dir to read briefs from, the targeted
  * search budget, and the leaf rule (no bash, no dispatch, no memory).
  */
-export function buildWriterRuntimeBindings(
+export function buildAuthorWriterRuntimeBindings(
   pluginConfig: JanusPluginConfig,
   authorStateDir: string,
 ): string {
   const roots = normalizeWriterDocsRoots(pluginConfig.writer_docs_roots)
 
-  const modelLine = `- Writer model: \`${resolveRoleModel(pluginConfig, "writer")}\``
+  const modelLine = `- Author-writer model: \`${resolveRoleModel(pluginConfig, "author-writer")}\``
 
   const modeLine =
     roots.length > 0
       ? "- Write mode: `scoped` — write only exact approved document files under the writable roots; every other path is denied"
-      : "- Write mode: `read-only` — no file writes; return the full prose or a patch; the consultant publishes it"
+      : "- Write mode: `read-only` — no file writes; return the full prose or a patch; the author publishes it"
 
   const rootsLine =
     roots.length > 0
       ? `- Writable roots (\`writer_docs_roots\`): ${roots.map((root) => `\`${root}\``).join(", ")} — only approved document files under these roots; never source, config, README, or AGENTS files`
-      : "- Writable roots (`writer_docs_roots`): none — the roots array is empty, so the writer is read-only and the consultant publishes"
+      : "- Writable roots (`writer_docs_roots`): none — the roots array is empty, so the writer is read-only and the author publishes"
 
   const authorLine = `- Author state dir: \`${authorStateDir}\` — read the brief at the supplied path; never write the brief, the manifest, or memory`
 
   const searchLine =
-    "- Search budget: about 10 targeted web lookups per section — log every lookup in the source ledger; broad or contested research goes back to the consultant as a researchRequest"
+    "- Search budget: about 10 targeted web lookups per section — log every lookup in the source ledger; broad or contested research goes back to the author as a researchRequest"
 
   const leafLine =
-    "- You are a leaf: no bash, no dispatch (`task: deny`), no memory tools; never dispatch explorer"
+    "- You are a leaf: no bash, no dispatch, no memory tools; never dispatch common-explorer"
 
   return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${modeLine}\n${rootsLine}\n${authorLine}\n${searchLine}\n${leafLine}`
 }
 
 /**
- * Register the `writer` author executor: mode "subagent", a step cap of 80,
- * the layered prompt (role asset + model block + common base/write + writer
- * runtime bindings), scoped-write permissions over the configured writer
- * roots (anchored to the project `directory` when supplied), and the fixed
- * author state dir created (non-fatal) so briefs are readable. A
+ * Register the `author-writer` executor: mode "subagent", a step cap of 80,
+ * the layered prompt (role asset + common base/write + author-writer runtime
+ * bindings), scoped-write permissions over the configured writer roots
+ * (anchored to the project `directory` when supplied), and the fixed author
+ * state dir created (non-fatal) so briefs are readable. A
  * `writer_delegate_agent` short-circuits registration; a pre-existing
  * user-defined entry under the same name is left untouched.
  */
-export async function registerWriter(
+export async function registerAuthorWriter(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
   env: NodeJS.ProcessEnv = process.env,
   directory?: string,
 ): Promise<void> {
   if (pluginConfig.writer_delegate_agent !== undefined) return
-  const agentName = pluginConfig.writer_agent
+  const agentName = pluginConfig.author_writer_agent
   if (config.agent?.[agentName]) return
 
   const roots = normalizeWriterDocsRoots(pluginConfig.writer_docs_roots)
@@ -1001,24 +983,252 @@ export async function registerWriter(
   try {
     mkdirSync(authorStateDir, { recursive: true })
   } catch {
-    // Non-fatal: the consultant passes the brief content in the dispatch;
+    // Non-fatal: the author passes the brief content in the dispatch;
     // reads of the brief path may fail until the directory exists.
   }
 
   const assembledPrompt = await assemblePrompt({
-    assetFile: "agents/writer.md",
-    runtimeBlock: buildWriterRuntimeBindings(pluginConfig, authorStateDir),
+    assetFile: "agents/author-writer.md",
+    runtimeBlock: buildAuthorWriterRuntimeBindings(pluginConfig, authorStateDir),
   })
 
   const entry: CodingLaneEntry = {
     mode: "subagent",
-    description: WRITER_DESCRIPTION,
+    description: AUTHOR_WRITER_DESCRIPTION,
     prompt: assembledPrompt,
-    model: resolveRoleModel(pluginConfig, "writer"),
+    model: resolveRoleModel(pluginConfig, "author-writer"),
     steps: 80,
-    permission: buildWriterPermission(roots, authorStateDir, directory),
+    permission: buildAuthorWriterPermission(roots, authorStateDir, directory),
   }
 
   if (!config.agent) config.agent = {}
   config.agent[agentName] = entry
+}
+
+/**
+ * Build the runtime bindings block injected into the architect prompt: the
+ * memory MCP server, its own model, the shared research floor and reviewers it
+ * may dispatch, the design-record directory it alone writes, the tier caps,
+ * the dispatch job-tool discipline, and the memory namespace.
+ */
+export function buildArchitectRuntimeBindings(
+  pluginConfig: JanusPluginConfig,
+  namespace: string,
+  design?: DesignBinding,
+): string {
+  const memoryLine = pluginConfig.memory_enabled
+    ? "- Memory MCP server name: `janus-memory` (tools: memory_recall, memory_expand, memory_prepare, memory_commit, memory_manage)"
+    : "- Memory: DISABLED by configuration (saving and recall are unavailable)"
+
+  const modelLine = `- Architect model: \`${resolveRoleModel(pluginConfig, "architect")}\``
+
+  const roleParts = [
+    pluginConfig.common_explorer_enabled
+      ? `common-explorer \`${pluginConfig.common_explorer_agent}\` (${resolveRoleModel(pluginConfig, "common-explorer")})`
+      : "common-explorer DISABLED by configuration",
+    pluginConfig.coder_reviewer_enabled
+      ? `coder-reviewer \`${pluginConfig.coder_reviewer_agent}\` (${resolveRoleModel(pluginConfig, "coder-reviewer")}) with \`protocol: "design_premortem"\``
+      : "coder-reviewer DISABLED by configuration",
+    pluginConfig.consultant_analyst_enabled
+      ? `consultant-analyst \`${pluginConfig.consultant_analyst_agent}\` (${resolveRoleModel(pluginConfig, "consultant-analyst")})`
+      : "consultant-analyst DISABLED by configuration",
+    pluginConfig.consultant_auditor_enabled
+      ? `consultant-auditor \`${pluginConfig.consultant_auditor_agent}\` (${resolveRoleModel(pluginConfig, "consultant-auditor")})`
+      : "consultant-auditor DISABLED by configuration",
+  ]
+  const teamLine = `- Design team: ${roleParts.join(", ")}`
+
+  const simpleLine = pluginConfig.simple_enabled
+    ? `- Economical leaf: \`${pluginConfig.simple_agent}\` (\`${resolveRoleModel(pluginConfig, "simple")}\`) for bounded quick-answer tasks`
+    : "- Economical leaf: simple DISABLED by configuration"
+
+  const designLine =
+    design !== undefined
+      ? `- Design state dir: \`${design.designStateDir}\`; project id: \`${design.projectId}\` — designs live at \`${design.designStateDir}/${design.projectId}/<designId>/design.md\`; you are the only role that writes the design record, and the coder reads it`
+      : "- Design record: no project directory supplied; write the design record only after the project path is known"
+
+  const caps = resolveTeamCaps(pluginConfig)
+  const tiers = resolveTierRoleCaps(pluginConfig)
+  const capsLine = `- Team maximums (not targets): round_cap=${caps.round_cap}, explorer<=${caps.explorer_cap}, critic_searches<=${caps.critic_search_cap} per round`
+  const tierMatrixLine = `- Tier role maximums (not a required roster): fast(e${tiers.fast.common_explorer},a${tiers.fast.consultant_analyst},ac${tiers.fast.coder_reviewer},au${tiers.fast.consultant_auditor}) standard(e${tiers.standard.common_explorer},a${tiers.standard.consultant_analyst},ac${tiers.standard.coder_reviewer},au${tiers.standard.consultant_auditor}) deep(e${tiers.deep.common_explorer},a${tiers.deep.consultant_analyst},ac${tiers.deep.coder_reviewer},au${tiers.deep.consultant_auditor})`
+
+  const lines = [
+    "## Runtime Bindings (injected by opencode-adapter)",
+    memoryLine,
+    modelLine,
+    teamLine,
+    simpleLine,
+    designLine,
+    capsLine,
+    tierMatrixLine,
+    DISPATCH_JOB_TOOLS_LINE,
+    `- Memory namespace: \`${namespace}\``,
+  ]
+  return lines.join("\n")
+}
+
+/**
+ * Register the `architect` primary agent: the R&D team's design entry. It is
+ * user-selectable and not dispatchable, writes only the design-record
+ * directory, and hands the accepted design.md to `coder`. A pre-existing
+ * user-defined entry under the same name is left untouched.
+ */
+export async function registerArchitect(
+  config: MutableConfig,
+  pluginConfig: JanusPluginConfig,
+  namespace: string,
+  directory?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  if (config.agent?.[pluginConfig.architect_agent]) return
+
+  const designStateDir = resolveDesignStateDir(env)
+  try {
+    mkdirSync(designStateDir, { recursive: true })
+  } catch {
+    // Non-fatal: the permission still ships; the write may ask later.
+  }
+  const design: DesignBinding | undefined =
+    directory !== undefined ? { designStateDir, projectId: computeProjectId(directory) } : undefined
+
+  const assembledPrompt = await assemblePrompt({
+    assetFile: "agents/architect.md",
+    fragments: [DISPATCH_HUB_ASSET, ENGINEERING_PRINCIPLES_ASSET],
+    runtimeBlock: buildArchitectRuntimeBindings(pluginConfig, namespace, design),
+  })
+
+  const entry: PrimaryAgentEntry = {
+    mode: "primary",
+    prompt: assembledPrompt,
+    model: resolveRoleModel(pluginConfig, "architect"),
+    permission: { external_directory: { [`${designStateDir}/**`]: "allow" } },
+  }
+
+  if (!config.agent) config.agent = {}
+  config.agent[pluginConfig.architect_agent] = entry
+}
+
+/**
+ * Build the runtime bindings block injected into the author prompt: its own
+ * model, the documentation team it may dispatch, the writer write mode and
+ * brief location, the read-only design-record reference, the job-tool
+ * discipline, and the memory namespace.
+ */
+export function buildAuthorRuntimeBindings(
+  pluginConfig: JanusPluginConfig,
+  namespace: string,
+  author?: AuthorBinding,
+  design?: DesignBinding,
+): string {
+  const memoryLine = pluginConfig.memory_enabled
+    ? "- Memory MCP server name: `janus-memory` (tools: memory_recall, memory_expand, memory_prepare, memory_commit, memory_manage)"
+    : "- Memory: DISABLED by configuration (saving and recall are unavailable)"
+
+  const modelLine = `- Author model: \`${resolveRoleModel(pluginConfig, "author")}\``
+
+  const writerLine =
+    pluginConfig.writer_delegate_agent !== undefined
+      ? `- Prose executor: delegated to \`${pluginConfig.writer_delegate_agent}\``
+      : pluginConfig.author_writer_enabled
+        ? `- Prose executor: author-writer \`${pluginConfig.author_writer_agent}\` (${resolveRoleModel(pluginConfig, "author-writer")}) — the sole author of reader-facing prose`
+        : "- Prose executor: author-writer DISABLED by configuration"
+
+  const roleParts = [
+    pluginConfig.common_explorer_enabled
+      ? `common-explorer \`${pluginConfig.common_explorer_agent}\` (${resolveRoleModel(pluginConfig, "common-explorer")})`
+      : "common-explorer DISABLED by configuration",
+    pluginConfig.coder_enabled
+      ? `coder \`${pluginConfig.coder_agent}\` (${resolveRoleModel(pluginConfig, "coder")}) for executable verification`
+      : "coder DISABLED by configuration",
+    pluginConfig.consultant_critic_enabled
+      ? `consultant-critic \`${pluginConfig.consultant_critic_agent}\` (${resolveRoleModel(pluginConfig, "consultant-critic")}) with \`protocol: "counter_evidence"\``
+      : "consultant-critic DISABLED by configuration",
+    pluginConfig.coder_reviewer_enabled
+      ? `coder-reviewer \`${pluginConfig.coder_reviewer_agent}\` (${resolveRoleModel(pluginConfig, "coder-reviewer")}) for an independent document/architecture review`
+      : "coder-reviewer DISABLED by configuration",
+  ]
+  const teamLine = `- Documentation team: ${roleParts.join(", ")}`
+
+  const writerRoots = normalizeWriterDocsRoots(pluginConfig.writer_docs_roots)
+  const writerModeLine =
+    writerRoots.length > 0
+      ? `- Writer write mode: \`scoped\` — author-writer is the sole author of reader-facing prose and the sole writer of approved document files under ${writerRoots.map((root) => `\`${root}\``).join(", ")} (\`writer_docs_roots\`); you do not edit those roots in scoped mode`
+      : "- Writer write mode: `read-only` (`writer_docs_roots` is empty) — author-writer returns prose or patches; you apply and publish the returned text as the disclosed publisher"
+
+  const authorLine =
+    author !== undefined
+      ? `- Author state dir: \`${author.authorStateDir}\`; project id: \`${author.projectId}\` — create and update the author brief at \`${author.authorStateDir}/${author.projectId}/<docId>/brief.md\`; author-writer reads it and never writes it`
+      : undefined
+
+  const designLine =
+    design !== undefined
+      ? `- Design state dir: \`${design.designStateDir}\`; project id: \`${design.projectId}\` — read-only reference for architecture documents; the architect owns writes`
+      : undefined
+
+  const lines = [
+    "## Runtime Bindings (injected by opencode-adapter)",
+    memoryLine,
+    modelLine,
+    writerLine,
+    teamLine,
+    writerModeLine,
+    ...(authorLine !== undefined ? [authorLine] : []),
+    ...(designLine !== undefined ? [designLine] : []),
+    DISPATCH_JOB_TOOLS_LINE + AUTHOR_WRITER_SESSION_LINE,
+    `- Memory namespace: \`${namespace}\``,
+  ]
+  return lines.join("\n")
+}
+
+/**
+ * Register the `author` primary agent: the documentation team's editor. It is
+ * user-selectable and not dispatchable, owns the author-brief directory,
+ * reads the design-record directory as reference, and never writes
+ * reader-facing prose itself. A pre-existing user-defined entry is left
+ * untouched.
+ */
+export async function registerAuthor(
+  config: MutableConfig,
+  pluginConfig: JanusPluginConfig,
+  namespace: string,
+  directory?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  if (config.agent?.[pluginConfig.author_agent]) return
+
+  const authorStateDir = resolveAuthorStateDir(env)
+  const designStateDir = resolveDesignStateDir(env)
+  for (const dir of [authorStateDir, designStateDir]) {
+    try {
+      mkdirSync(dir, { recursive: true })
+    } catch {
+      // Non-fatal: the permission still ships; the write may ask later.
+    }
+  }
+  const projectId = directory !== undefined ? computeProjectId(directory) : undefined
+  const author: AuthorBinding | undefined =
+    projectId !== undefined ? { authorStateDir, projectId } : undefined
+  const design: DesignBinding | undefined =
+    projectId !== undefined ? { designStateDir, projectId } : undefined
+
+  const assembledPrompt = await assemblePrompt({
+    assetFile: "agents/author.md",
+    fragments: [DISPATCH_HUB_ASSET, CHANNEL_POLICY_ASSET],
+    runtimeBlock: buildAuthorRuntimeBindings(pluginConfig, namespace, author, design),
+  })
+
+  const entry: PrimaryAgentEntry = {
+    mode: "primary",
+    prompt: assembledPrompt,
+    model: resolveRoleModel(pluginConfig, "author"),
+    permission: {
+      external_directory: {
+        [`${authorStateDir}/**`]: "allow",
+        [`${designStateDir}/**`]: "allow",
+      },
+    },
+  }
+
+  if (!config.agent) config.agent = {}
+  config.agent[pluginConfig.author_agent] = entry
 }

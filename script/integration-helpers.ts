@@ -63,10 +63,10 @@ function filePathFromEntry(entry: string): string {
   return entry.startsWith("file://") ? fileURLToPath(entry) : entry
 }
 
-export function writerAssetPathForEntry(entry: string): string | undefined {
+export function authorWriterAssetPathForEntry(entry: string): string | undefined {
   const fsPath = filePathFromEntry(entry)
   if (!fsPath.endsWith("dist/index.js")) return undefined
-  return join(dirname(dirname(fsPath)), "assets", "agents", "writer.md")
+  return join(dirname(dirname(fsPath)), "assets", "agents", "author-writer.md")
 }
 
 export type InstallMetadata = {

@@ -55,7 +55,7 @@ const INTENTIONAL_DUPLICATES = [
   // House interaction style repeated in every user-facing entry prompt.
   "No emoji unless the user used one first.",
   "A simple one-shot answer needs no block; its last sentence is the action.",
-  // Memory-handling rule mirrored in ask-lite's own prompt and the skill's memory policy.
+  // Memory-handling rule mirrored in simple's own prompt and the skill's memory policy.
   "Sensitive fields are excluded and persist only after itemized confirmation.",
   // Writer has its own bounded-task rule; the research leaf shares the wording.
   "Being observed while still working (`pending` / `unknown`) is not a failure; progress is not your final report.",
@@ -162,7 +162,7 @@ describe("cross-file duplicate sentences", () => {
     const fragment = await readText(join(ASSETS, "principles", "claim-types.md"))
     expect(fragment).toContain(header)
     for (const path of [
-      join(ASSETS, "agents", "analyst.md"),
+      join(ASSETS, "agents", "consultant-analyst.md"),
       join(REPO_ROOT, "skill-src/consultation/policies/evidence-and-sources.md"),
     ]) {
       expect(await readText(path)).not.toContain(header)

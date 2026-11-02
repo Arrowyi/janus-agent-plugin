@@ -45,42 +45,26 @@ function assertError(result: { ok: true; value: unknown } | { ok: false; error: 
 describe("dispatch role constants", () => {
   it("exports roles, budget and default wait", () => {
     expect(DISPATCH_ROLES).toEqual([
-      "explorer", "analyst", "critic", "arch-critic", "auditor", "writer",
-      "ask-lite", "coder-lite", "coder", "consultant",
+      "common-explorer", "consultant-analyst", "consultant-critic", "coder-reviewer",
+      "consultant-auditor", "author-writer", "simple", "coder-lite", "coder", "consultant",
     ])
     expect(PRODUCTION_WAIT_BUDGET_MS).toBe(300_000)
     expect(DEFAULT_WAIT_MS).toBe(PRODUCTION_WAIT_BUDGET_MS)
   })
 })
 
-describe("dispatch role aliases", () => {
-  it("normalizes the legacy verifier and lite role names", () => {
-    expect(parseDispatchRole("verifier")).toEqual({ ok: true, value: "auditor" })
-    expect(parseDispatchRole("lite")).toEqual({ ok: true, value: "ask-lite" })
-    expect(parseDispatchRole("auditor")).toEqual({ ok: true, value: "auditor" })
-    expect(parseDispatchRole("ask-lite")).toEqual({ ok: true, value: "ask-lite" })
+describe("dispatch role parsing", () => {
+  it("accepts every canonical role name", () => {
+    for (const role of DISPATCH_ROLES) {
+      expect(parseDispatchRole(role)).toEqual({ ok: true, value: role })
+    }
   })
 
-  it("rejects the removed build role with a migration hint", () => {
-    const result = parseDispatchRole("build")
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.message).toContain('tier: "deep"')
-  })
-
-  it("normalizes legacy verifier and lite values in a journal record", () => {
-    const verifier = assertOk(parseJournalRecord(makeJobSpec({ role: "auditor", agent_name: "auditor" })))
-    expect(verifier.kind).toBe("job-spec")
-    if (verifier.kind === "job-spec") expect(verifier.role).toBe("auditor")
-
-    const legacyVerifier = assertOk(parseJournalRecord({ ...makeJobSpec({ role: "auditor", agent_name: "auditor" }), role: "verifier" }))
-    expect(legacyVerifier.kind).toBe("job-spec")
-    if (legacyVerifier.kind === "job-spec") expect(legacyVerifier.role).toBe("auditor")
-
-    const legacyLite = assertOk(parseJournalRecord({ ...makeJobSpec({ role: "ask-lite", agent_name: "ask-lite" }), role: "lite" }))
-    if (legacyLite.kind === "job-spec") expect(legacyLite.role).toBe("ask-lite")
-
-    const legacyBuild = assertOk(parseJournalRecord({ ...makeJobSpec({ role: "coder", agent_name: "coder" }), role: "build" }))
-    if (legacyBuild.kind === "job-spec") expect(legacyBuild.role).toBe("build")
+  it("rejects unknown and removed role names", () => {
+    for (const role of ["explorer", "analyst", "critic", "arch-critic", "auditor", "writer", "ask-lite", "lite", "verifier", "build"]) {
+      const result = parseDispatchRole(role)
+      expect(result.ok).toBe(false)
+    }
   })
 })
 
@@ -161,7 +145,7 @@ describe("envelope parsing and serialization", () => {
       expect(parsedPending.next).toBe("janus_dispatch_wait")
     }
     expect(parsedPending.job_id).toBe(FAKE_JOB_ID)
-    expect(parsedPending.role).toBe("analyst")
+    expect(parsedPending.role).toBe("consultant-analyst")
     expect(parsedPending.attempt).toEqual({ index: 0, model: "opencode/claude-sonnet-5-5" })
     expect(parsedPending.session_id).toBe(FAKE_SESSION_ID)
     expect(parsedPending.waited_ms).toBe(1_000)
@@ -179,7 +163,7 @@ describe("envelope parsing and serialization", () => {
     expect(parsed.status).toBe("completed")
     if (parsed.status !== "completed") throw new Error("expected completed envelope")
     expect(parsed.job_id).toBe(FAKE_JOB_ID)
-    expect(parsed.role).toBe("analyst")
+    expect(parsed.role).toBe("consultant-analyst")
     expect(parsed.attempt).toEqual({ index: 0, model: "opencode/claude-sonnet-5-5" })
     expect(parsed.session_id).toBe("ses_target")
     expect(parsed.waited_ms).toBe(42)
@@ -241,7 +225,7 @@ describe("continuation journal fields", () => {
 describe("continue args validation", () => {
   it("accepts valid args with an optional role and rejects bad values", () => {
     expect(assertOk(parseContinueArgs({ session_id: FAKE_SESSION_ID, prompt: "apply the fix" })).role).toBeUndefined()
-    expect(assertOk(parseContinueArgs({ session_id: FAKE_SESSION_ID, prompt: "apply the fix", role: "writer" })).role).toBe("writer")
+    expect(assertOk(parseContinueArgs({ session_id: FAKE_SESSION_ID, prompt: "apply the fix", role: "author-writer" })).role).toBe("author-writer")
     expect(assertError(parseContinueArgs({ session_id: "", prompt: "x" })).message).toContain("session_id")
     expect(assertError(parseContinueArgs({ session_id: FAKE_SESSION_ID, prompt: "x", role: "oracle" })).message).toContain("role")
     expect(assertError(parseContinueArgs({ session_id: FAKE_SESSION_ID })).message).toContain("prompt")

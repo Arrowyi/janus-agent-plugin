@@ -35,7 +35,7 @@ User arguments: $ARGUMENTS
 - `退出` / `exit` / `0`: exit
 - Any other free text: map to the above modes by meaning; ask one question only when genuinely ambiguous
 
-Role names accept both English and Chinese short forms: `入口`=janus, `顾问`=consultant, `编码`=coder, `快答`=ask-lite, `机械`=coder-lite, `检索`=explorer, `分析`=analyst, `反证`=critic, `架构`=arch-critic, `审计`=auditor, `写作`=writer. The family has 11 registered agents and 10 dispatch roles (janus is the primary entry and is not dispatchable).
+Role names accept both English and Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `审计`=consultant-auditor, `机械`=coder-lite, `写作`=author-writer. The family has 13 registered agents and 10 dispatch roles; `janus`, `architect`, and `author` are primary entries and are not dispatchable.
 
 ## No-argument flow
 
@@ -60,7 +60,7 @@ When `4` is chosen, if this session has no recommendation yet, first ask once "R
 
 Read-only. Runtime truth takes precedence; do not cite any fixed snapshot.
 
-1. `opencode agent list` for the roster; then verify each one with `opencode debug agent <name>`. `agent list` may miss `janus` / `ask-lite`.
+1. `opencode agent list` for the roster; then verify each one with `opencode debug agent <name>`. `agent list` may miss `janus` / `simple`.
 2. `opencode models`, `opencode auth list`, then read OpenCode's provider enable/disable config to confirm which provider/models are available.
 3. Config path precedence:
    - `$JANUS_CONFIG`
@@ -69,21 +69,23 @@ Read-only. Runtime truth takes precedence; do not cite any fixed snapshot.
    Output the actual path.
 4. Role → field:
 
-   | Role | Field | Legacy alias |
+   | Role | Model field | Agent field |
    |---|---|---|
-   | janus | janus_model | — |
-   | consultant | consultant_model | agent_model |
-   | coder | coder_model | — |
-   | ask-lite | ask_lite_model | lite_model |
-   | coder-lite | coder_lite_model | — |
-   | explorer | explorer_model | — |
-   | analyst | analyst_model | — |
-   | critic | critic_model | — |
-   | arch-critic | arch_critic_model | — |
-   | auditor | auditor_model | verifier_model |
-   | writer | writer_model | — |
+   | janus | janus_model | janus_agent |
+   | simple | simple_model | simple_agent |
+   | consultant | consultant_model | consultant_agent |
+   | architect | architect_model | architect_agent |
+   | coder | coder_model | coder_agent |
+   | author | author_model | author_agent |
+   | common-explorer | common_explorer_model | common_explorer_agent |
+   | consultant-analyst | consultant_analyst_model | consultant_analyst_agent |
+   | consultant-critic | consultant_critic_model | consultant_critic_agent |
+   | consultant-auditor | consultant_auditor_model | consultant_auditor_agent |
+   | coder-reviewer | coder_reviewer_model | coder_reviewer_agent |
+   | author-writer | author_writer_model | author_writer_agent |
+   | coder-lite | coder_lite_model | coder_lite_agent |
 
-   Also inspect `mode_models` and `tier_models` (see "Advanced routing"). Non-model config fields such as `*_agent` and `*_enabled` use the same canonical/legacy mapping.
+   `architect_model` and `author_model` fall back to an explicitly configured `consultant_model`, then to the plugin default. Also inspect `mode_models` and `tier_models` (see "Advanced routing"). Non-model config fields use the same role prefix, e.g. `simple_enabled`, `architect_enabled`, `author_writer_enabled`.
 
 5. Get the resolved model with `opencode debug agent <name>`. When the config value and the CLI disagree, report it; do not silently pick one.
 6. Resolve the effective prompt block for each model:
@@ -108,15 +110,15 @@ For example `opencode-go/deepseek-v4.1-flash` → `deepseekv41flash`, `opencode/
 
 Two optional nested maps let the user route a role differently per consultation mode and per depth tier. They apply to dispatched sessions (not to a direct agent selection), and precedence is:
 
-`mode_models[mode][role]` > `tier_models[tier][role]` > `<role>_model` > plugin default.
+`mode_models[mode][role]` > `tier_models[tier][role]` > `<role>_model` > `TIER_MODEL_DEFAULTS[tier][role]` > plugin default. The plugin ships one tier default (`deep.coder`), and an explicit `<role>_model` still beats it.
 
 Example:
 
 ```jsonc
 {
   "mode_models": {
-    "design": { "arch-critic": "provider/strong-reviewer" },
-    "doc": { "writer": "provider/long-context-writer" }
+    "design": { "coder-reviewer": "provider/strong-reviewer", "common-explorer": "provider/fast-research" },
+    "doc": { "author-writer": "provider/long-context-writer" }
   },
   "tier_models": {
     "deep": { "coder": "provider/strong-coding" }
@@ -124,7 +126,7 @@ Example:
 }
 ```
 
-Legacy mode keys `plan`/`author` map to `roadmap`/`doc`; legacy role keys `verifier`/`lite` map to `auditor`/`ask-lite`. New keys win when both are present. A configured `writer_delegate_agent` keeps host model selection; mode/tier overrides apply to the bundled writer only.
+A configured `writer_delegate_agent` keeps host model selection; mode/tier overrides apply to the bundled author-writer only. `janus`, `architect`, and `author` are primary entries: `mode_models` and `tier_models` apply to dispatched sessions, so set their model with `<role>_model`.
 
 ## Model evaluation
 
@@ -133,10 +135,12 @@ Read-only. Answer: whether an agent's model should change, and why.
 - Evaluate the current model of every enabled agent.
 - Candidate pool: take only 3–5 mainstream or well-suited models per role family, and they must come from providers already configured on this machine; do not enumerate the whole catalog. Explain why these candidates were chosen, and when necessary why an obvious candidate was not.
 - Role-family dimensions:
-  - Judgment/audit (consultant, critic, arch-critic, auditor): hard-task capability first; challenger and challenged must stay in different model families.
+  - Judgment/audit (consultant, consultant-critic, coder-reviewer, consultant-auditor): hard-task capability first; challenger and challenged must stay in different model families.
   - Coding (coder, coder-lite): agentic/coding hard benchmarks + cost per task; coder-lite only takes fully specified mechanical tasks.
-  - Entry/quick answer (janus, ask-lite): latency, tool-call stability, price; janus must also be judged on orchestration/routing.
-  - Retrieval/writing (explorer, writer): long context, hallucination rate, output quality/verbosity.
+  - Design (architect, coder-reviewer): long-context structure, trade-off reasoning, and independent review.
+  - Documentation (author, author-writer): long-context editing, prose quality, and instruction adherence.
+  - Entry/quick answer (janus, simple): latency, tool-call stability, price; janus must also be judged on orchestration/routing.
+  - Retrieval/writing (common-explorer, consultant-analyst, author-writer): long context, hallucination rate, output quality/verbosity.
 - For cost, use actual cost per task = list price × verbosity factor; distinguish Zen pay-as-you-go vs Go subscription quota.
 - For each candidate, mark whether it has an effective prompt block (user override / shipped / none). Candidates without a block may still be recommended, but mark them as a prompt-adaptation risk.
 - Source grading:

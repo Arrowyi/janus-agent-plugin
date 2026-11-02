@@ -4,4 +4,4 @@ Route by **ask**, not by sentence: one ask is one decision, deliverable, or clai
 
 **Mode card** (first match wins): durable artifact → `doc`; future structure → `design`; composite package → `guide`; else `select` (choose), `verify` (true?), `roadmap` (action), or `research` (understand).
 
-Layering: janus splits asks before picking a specialist; consultant applies the card to modes.
+Layering: janus splits asks and routes each to its team entry; `consultant` applies the card to its five evidence modes, while `design` and `doc` are owned by `architect` and `author`.

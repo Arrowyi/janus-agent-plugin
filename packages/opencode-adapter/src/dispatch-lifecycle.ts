@@ -213,7 +213,7 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
           // Transient transport failure reading the journal, not an invalid job or
           // a specialist failure. Retain job identity and surface a recoverable
           // nonterminal envelope so the caller retries rather than degrading.
-          let role: DispatchRole = "analyst"
+          let role: DispatchRole = "consultant-analyst"
           try {
             const got = await sdk.session.get({ path: { id: request.jobID }, query: { directory: request.directory } })
             if (got.error === undefined && got.data !== undefined && got.data.title.startsWith("[consultation-dispatch:v1] ")) {

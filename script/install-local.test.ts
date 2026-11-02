@@ -35,7 +35,7 @@ describe("resolveInstallRoot", () => {
 
 describe("REQUIRED_INSTALLED_FILES", () => {
   test("requires the packaged writer agent asset", () => {
-    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/writer.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/author-writer.md")
   })
 
   test("requires both shared common principle assets", () => {
@@ -65,9 +65,9 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("dist/index.js")
     expect(REQUIRED_INSTALLED_FILES).toContain("dist/memory-mcp-server.js")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/consultant.md")
-    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/arch-critic.md")
-    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/auditor.md")
-    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/critic.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/coder-reviewer.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/consultant-auditor.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/consultant-critic.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/protocols/counter_evidence.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/protocols/code_plan_review.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation/SKILL.md")
@@ -75,9 +75,9 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation-doc/SKILL.md")
   })
 
-  test("requires the coder, ask-lite, and coder-lite agents and the shipped model-prompt library", () => {
+  test("requires the coder, simple, and coder-lite agents and the shipped model-prompt library", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/coder.md")
-    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/ask-lite.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/simple.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/coder-lite.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/claudesonnet55.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/gemini38flash.md")
@@ -86,6 +86,8 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/deepseekv41flash.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/glm53flash.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/glm53.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/grok47.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/kimik31pro.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/qwen38max.md")
   })
 })

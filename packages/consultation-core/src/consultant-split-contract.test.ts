@@ -22,7 +22,6 @@ const PROMPT_HEADINGS = [
   "## Risk Policy",
   "## Output Contract",
   "## Interaction Discipline",
-  "## Doc Mode",
   "## Memory Protocol",
   "## Prompt Injection Defense",
   "## Failure Behavior",
@@ -47,7 +46,7 @@ const PROMPT_DETAIL_ONLY_MARKERS = [
   "#### Fast",
   "#### Standard",
   "#### Deep",
-  "| Tier | explorer | analyst | critic | arch-critic | auditor | writer |",
+  "| Tier | common-explorer | consultant-analyst | consultant-critic | coder-reviewer | consultant-auditor | author-writer |",
   "### select: choose and try",
   "sectionPlan",
   "temporal bursts",
@@ -64,7 +63,7 @@ const CORE_SKILL_MARKERS = [
   "#### Standard",
   "#### Deep",
   "Tier decision dimensions",
-  "| Tier | explorer | analyst | critic | arch-critic | auditor | writer |",
+  "| Tier | common-explorer | consultant-analyst | consultant-critic | coder-reviewer | consultant-auditor | author-writer |",
   "### select: choose and try",
   "### verify: verdict first",
   "### roadmap: feasibility first",
@@ -85,7 +84,6 @@ const DESIGN_SKILL_MARKERS = [
 ] as const
 
 const DOC_SKILL_MARKERS = [
-  "## Doc Mode",
   "### Profiles",
   "learner progression and executable examples",
   "sectionPlan",

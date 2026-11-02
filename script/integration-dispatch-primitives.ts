@@ -11,8 +11,8 @@ export type HostApi = (path: string, body?: unknown) => Promise<unknown>
 
 export async function proveDispatchPrimitives(api: HostApi, directory: string): Promise<Assertion[]> {
   const parent = SessionSchema.parse(await api("/session", { title: "primitive parent" }))
-  const root = SessionSchema.parse(await api("/session", { parentID: parent.id, title: "[consultation-dispatch:v1] explorer" }))
-  const attempt = SessionSchema.parse(await api("/session", { parentID: root.id, title: "[consultation-dispatch:v1] attempt explorer" }))
+  const root = SessionSchema.parse(await api("/session", { parentID: parent.id, title: "[consultation-dispatch:v1] common-explorer" }))
+  const attempt = SessionSchema.parse(await api("/session", { parentID: root.id, title: "[consultation-dispatch:v1] attempt common-explorer" }))
   const children = SessionSchema.array().parse(await api(`/session/${root.id}/children`))
   await api(`/session/${root.id}/message`, { messageID: "msg-primitives", noReply: true, parts: [{ type: "text", text: "{}", ignored: true, synthetic: true }] })
   const messages = MessageSchema.array().parse(await api(`/session/${root.id}/message`))

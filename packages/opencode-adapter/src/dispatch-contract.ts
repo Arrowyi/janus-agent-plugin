@@ -1,76 +1,42 @@
 import { z } from "zod"
 
 export const DISPATCH_ROLES = [
-  "explorer",
-  "analyst",
-  "critic",
-  "arch-critic",
-  "auditor",
-  "writer",
-  "ask-lite",
+  "common-explorer",
+  "consultant-analyst",
+  "consultant-critic",
+  "coder-reviewer",
+  "consultant-auditor",
+  "author-writer",
+  "simple",
   "coder-lite",
   "coder",
   "consultant",
 ] as const
 export type DispatchRole = (typeof DISPATCH_ROLES)[number]
-
-/** Roles that may appear in a legacy journal record but are no longer launchable. */
-export const LEGACY_DISPATCH_ROLES = ["verifier", "lite", "build"] as const
-export type JournalRole = DispatchRole | "build"
+export type JournalRole = DispatchRole
 
 export const PRODUCTION_WAIT_BUDGET_MS = 300_000
 export const DEFAULT_WAIT_MS = PRODUCTION_WAIT_BUDGET_MS
 
 export function normalizeDispatchRole(value: string): DispatchRole | undefined {
-  switch (value) {
-    case "explorer":
-    case "analyst":
-    case "critic":
-    case "arch-critic":
-    case "auditor":
-    case "writer":
-    case "ask-lite":
-    case "coder-lite":
-    case "coder":
-    case "consultant":
-      return value
-    case "verifier":
-      return "auditor"
-    case "lite":
-      return "ask-lite"
-    default:
-      return undefined
-  }
+  return (DISPATCH_ROLES as readonly string[]).includes(value) ? (value as DispatchRole) : undefined
 }
 
 const roleSchema = z.string().transform((value, ctx): DispatchRole => {
-  if (value === "build") {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'the "build" role was removed; dispatch "coder" with tier: "deep" instead',
-    })
-    return z.NEVER
-  }
   const normalized = normalizeDispatchRole(value)
   if (normalized === undefined) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: `expected one of: ${DISPATCH_ROLES.join(", ")} (legacy aliases: verifier, lite)`,
+      message: `expected one of: ${DISPATCH_ROLES.join(", ")}`,
     })
     return z.NEVER
   }
   return normalized
 })
 
-const journalRoleSchema = z
-  .enum([...DISPATCH_ROLES, "verifier", "lite", "build"])
-  .transform((value): JournalRole => {
-    if (value === "verifier") return "auditor"
-    if (value === "lite") return "ask-lite"
-    return value
-  })
+const journalRoleSchema = z.enum(DISPATCH_ROLES)
 
-/** Public role argument schema: canonical names plus the verifier/lite aliases. */
+/** Public role argument schema: canonical dispatch names only. */
 export const DispatchRoleSchema = roleSchema
 const messageIdSchema = z.string().regex(/^msg-[A-Za-z0-9_-]+$/, { message: "expected msg-prefixed message id" })
 const sessionIdSchema = z.string().min(1, { message: "expected non-empty session id" })

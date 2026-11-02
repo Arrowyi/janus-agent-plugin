@@ -37,8 +37,8 @@ const GRADED_SOURCE_FIELDS = [
 ] as const
 
 describe("agent prompt contracts", () => {
-  it("explorer exposes the graded-source contract and search coverage", async () => {
-    const prompt = await readAgentPrompt("explorer.md")
+  it("common-explorer exposes the graded-source contract and search coverage", async () => {
+    const prompt = await readAgentPrompt("common-explorer.md")
 
     expectFields(prompt, GRADED_SOURCE_FIELDS)
     expectFields(prompt, [
@@ -74,8 +74,8 @@ describe("agent prompt contracts", () => {
     }
   })
 
-  it("critic exposes the critique contract including loop control and plan review", async () => {
-    const prompt = await readAgentPrompt("critic.md")
+  it("consultant-critic exposes the critique contract including loop control and plan review", async () => {
+    const prompt = await readAgentPrompt("consultant-critic.md")
 
     const fields = Object.keys(CritiqueDraftSchema.shape)
     const designOnly = new Set(["designReview"])
@@ -83,8 +83,8 @@ describe("agent prompt contracts", () => {
     expectFields(prompt, ["unresolvedGaps", "planReview", "residualUncertainty"])
   })
 
-  it("arch-critic exposes the design-review half of the critique contract", async () => {
-    const prompt = await readAgentPrompt("arch-critic.md")
+  it("coder-reviewer exposes the design-review half of the critique contract", async () => {
+    const prompt = await readAgentPrompt("coder-reviewer.md")
 
     expectFields(prompt, ["designReview", "preMortem", "unmetQualityScenarios", "reversibilityProblems", "missingOptions"])
     expect(prompt).toContain("codePlanReview")
@@ -92,8 +92,8 @@ describe("agent prompt contracts", () => {
   })
 
   it("CritiqueDraftSchema and the two critique prompts agree on every field", async () => {
-    const critic = await readAgentPrompt("critic.md")
-    const archCritic = await readAgentPrompt("arch-critic.md")
+    const critic = await readAgentPrompt("consultant-critic.md")
+    const archCritic = await readAgentPrompt("coder-reviewer.md")
     const combined = `${critic}\n${archCritic}`
 
     for (const field of Object.keys(CritiqueDraftSchema.shape)) {
@@ -108,7 +108,7 @@ describe("agent prompt contracts", () => {
   })
 
   it("critic keeps its own challenge rules instead of verifier audit rules", async () => {
-    const prompt = await readAgentPrompt("critic.md")
+    const prompt = await readAgentPrompt("consultant-critic.md")
 
     expect(prompt).not.toContain("Return `clean`")
     expect(prompt).not.toContain("influence audit")
@@ -123,8 +123,8 @@ describe("agent prompt contracts", () => {
     expect(card).toContain("escalate at most one level per round")
   })
 
-  it("verifier reports fired signal names and the audit schema agrees", async () => {
-    const prompt = await readAgentPrompt("auditor.md")
+  it("consultant-auditor reports fired signal names and the audit schema agrees", async () => {
+    const prompt = await readAgentPrompt("consultant-auditor.md")
 
     expect(prompt).toContain("signalsFired")
     expect(prompt).toContain("missingObservations")
@@ -147,23 +147,23 @@ describe("agent prompt contracts", () => {
     ).toEqual([])
   })
 
-  it("analyst applies the shared reasoning-failure checks", async () => {
-    const prompt = await readAgentPrompt("analyst.md")
+  it("consultant-analyst applies the shared reasoning-failure checks", async () => {
+    const prompt = await readAgentPrompt("consultant-analyst.md")
 
     expect(prompt).toContain("independent analysis pass")
     expect(prompt).toContain("model diversity is a runtime property reported in bindings")
     expect(prompt).toContain("Apply the shared Reasoning-Failure Checks")
   })
 
-  it("analyst exposes the complete analysis contract", async () => {
-    const prompt = await readAgentPrompt("analyst.md")
+  it("consultant-analyst exposes the complete analysis contract", async () => {
+    const prompt = await readAgentPrompt("consultant-analyst.md")
 
     expectFields(prompt, Object.keys(AnalysisDraftBaseSchema.shape))
     expectFields(prompt, ["verified", "refuted", "inferred", "unverifiable"])
   })
 
-  it("writer exposes the author-section contract in its blueprint", async () => {
-    const prompt = await readAgentPrompt("writer.md")
+  it("author-writer exposes the author-section contract in its blueprint", async () => {
+    const prompt = await readAgentPrompt("author-writer.md")
 
     expectFields(prompt, Object.keys(AuthorSectionSchema.shape))
     expectFields(prompt, ["sectionPlan", "continuityMap", "teachingBeats"])
@@ -179,7 +179,7 @@ describe("agent prompt contracts", () => {
   it("consultant keeps a deliverable-shape conflict in two lanes", async () => {
     const prompt = await readAgentPrompt("consultant.md")
 
-    expect(prompt).toContain("put the document in `doc` and answer the fact inline")
+    expect(prompt).toContain("hand the document to `author` and answer the fact inline")
     expect(prompt).toContain("do not force one mode to swallow the other")
   })
 
@@ -189,7 +189,7 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("Action reversibility is orthogonal to epistemic complexity")
     expect(prompt).toContain("Step 1 — methodological floor")
     expect(prompt).toContain("Step 2 — cost-performance among adequate methods")
-    expect(prompt).toContain("Hard boundary for `inline` and `ask-lite`")
+    expect(prompt).toContain("Hard boundary for `inline` and `simple`")
     expect(prompt).toContain("within two tool calls")
     expect(prompt).toContain("single, conflict-free authoritative primary source")
     expect(prompt).toContain("Pass `mode`, `tier`, and `protocol` explicitly to `janus_dispatch`")
@@ -209,11 +209,11 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("legal or compliance risk")
   })
 
-  it("consultant records an evidence strategy and forbids fast for roadmap, guide, doc, and design", async () => {
+  it("consultant records an evidence strategy and forbids fast for roadmap and guide", async () => {
     const prompt = await readAgentPrompt("consultant.md")
 
     expect(prompt).toContain("证据策略：<what was checked")
-    expect(prompt).toContain("Roadmap, guide, doc, and design never route to fast")
+    expect(prompt).toContain("Roadmap and guide never route to fast")
   })
 
   it("the skills bind the five protocol cards and the two-step dispatch baselines", async () => {
@@ -252,11 +252,11 @@ describe("agent prompt contracts", () => {
   it("janus limits inline work to single-source, conflict-free checks", async () => {
     const prompt = await readAgentPrompt("janus.md")
 
-    expect(prompt).toContain("strictly single-source, conflict-free factual checks")
-    expect(prompt).toContain("selection among options (behavioral, strategic, technical, or product)")
+    expect(prompt).toContain("a single-source factual check")
+    expect(prompt).toContain("option selection")
   })
 
-  it("coder binds arch-critic to code_plan_review for plan and diff review", async () => {
+  it("coder binds coder-reviewer to code_plan_review for plan and diff review", async () => {
     const prompt = await readAgentPrompt("coder.md")
 
     expect(prompt).toContain('protocol: "code_plan_review"')
@@ -266,9 +266,9 @@ describe("agent prompt contracts", () => {
 
   it("janus and writer route repository maintenance files to the coder", async () => {
     const janus = await readAgentPrompt("janus.md")
-    const writer = await readAgentPrompt("writer.md")
+    const writer = await readAgentPrompt("author-writer.md")
 
-    expect(janus).toContain("repo work, and README/AGENTS maintenance -> `coder`")
+    expect(janus).toContain("README/AGENTS maintenance")
     expect(writer).toContain("those changes route to `coder`")
     expect(writer).toContain("do not teach from survivors only")
   })
@@ -277,7 +277,7 @@ describe("agent prompt contracts", () => {
     const prompt = await readAgentPrompt("janus.md")
 
     expect(prompt).toContain("Memory ownership: consultant saves")
-    expect(prompt).toContain("Consultant results are exempt from this brevity")
+    expect(prompt).toContain("Specialist results are exempt from this brevity")
     expect(prompt).toContain("结论：")
     expect(prompt).toContain("下一步：")
     expect(prompt).toContain("Do not rewrite it into Janus's short style")
@@ -331,7 +331,7 @@ describe("agent prompt contracts", () => {
     const agentDir = new URL("../../../assets/agents/", import.meta.url)
     const files = (await readdir(agentDir)).filter((file) => file.endsWith(".md")).sort()
 
-    expect(files.length).toBe(11)
+    expect(files.length).toBe(13)
     for (const file of files) {
       const prompt = await readFile(new URL(file, agentDir), "utf8")
       if (prompt.includes("## File Change Confirmation")) {
@@ -402,8 +402,8 @@ describe("agent prompt contracts", () => {
     expect(failures).toContain("`qualityFlags`")
   })
 
-  it("analyst carries the load-bearing-assumption and outside-view rules", async () => {
-    const prompt = await readAgentPrompt("analyst.md")
+  it("consultant-analyst carries the load-bearing-assumption and outside-view rules", async () => {
+    const prompt = await readAgentPrompt("consultant-analyst.md")
 
     expect(prompt).toContain("assumptions")
     expect(prompt).toContain("outsideView")
@@ -413,8 +413,8 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("load-bearing")
   })
 
-  it("critic checks assumptions, selection reversals, and plan failure modes", async () => {
-    const prompt = await readAgentPrompt("critic.md")
+  it("consultant-critic checks assumptions, selection reversals, and plan failure modes", async () => {
+    const prompt = await readAgentPrompt("consultant-critic.md")
 
     expect(prompt).toContain("load-bearing")
     expect(prompt).toContain("confidenceAdjustment")
@@ -435,8 +435,8 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("cheap and reversible")
   })
 
-  it("analyst builds competing hypotheses and names the discriminating evidence", async () => {
-    const prompt = await readAgentPrompt("analyst.md")
+  it("consultant-analyst builds competing hypotheses and names the discriminating evidence", async () => {
+    const prompt = await readAgentPrompt("consultant-analyst.md")
 
     expect(prompt).toContain("hypotheses")
     expect(prompt).toContain("discriminatingEvidence")
@@ -451,12 +451,12 @@ describe("agent prompt contracts", () => {
     const prompt = await readAgentPrompt("consultant.md")
 
     expect(prompt).toContain("build a hypothesis matrix with discriminating evidence")
-    expect(prompt).toContain("give the resulting matrix to the critic")
+    expect(prompt).toContain("give the resulting matrix to the `consultant-critic`")
     expect(prompt).toContain("hypothesis matrix")
   })
 
-  it("critic challenges a hypothesis matrix without adding a schema field", async () => {
-    const prompt = await readAgentPrompt("critic.md")
+  it("consultant-critic challenges a hypothesis matrix without adding a schema field", async () => {
+    const prompt = await readAgentPrompt("consultant-critic.md")
 
     expect(prompt).toContain("missing hypothesis")
     expect(prompt).toContain("does not discriminate")

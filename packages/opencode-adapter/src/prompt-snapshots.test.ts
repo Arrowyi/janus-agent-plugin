@@ -4,17 +4,19 @@ import { readFile, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 
 import {
-  registerAnalyst,
-  registerArchCritic,
+  registerArchitect,
+  registerAuthor,
+  registerAuthorWriter,
   registerCoder,
   registerCoderLite,
+  registerCoderReviewer,
+  registerCommonExplorer,
   registerConsultantAgent,
-  registerCritic,
-  registerExplorer,
+  registerConsultantAnalyst,
+  registerConsultantAuditor,
+  registerConsultantCritic,
   registerJanus,
-  registerAskLite,
-  registerAuditor,
-  registerWriter,
+  registerSimple,
 } from "./agent-registration.ts"
 import type { JanusPluginConfig } from "./plugin-config.ts"
 
@@ -33,7 +35,7 @@ import type { JanusPluginConfig } from "./plugin-config.ts"
 const SNAPSHOT_DIR = new URL("./prompt-snapshots/", import.meta.url)
 const SNAPSHOT_DIR_PATH = fileURLToPath(SNAPSHOT_DIR)
 
-// Fixed paths keep the injected author/design/ask-lite bindings byte-stable across
+// Fixed paths keep the injected author/design/simple bindings byte-stable across
 // machines. They are scratch locations under /tmp, never repo state.
 const SNAPSHOT_HOME = "/tmp/janus-snapshot/home"
 const SNAPSHOT_DATA_HOME = "/tmp/janus-snapshot/data"
@@ -48,17 +50,19 @@ const SNAPSHOT_ENV: NodeJS.ProcessEnv = {
 
 /** Role registration order and the agent key each binding block reports. */
 const ROLE_TARGETS = [
-  { golden: "consultant", agent: "consultant" },
-  { golden: "coder", agent: "coder" },
-  { golden: "ask-lite", agent: "ask-lite" },
-  { golden: "coder-lite", agent: "coder-lite" },
   { golden: "janus", agent: "janus" },
-  { golden: "explorer", agent: "explorer" },
-  { golden: "analyst", agent: "analyst" },
-  { golden: "critic", agent: "critic" },
-  { golden: "arch-critic", agent: "arch-critic" },
-  { golden: "auditor", agent: "auditor" },
-  { golden: "writer", agent: "writer" },
+  { golden: "simple", agent: "simple" },
+  { golden: "consultant", agent: "consultant" },
+  { golden: "architect", agent: "architect" },
+  { golden: "coder", agent: "coder" },
+  { golden: "author", agent: "author" },
+  { golden: "common-explorer", agent: "common-explorer" },
+  { golden: "consultant-analyst", agent: "consultant-analyst" },
+  { golden: "consultant-critic", agent: "consultant-critic" },
+  { golden: "consultant-auditor", agent: "consultant-auditor" },
+  { golden: "coder-reviewer", agent: "coder-reviewer" },
+  { golden: "author-writer", agent: "author-writer" },
+  { golden: "coder-lite", agent: "coder-lite" },
 ] as const
 
 function makeConfig(): JanusPluginConfig {
@@ -66,29 +70,33 @@ function makeConfig(): JanusPluginConfig {
     install_skill: true,
     install_commands: true,
     memory_enabled: true,
-    consultant_agent: "consultant",
-    critic_agent: "critic",
-    critic_enabled: true,
-    auditor_agent: "auditor",
-    auditor_enabled: true,
-    arch_critic_agent: "arch-critic",
-    arch_critic_enabled: true,
-    explorer_agent: "explorer",
-    explorer_enabled: true,
-    analyst_agent: "analyst",
-    analyst_enabled: true,
-    writer_agent: "writer",
-    writer_enabled: true,
-    writer_docs_roots: ["userdoc"],
-    coder_agent: "coder",
-    coder_enabled: true,
-    ask_lite_agent: "ask-lite",
-    ask_lite_enabled: true,
-    ask_lite_workspace_dir: SNAPSHOT_LITE_WORKSPACE,
-    coder_lite_agent: "coder-lite",
-    coder_lite_enabled: true,
     janus_agent: "janus",
     janus_enabled: true,
+    simple_agent: "simple",
+    simple_enabled: true,
+    simple_workspace_dir: SNAPSHOT_LITE_WORKSPACE,
+    consultant_agent: "consultant",
+    architect_agent: "architect",
+    architect_enabled: true,
+    coder_agent: "coder",
+    coder_enabled: true,
+    author_agent: "author",
+    author_enabled: true,
+    common_explorer_agent: "common-explorer",
+    common_explorer_enabled: true,
+    consultant_analyst_agent: "consultant-analyst",
+    consultant_analyst_enabled: true,
+    consultant_critic_agent: "consultant-critic",
+    consultant_critic_enabled: true,
+    consultant_auditor_agent: "consultant-auditor",
+    consultant_auditor_enabled: true,
+    coder_reviewer_agent: "coder-reviewer",
+    coder_reviewer_enabled: true,
+    author_writer_agent: "author-writer",
+    author_writer_enabled: true,
+    writer_docs_roots: ["userdoc"],
+    coder_lite_agent: "coder-lite",
+    coder_lite_enabled: true,
   }
 }
 
@@ -96,23 +104,19 @@ async function assembleAll(): Promise<Map<string, string>> {
   const config: { agent?: Record<string, unknown> } = {}
   const pluginConfig = makeConfig()
 
-  await registerConsultantAgent(
-    config,
-    pluginConfig,
-    SNAPSHOT_NAMESPACE,
-    SNAPSHOT_PROJECT_DIR,
-    SNAPSHOT_ENV,
-  )
+  await registerConsultantAgent(config, pluginConfig, SNAPSHOT_NAMESPACE)
+  await registerArchitect(config, pluginConfig, SNAPSHOT_NAMESPACE, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
+  await registerAuthor(config, pluginConfig, SNAPSHOT_NAMESPACE, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
   await registerCoder(config, pluginConfig, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
-  await registerAskLite(config, pluginConfig, SNAPSHOT_NAMESPACE)
+  await registerSimple(config, pluginConfig, SNAPSHOT_NAMESPACE)
   await registerCoderLite(config, pluginConfig)
   await registerJanus(config, pluginConfig)
-  await registerExplorer(config, pluginConfig)
-  await registerAnalyst(config, pluginConfig)
-  await registerCritic(config, pluginConfig)
-  await registerArchCritic(config, pluginConfig)
-  await registerAuditor(config, pluginConfig)
-  await registerWriter(config, pluginConfig, SNAPSHOT_ENV, SNAPSHOT_PROJECT_DIR)
+  await registerCommonExplorer(config, pluginConfig)
+  await registerConsultantAnalyst(config, pluginConfig)
+  await registerConsultantCritic(config, pluginConfig)
+  await registerCoderReviewer(config, pluginConfig)
+  await registerConsultantAuditor(config, pluginConfig)
+  await registerAuthorWriter(config, pluginConfig, SNAPSHOT_ENV, SNAPSHOT_PROJECT_DIR)
 
   const prompts = new Map<string, string>()
   for (const target of ROLE_TARGETS) {

@@ -77,7 +77,7 @@ export interface AppendRecordResult {
 export interface CreateAttemptSessionInput {
   readonly jobID: string
   readonly directory: string
-  readonly role: DispatchRole | "build"
+  readonly role: DispatchRole
 }
 export interface CreateAttemptSessionResult {
   readonly sessionID: string

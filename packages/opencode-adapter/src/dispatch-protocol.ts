@@ -23,11 +23,11 @@ const PROTOCOL_ASSETS: Readonly<Record<DispatchProtocol, string>> = {
 
 /** Protocol → the review roles that carry the matching output contract. */
 export const PROTOCOL_ROLES: Readonly<Record<DispatchProtocol, readonly DispatchRole[]>> = {
-  counter_evidence: ["critic"],
-  hypothesis_matrix: ["critic"],
-  plan_robustness: ["critic"],
-  design_premortem: ["arch-critic"],
-  code_plan_review: ["arch-critic"],
+  counter_evidence: ["consultant-critic"],
+  hypothesis_matrix: ["consultant-critic"],
+  plan_robustness: ["consultant-critic"],
+  design_premortem: ["coder-reviewer"],
+  code_plan_review: ["coder-reviewer"],
 }
 
 export class ProtocolCardError extends Error {

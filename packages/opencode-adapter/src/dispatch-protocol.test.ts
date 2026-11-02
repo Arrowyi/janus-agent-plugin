@@ -23,12 +23,12 @@ describe("dispatch protocol cards", () => {
     }
   })
 
-  it("maps critic protocols and arch-critic protocols to their review roles", () => {
-    expect(PROTOCOL_ROLES.counter_evidence).toEqual(["critic"])
-    expect(PROTOCOL_ROLES.hypothesis_matrix).toEqual(["critic"])
-    expect(PROTOCOL_ROLES.plan_robustness).toEqual(["critic"])
-    expect(PROTOCOL_ROLES.design_premortem).toEqual(["arch-critic"])
-    expect(PROTOCOL_ROLES.code_plan_review).toEqual(["arch-critic"])
+  it("maps consultation-challenge protocols to consultant-critic and design/code review to coder-reviewer", () => {
+    expect(PROTOCOL_ROLES.counter_evidence).toEqual(["consultant-critic"])
+    expect(PROTOCOL_ROLES.hypothesis_matrix).toEqual(["consultant-critic"])
+    expect(PROTOCOL_ROLES.plan_robustness).toEqual(["consultant-critic"])
+    expect(PROTOCOL_ROLES.design_premortem).toEqual(["coder-reviewer"])
+    expect(PROTOCOL_ROLES.code_plan_review).toEqual(["coder-reviewer"])
   })
 
   it("prepends the card as the first bytes of the turn-1 task message", async () => {

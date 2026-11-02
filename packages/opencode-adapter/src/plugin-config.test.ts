@@ -7,7 +7,6 @@ import { z } from "zod"
 import {
   COST_GUARD_USD_DEFAULT,
   JanusPluginConfigSchema,
-  normalizeConfigAliases,
   TEAM_CAPS_DEFAULTS,
   TIER_ROLE_CAPS_DEFAULTS,
   loadPluginConfig,
@@ -24,13 +23,30 @@ import {
 // Typed as the schema *input*: parse is the boundary, so partial tier matrices
 // without `writer` are expressible and defaulted by parse.
 function config(overrides: z.input<typeof JanusPluginConfigSchema> = {}): JanusPluginConfig {
-  return JanusPluginConfigSchema.parse(normalizeConfigAliases(overrides))
+  return JanusPluginConfigSchema.parse(overrides)
 }
 
-/** Alias tests need legacy keys that are absent from the canonical input type. */
-function rawConfig(overrides: Record<string, unknown>): JanusPluginConfig {
-  return JanusPluginConfigSchema.parse(normalizeConfigAliases(overrides))
-}
+describe("removed legacy config keys are rejected", () => {
+  it("rejects an old top-level key", () => {
+    expect(() => JanusPluginConfigSchema.parse({ ask_lite_enabled: false })).toThrow()
+  })
+
+  it("rejects old role and mode keys inside mode_models and tier_models", () => {
+    expect(() => JanusPluginConfigSchema.parse({ mode_models: { roadmap: { analyst: "x" } } })).toThrow()
+    expect(() => JanusPluginConfigSchema.parse({ tier_models: { deep: { lite: "x" } } })).toThrow()
+  })
+
+  it("rejects an old tier_role_caps key", () => {
+    expect(() =>
+      JanusPluginConfigSchema.parse({ tier_role_caps: { fast: { explorer: 5 }, standard: {}, deep: {} } }),
+    ).toThrow()
+  })
+
+  it("accepts a $schema key", () => {
+    const cfg = config({ $schema: "https://example.com/schema.json" })
+    expect(cfg.$schema).toBe("https://example.com/schema.json")
+  })
+})
 
 describe("resolveTeamCaps", () => {
   it("returns defaults when team_caps is unset", () => {
@@ -57,14 +73,14 @@ describe("resolveTierRoleCaps", () => {
     // given
     const cfg = config({
       tier_role_caps: {
-        fast: { explorer: 5, analyst: 0, critic: 0, auditor: 0 },
-        standard: { explorer: 5, analyst: 2, critic: 1, auditor: 1 },
-        deep: { explorer: 5, analyst: 3, critic: 2, auditor: 2 },
+        fast: { common_explorer: 5, consultant_analyst: 0, consultant_critic: 0, consultant_auditor: 0 },
+        standard: { common_explorer: 5, consultant_analyst: 2, consultant_critic: 1, consultant_auditor: 1 },
+        deep: { common_explorer: 5, consultant_analyst: 3, consultant_critic: 2, consultant_auditor: 2 },
       },
     })
 
     // when // then
-    expect(resolveTierRoleCaps(cfg).standard).toEqual({ explorer: 5, analyst: 2, critic: 1, arch_critic: 0, auditor: 1, writer: 0 })
+    expect(resolveTierRoleCaps(cfg).standard).toEqual({ common_explorer: 5, consultant_analyst: 2, consultant_critic: 1, coder_reviewer: 0, consultant_auditor: 1, author_writer: 0 })
   })
 })
 
@@ -79,7 +95,7 @@ describe("resolveCostGuardUsd", () => {
 describe("JanusPluginConfigSchema", () => {
   it("rejects negative role caps and non-positive caps", () => {
     // given // when // then
-    expect(() => config({ tier_role_caps: { fast: { explorer: -1, analyst: 0, critic: 0, auditor: 0 }, standard: { explorer: 5, analyst: 1, critic: 1, auditor: 1 }, deep: { explorer: 5, analyst: 3, critic: 2, auditor: 2 } } })).toThrow()
+    expect(() => config({ tier_role_caps: { fast: { common_explorer: -1, consultant_analyst: 0, consultant_critic: 0, consultant_auditor: 0 }, standard: { common_explorer: 5, consultant_analyst: 1, consultant_critic: 1, consultant_auditor: 1 }, deep: { common_explorer: 5, consultant_analyst: 3, consultant_critic: 2, consultant_auditor: 2 } } })).toThrow()
     expect(() => config({ team_caps: { round_cap: 0, explorer_cap: 5, critic_search_cap: 5 } })).toThrow()
   })
 })
@@ -87,49 +103,49 @@ describe("JanusPluginConfigSchema", () => {
 describe("model defaults sync (decision 20)", () => {
   it("resolves the synced defaults per role", () => {
     // given // when // then
-    expect(resolveRoleModel(config(), "consultant")).toBe("opencode-go/glm-5.3")
-    expect(resolveRoleModel(config(), "critic")).toBe("opencode/gemini-3.8-flash")
-    expect(resolveRoleModel(config(), "auditor")).toBe("opencode/gemini-3.8-flash")
-    expect(resolveRoleModel(config(), "writer")).toBe("opencode/claude-sonnet-5-5")
+    expect(resolveRoleModel(config(), "consultant")).toBe("opencode-go/gemini-4-argon")
+    expect(resolveRoleModel(config(), "consultant-critic")).toBe("opencode/claude-sonnet-5-5")
+    expect(resolveRoleModel(config(), "consultant-auditor")).toBe("opencode-go/grok-4.7")
+    expect(resolveRoleModel(config(), "author-writer")).toBe("opencode/claude-sonnet-5-5")
   })
 
   it("collapses every role to a single-model chain", () => {
     // given // when // then
-    expect(resolveRoleModelChain(config(), "writer")).toEqual(["opencode/claude-sonnet-5-5"])
-    expect(resolveRoleModelChain(config(), "critic")).toEqual(["opencode/gemini-3.8-flash"])
-    expect(resolveRoleModelChain(config(), "explorer")).toEqual(["opencode-go/deepseek-v4.1-flash"])
+    expect(resolveRoleModelChain(config(), "author-writer")).toEqual(["opencode/claude-sonnet-5-5"])
+    expect(resolveRoleModelChain(config(), "consultant-critic")).toEqual(["opencode/claude-sonnet-5-5"])
+    expect(resolveRoleModelChain(config(), "common-explorer")).toEqual(["opencode-go/deepseek-v4.1-flash"])
   })
 })
 
-describe("writer role configuration", () => {
-  it("defaults the packaged writer role", () => {
+describe("author-writer role configuration", () => {
+  it("defaults the packaged author-writer role", () => {
     // given // when
     const cfg = config()
 
     // then
-    expect(cfg.writer_agent).toBe("writer")
-    expect(cfg.writer_enabled).toBe(true)
-    expect(resolveRoleModel(cfg, "writer")).toBe("opencode/claude-sonnet-5-5")
-    expect(resolveRoleModelChain(cfg, "writer")).toEqual(["opencode/claude-sonnet-5-5"])
+    expect(cfg.author_writer_agent).toBe("author-writer")
+    expect(cfg.author_writer_enabled).toBe(true)
+    expect(resolveRoleModel(cfg, "author-writer")).toBe("opencode/claude-sonnet-5-5")
+    expect(resolveRoleModelChain(cfg, "author-writer")).toEqual(["opencode/claude-sonnet-5-5"])
     expect(cfg.writer_delegate_agent).toBeUndefined()
     expect(cfg.writer_delegate_model).toBeUndefined()
-    expect(resolveTierRoleCaps(cfg).standard.writer).toBe(1)
-    expect(resolveTierRoleCaps(cfg).deep.writer).toBe(2)
+    expect(resolveTierRoleCaps(cfg).standard.author_writer).toBe(1)
+    expect(resolveTierRoleCaps(cfg).deep.author_writer).toBe(2)
   })
 
-  it("overrides the writer model when writer_model is set", () => {
+  it("overrides the writer model when author_writer_model is set", () => {
     // given
-    const cfg = config({ writer_model: "anthropic/claude-opus-4-6" })
+    const cfg = config({ author_writer_model: "anthropic/claude-opus-4-6" })
 
     // when // then
-    expect(resolveRoleModel(cfg, "writer")).toBe("anthropic/claude-opus-4-6")
-    expect(resolveRoleModelChain(cfg, "writer")).toEqual(["anthropic/claude-opus-4-6"])
+    expect(resolveRoleModel(cfg, "author-writer")).toBe("anthropic/claude-opus-4-6")
+    expect(resolveRoleModelChain(cfg, "author-writer")).toEqual(["anthropic/claude-opus-4-6"])
   })
 
   it("keeps non-writer roles on a single-model chain", () => {
     // given // when // then
-    expect(resolveRoleModelChain(config(), "critic")).toEqual(["opencode/gemini-3.8-flash"])
-    expect(resolveRoleModelChain(config(), "explorer")).toEqual(["opencode-go/deepseek-v4.1-flash"])
+    expect(resolveRoleModelChain(config(), "consultant-critic")).toEqual(["opencode/claude-sonnet-5-5"])
+    expect(resolveRoleModelChain(config(), "common-explorer")).toEqual(["opencode-go/deepseek-v4.1-flash"])
   })
 
   it("accepts writer delegate fields", () => {
@@ -165,16 +181,16 @@ describe("writer role configuration", () => {
     // given
     const cfg = config({
       tier_role_caps: {
-        fast: { explorer: 1, analyst: 0, critic: 0, auditor: 0 },
-        standard: { explorer: 2, analyst: 1, critic: 1, auditor: 1 },
-        deep: { explorer: 3, analyst: 2, critic: 2, auditor: 1 },
+        fast: { common_explorer: 1, consultant_analyst: 0, consultant_critic: 0, consultant_auditor: 0 },
+        standard: { common_explorer: 2, consultant_analyst: 1, consultant_critic: 1, consultant_auditor: 1 },
+        deep: { common_explorer: 3, consultant_analyst: 2, consultant_critic: 2, consultant_auditor: 1 },
       },
     })
 
     // when // then
-    expect(resolveTierRoleCaps(cfg).standard.writer).toBe(0)
-    expect(resolveTierRoleCaps(cfg).fast.writer).toBe(0)
-    expect(resolveTierRoleCaps(cfg).deep.writer).toBe(0)
+    expect(resolveTierRoleCaps(cfg).standard.author_writer).toBe(0)
+    expect(resolveTierRoleCaps(cfg).fast.author_writer).toBe(0)
+    expect(resolveTierRoleCaps(cfg).deep.author_writer).toBe(0)
   })
 })
 
@@ -251,18 +267,18 @@ describe("loadPluginConfig validates writer_docs_roots", () => {
   })
 })
 
-describe("lite, coder, and coder-lite role configuration", () => {
-  it("defaults the lite and coder roles and resolves their models", () => {
+describe("simple, coder, and coder-lite role configuration", () => {
+  it("defaults the simple and coder roles and resolves their models", () => {
     // given
     const cfg = config()
 
     // when // then
-    expect(cfg.ask_lite_agent).toBe("ask-lite")
-    expect(cfg.ask_lite_enabled).toBe(true)
-    expect(cfg.ask_lite_model).toBeUndefined()
-    expect(cfg.ask_lite_workspace_dir).toBeUndefined()
-    expect(resolveRoleModel(cfg, "ask-lite")).toBe("opencode-go/deepseek-v4.1-flash")
-    expect(resolveRoleModelChain(cfg, "ask-lite")).toEqual(["opencode-go/deepseek-v4.1-flash"])
+    expect(cfg.simple_agent).toBe("simple")
+    expect(cfg.simple_enabled).toBe(true)
+    expect(cfg.simple_model).toBeUndefined()
+    expect(cfg.simple_workspace_dir).toBeUndefined()
+    expect(resolveRoleModel(cfg, "simple")).toBe("opencode-go/deepseek-v4.1-flash")
+    expect(resolveRoleModelChain(cfg, "simple")).toEqual(["opencode-go/deepseek-v4.1-flash"])
     expect(cfg.coder_agent).toBe("coder")
     expect(cfg.coder_enabled).toBe(true)
     expect(resolveRoleModel(cfg, "coder")).toBe("opencode-go/glm-5.3")
@@ -271,56 +287,56 @@ describe("lite, coder, and coder-lite role configuration", () => {
     expect(resolveRoleModel(cfg, "coder-lite")).toBe("opencode-go/glm-5.3-flash")
   })
 
-  it("overrides the lite and coder models", () => {
+  it("overrides the simple and coder models", () => {
     // given
-    const cfg = config({ ask_lite_model: "test/lite-model", coder_model: "test/coder-model", coder_lite_model: "test/glm-flash" })
+    const cfg = config({ simple_model: "test/simple-model", coder_model: "test/coder-model", coder_lite_model: "test/glm-flash" })
 
     // when // then
-    expect(resolveRoleModel(cfg, "ask-lite")).toBe("test/lite-model")
+    expect(resolveRoleModel(cfg, "simple")).toBe("test/simple-model")
     expect(resolveRoleModel(cfg, "coder")).toBe("test/coder-model")
     expect(resolveRoleModel(cfg, "coder-lite")).toBe("test/glm-flash")
   })
 
-  it("accepts a relocated lite workspace dir", () => {
+  it("accepts a relocated simple workspace dir", () => {
     // given
-    const cfg = config({ ask_lite_workspace_dir: "/abs/lite-workspace" })
+    const cfg = config({ simple_workspace_dir: "/abs/simple-workspace" })
 
     // when // then
-    expect(cfg.ask_lite_workspace_dir).toBe("/abs/lite-workspace")
+    expect(cfg.simple_workspace_dir).toBe("/abs/simple-workspace")
   })
 
-  it("rejects an empty ask_lite_workspace_dir instead of widening edit permission to all absolute paths", () => {
+  it("rejects an empty simple_workspace_dir instead of widening edit permission to all absolute paths", () => {
     // given // when // then
-    expect(() => config({ ask_lite_workspace_dir: "" })).toThrow()
+    expect(() => config({ simple_workspace_dir: "" })).toThrow()
   })
 
 })
 
-describe("coder-lite and arch-critic role configuration", () => {
-  it("defaults the coder-lite lane and the arch-critic reviewer", () => {
+describe("coder-lite and coder-reviewer role configuration", () => {
+  it("defaults the coder-lite lane and the coder-reviewer", () => {
     // given
     const cfg = config()
 
     // when // then
     expect(resolveRoleModel(cfg, "coder-lite")).toBe("opencode-go/glm-5.3-flash")
-    expect(cfg.arch_critic_agent).toBe("arch-critic")
-    expect(cfg.arch_critic_enabled).toBe(true)
-    expect(resolveRoleModel(cfg, "arch-critic")).toBe("opencode/gemini-3.8-flash")
+    expect(cfg.coder_reviewer_agent).toBe("coder-reviewer")
+    expect(cfg.coder_reviewer_enabled).toBe(true)
+    expect(resolveRoleModel(cfg, "coder-reviewer")).toBe("opencode/claude-sonnet-5-5")
   })
 
-  it("overrides coder-lite and arch-critic from config", () => {
+  it("overrides coder-lite and coder-reviewer from config", () => {
     // given
-    const cfg = config({ coder_lite_model: "test/glm-flash", arch_critic_agent: "my-arch", arch_critic_model: "test/arch" })
+    const cfg = config({ coder_lite_model: "test/glm-flash", coder_reviewer_agent: "my-reviewer", coder_reviewer_model: "test/reviewer" })
 
     // when // then
     expect(resolveRoleModel(cfg, "coder-lite")).toBe("test/glm-flash")
-    expect(cfg.arch_critic_agent).toBe("my-arch")
-    expect(resolveRoleModel(cfg, "arch-critic")).toBe("test/arch")
+    expect(cfg.coder_reviewer_agent).toBe("my-reviewer")
+    expect(resolveRoleModel(cfg, "coder-reviewer")).toBe("test/reviewer")
   })
 })
 
 describe("janus role configuration", () => {
-  it("defaults the janus role and resolves its model to glm-5.3", () => {
+  it("defaults the janus role and resolves its model to glm-5.3-flash", () => {
     // given
     const cfg = config()
 
@@ -328,8 +344,8 @@ describe("janus role configuration", () => {
     expect(cfg.janus_agent).toBe("janus")
     expect(cfg.janus_enabled).toBe(true)
     expect(cfg.janus_model).toBeUndefined()
-    expect(resolveRoleModel(cfg, "janus")).toBe("opencode-go/glm-5.3")
-    expect(resolveRoleModelChain(cfg, "janus")).toEqual(["opencode-go/glm-5.3"])
+    expect(resolveRoleModel(cfg, "janus")).toBe("opencode-go/glm-5.3-flash")
+    expect(resolveRoleModelChain(cfg, "janus")).toEqual(["opencode-go/glm-5.3-flash"])
   })
 
   it("overrides the janus model when janus_model is set", () => {
@@ -414,76 +430,56 @@ describe("stripJsonc", () => {
   })
 })
 
-describe("legacy config aliases", () => {
-  it("maps legacy scalar keys and lets the new key win", () => {
-    const legacy = rawConfig({
-      agent_model: "old/consultant",
-      verifier_agent: "old-auditor",
-      verifier_enabled: false,
-      lite_agent: "old-lite",
-      lite_model: "old/lite",
-      lite_enabled: false,
-      lite_workspace_dir: "/old/lite",
-    })
-    expect(legacy.consultant_model).toBe("old/consultant")
-    expect(legacy.auditor_agent).toBe("old-auditor")
-    expect(legacy.auditor_enabled).toBe(false)
-    expect(legacy.ask_lite_agent).toBe("old-lite")
-    expect(legacy.ask_lite_model).toBe("old/lite")
-    expect(legacy.ask_lite_enabled).toBe(false)
-    expect(legacy.ask_lite_workspace_dir).toBe("/old/lite")
-
-    const both = rawConfig({ agent_model: "old", consultant_model: "new" })
-    expect(both.consultant_model).toBe("new")
-  })
-
-  it("lets the new nested key win when both old and new are present", () => {
-    const cfg = rawConfig({
-      mode_models: {
-        plan: { verifier: "old/auditor" },
-        roadmap: { auditor: "new/auditor" },
-      },
-      tier_models: {
-        deep: { lite: "old/lite", "ask-lite": "new/lite" },
-      },
-    })
-    expect(cfg.mode_models?.roadmap?.auditor).toBe("new/auditor")
-    expect(cfg.tier_models?.deep?.["ask-lite"]).toBe("new/lite")
-  })
-
-  it("normalizes legacy mode, tier, and role-map keys", () => {
-    const cfg = rawConfig({
-      mode_models: {
-        plan: { verifier: "mode/auditor", arch_critic: "mode/arch" },
-        author: { writer: "mode/writer" },
-      },
-      tier_models: { deep: { lite: "tier/lite", verifier: "tier/auditor" } },
-      tier_role_caps: {
-        fast: {},
-        standard: { explorer: 1, analyst: 1, critic: 1, verifier: 1, "arch-critic": 1, writer: 1 },
-        deep: {},
-      },
-    })
-    expect(cfg.mode_models?.roadmap?.auditor).toBe("mode/auditor")
-    expect(cfg.mode_models?.roadmap?.["arch-critic"]).toBe("mode/arch")
-    expect(cfg.mode_models?.doc?.writer).toBe("mode/writer")
-    expect(cfg.tier_models?.deep?.["ask-lite"]).toBe("tier/lite")
-    expect(cfg.tier_models?.deep?.auditor).toBe("tier/auditor")
-    expect(cfg.tier_role_caps?.standard.auditor).toBe(1)
-    expect(cfg.tier_role_caps?.standard.arch_critic).toBe(1)
-  })
-})
-
 describe("resolveRoleModel precedence", () => {
   it("applies mode > tier > scalar > default", () => {
     const cfg = config({
-      analyst_model: "scalar/model",
-      tier_models: { deep: { analyst: "tier/model" } },
-      mode_models: { research: { analyst: "mode/model" } },
+      consultant_analyst_model: "scalar/model",
+      tier_models: { deep: { "consultant-analyst": "tier/model" } },
+      mode_models: { research: { "consultant-analyst": "mode/model" } },
     })
-    expect(resolveRoleModel(cfg, "analyst")).toBe("scalar/model")
-    expect(resolveRoleModel(cfg, "analyst", { tier: "deep" })).toBe("tier/model")
-    expect(resolveRoleModel(cfg, "analyst", { mode: "research", tier: "deep" })).toBe("mode/model")
-    expect(resolveRoleModel(cfg, "writer")).toBe("opencode/claude-sonnet-5-5")
+    expect(resolveRoleModel(cfg, "consultant-analyst")).toBe("scalar/model")
+    expect(resolveRoleModel(cfg, "consultant-analyst", { tier: "deep" })).toBe("tier/model")
+    expect(resolveRoleModel(cfg, "consultant-analyst", { mode: "research", tier: "deep" })).toBe("mode/model")
+    expect(resolveRoleModel(cfg, "author-writer")).toBe("opencode/claude-sonnet-5-5")
+  })
+
+  it("applies the shipped deep-tier coder uplift when the user configures nothing", () => {
+    const cfg = config()
+    expect(resolveRoleModel(cfg, "coder")).toBe("opencode-go/glm-5.3")
+    expect(resolveRoleModel(cfg, "coder", { tier: "deep" })).toBe("opencode-go/kimi-k3.1-pro")
+    expect(resolveRoleModel(cfg, "coder", { tier: "standard" })).toBe("opencode-go/glm-5.3")
+  })
+
+  it("lets an explicit user model beat the shipped deep-tier default", () => {
+    const cfg = config({ coder_model: "scalar/coder" })
+    expect(resolveRoleModel(cfg, "coder", { tier: "deep" })).toBe("scalar/coder")
+  })
+})
+
+describe("architect and author team entries", () => {
+  it("defaults the architect and author entries", () => {
+    const cfg = config()
+    expect(cfg.architect_agent).toBe("architect")
+    expect(cfg.architect_enabled).toBe(true)
+    expect(resolveRoleModel(cfg, "architect")).toBe("opencode-go/gemini-4-argon")
+    expect(cfg.author_agent).toBe("author")
+    expect(cfg.author_enabled).toBe(true)
+    expect(resolveRoleModel(cfg, "author")).toBe("opencode-go/gemini-4-argon")
+  })
+
+  it("inherits an explicitly configured consultant model before falling back to defaults", () => {
+    const cfg = config({ consultant_model: "custom/consultant" })
+    expect(resolveRoleModel(cfg, "architect")).toBe("custom/consultant")
+    expect(resolveRoleModel(cfg, "author")).toBe("custom/consultant")
+  })
+
+  it("lets explicit architect and author models win over the consultant fallback", () => {
+    const cfg = config({
+      consultant_model: "custom/consultant",
+      architect_model: "custom/architect",
+      author_model: "custom/author",
+    })
+    expect(resolveRoleModel(cfg, "architect")).toBe("custom/architect")
+    expect(resolveRoleModel(cfg, "author")).toBe("custom/author")
   })
 })

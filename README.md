@@ -1,35 +1,37 @@
 # janus-agent-plugin
 
-Janus is a daily-driver agent family for [OpenCode](https://opencode.ai) — `janus` is the default entry, `consultant` owns evidence-graded advice, `coder` owns coding with an adaptive process weight, `ask-lite` is the economical quick-answer leaf, and a shared local memory learns from every consultation.
+Janus is a daily-driver agent family for [OpenCode](https://opencode.ai) — three teams share one plugin: a consultation team (`consultant`), an R&D team (`architect` + `coder`), and a documentation team (`author`), with `janus` as the default front desk, `simple` as the economical quick-answer leaf, and a shared local memory.
 
 ## What you get
 
 | Agent | Default model | What it does |
 |-------|---------------|--------------|
-| `janus` (primary/all) | `opencode-go/glm-5.3` | Default daily entry. Handles general questions, light tasks, and routing: consulting → `consultant`, coding → `coder`, quick answers → `ask-lite`. Does not do deep research or heavy coding itself |
-| `consultant` (primary) | `opencode-go/glm-5.3` | Evidence-driven consultations in seven modes: `select`, `verify`, `roadmap`, `research`, `guide`, `doc`, `design`; supports same-session mode switching. Leads the review/ research team and the writer, and owns design records |
-| `coder` (primary/all) | `opencode-go/glm-5.3` | Coding entry and execution specialist. Selects L0/L1/L2/L3 process weight by task complexity, gates design on user approval for L2/L3, and runs the correctness-critical quality gate. L3 work can use a deep-tier model override |
-| `ask-lite` (primary/all) | `opencode-go/deepseek-v4.1-flash` | Economical quick-answer leaf: facts, concepts, simple how-to. Never dispatches; escalates complex/contested questions to `consultant`, coding to `coder` |
-| `explorer` | `opencode-go/deepseek-v4.1-flash` | Read-only search specialist returning graded, structured evidence reports |
-| `analyst` | `opencode-go/qwen3.8-max` | Read-only cross-model reasoning over gathered evidence |
-| `critic` | `opencode/gemini-3.8-flash` | Read-only adversarial reviewer hunting counter-evidence and stressing plans |
-| `arch-critic` | `opencode/gemini-3.8-flash` | Read-only architecture and engineering reviewer: one-way-door design pre-mortems and independent review of the coder's `plan.md`/diff against `design.md` |
-| `auditor` | `opencode/gemini-3.8-flash` | Read-only source-influence auditor (shilling, smear campaigns, undisclosed sponsorship) |
-| `writer` | `opencode/claude-sonnet-5-5` | Scoped-write author executor and the sole author of reader-facing prose for `doc`-mode documents: blueprints, section/chapter drafts, maintenance, coherence passes. Writes only approved files under the configured `writer_docs_roots` (default `userdoc`; `[]` = read-only fallback where the consultant publishes its returned prose); targeted web lookups with a source ledger, no shell, no dispatch |
-| `coder-lite` (subagent) | `opencode-go/glm-5.3-flash` | Mechanical coding lane: fully specified bulk edits, formatting/lint fixes, boilerplate from templates. Workspace edits allowed, everything else asks; stops and reports up on anything ambiguous |
-| `janus-memory` (MCP) | — | Local SQLite memory shared across the agents: auto-saved consultation records, recall, edit, delete, outcome feedback |
-| `janus-models` (command) | — | Explicit model-rotation entry: inventory the suite's agents and effective models, evaluate model/prompt fit with live evidence, and apply approved model, mode/tier routing, or prompt changes to the user-level Janus config |
+| `janus` (primary/all) | `opencode-go/glm-5.3-flash` | Default front desk. Handles general questions, light tasks, and routing to `simple`, `consultant`, `architect`, `coder`, or `author`. Does not do deep research, design, documentation, or heavy coding itself |
+| `simple` (primary/all) | `opencode-go/deepseek-v4.1-flash` | Economical quick-answer leaf: facts, concepts, simple how-to. Never dispatches; escalates evidence to `consultant`, design to `architect`, coding to `coder`, documents to `author` |
+| `consultant` (primary) | `opencode-go/gemini-4-argon` | Consultation-team entry for five evidence modes: `select`, `verify`, `roadmap`, `research`, `guide`. Leads `common-explorer`, `consultant-analyst`, `consultant-critic`, and `consultant-auditor`; hands design to `architect` and documents to `author` |
+| `architect` (primary) | `opencode-go/gemini-4-argon` | R&D-team design entry. Runs brainstorming ⇄ convergence ⇄ system/module design, dispatches `common-explorer` and `coder-reviewer` (design pre-mortem), and is the only role that writes `design.md` |
+| `coder` (primary/all) | `opencode-go/glm-5.3` | R&D-team coding entry. Starts from a bug/feature/refactor or an accepted `design.md`; picks L0–L3 process weight, dispatches `coder-lite` and `coder-reviewer`, and escalates architecture work to `architect`. L3 can use a deep-tier model override |
+| `author` (primary) | `opencode-go/gemini-4-argon` | Documentation-team entry. Owns doc profiles, the outline gate, the author brief, verification, and publishing; dispatches `author-writer` for prose and `coder` for executable verification |
+| `common-explorer` (subagent) | `opencode-go/deepseek-v4.1-flash` | Shared research floor for all three teams: external documentation, open-source practice, and bounded codebase survey. Read-only leaf |
+| `consultant-analyst` (subagent) | `opencode-go/kimi-k3.1-pro` | Consultation-team reasoning: causal mechanism, outside view, assumption checks, competing hypotheses |
+| `consultant-critic` (subagent) | `opencode/claude-sonnet-5-5` | Consultation-team challenger: counter-evidence, hypothesis matrices, plan robustness |
+| `consultant-auditor` (subagent) | `opencode-go/grok-4.7` | Consultation-team source-intent audit: shilling, smear campaigns, undisclosed sponsorship |
+| `coder-reviewer` (subagent) | `opencode/claude-sonnet-5-5` | R&D-team reviewer: one-way design pre-mortems for `architect`, and `plan.md`/diff review for `coder` |
+| `author-writer` (subagent) | `opencode/claude-sonnet-5-5` | Documentation-team's scoped-write executor and sole author of reader-facing prose; writes only under `writer_docs_roots` (default `userdoc`) |
+| `coder-lite` (subagent) | `opencode-go/glm-5.3-flash` | Mechanical coding lane: fully specified bulk edits, formatting/lint fixes, boilerplate. Workspace edits allowed, everything else asks; stops and reports up on ambiguity |
+| `janus-memory` (MCP) | — | Local SQLite memory shared across the family: auto-saved consultation records, recall, edit, delete, outcome feedback |
+| `janus-models` (command) | — | Model-rotation entry: inventory the 13 agents, evaluate model/prompt fit, and apply approved model or routing changes to the user-level Janus config |
 
 ### Which agent should I use?
 
 ```text
 General question / unsure          -> janus
-Consulting, selection, verify,
-research, personal roadmap,
-durable document, system design    -> consultant
-Coding, implementation plan        -> coder
-Quick fact / how-to,
-read-only document Q&A             -> ask-lite
+Evidence, comparison, verify,
+research, personal roadmap, guide  -> consultant
+System/module/interface design     -> architect
+Bug, feature, refactor, tests      -> coder
+Tutorial, course, durable document -> author
+Quick fact / how-to                -> simple
 ```
 
 Start at `janus` when unsure; start directly at the specialist when you already know the task type. `coder-lite` is normally dispatched by `coder`, not selected directly.
@@ -40,7 +42,7 @@ Every agent's model is configurable (`*_model` fields), and every prompt layers 
 
 - [OpenCode](https://opencode.ai) (the agent harness)
 - [Bun](https://bun.sh) >= 1.1 (runs the local memory MCP server and the installer)
-- The shipped model defaults assume an **OpenCode Go subscription** for the `opencode-go/*` pool models, plus the `opencode` provider for the writer (`claude-sonnet-5-5`) and critic/arch-critic/auditor (`gemini-3.8-flash`, Zen pay-per-use). Without these, set every `*_model` to a provider configured on your machine — see the [non-Go example](docs/deployment.md) in the deployment guide. Dispatch failures print a remediation hint naming the exact config field.
+- The shipped model defaults assume an **OpenCode Go (Go Plus) subscription** for the `opencode-go/*` pool models, plus the `opencode` provider (Zen pay-per-use) for `consultant-critic`, `coder-reviewer`, and `author-writer` (`claude-sonnet-5-5`). Without these, set every `*_model` to a provider configured on your machine — see the [non-Go example](docs/deployment.md) in the deployment guide. Dispatch failures print a remediation hint naming the exact config field.
 
 ## Install
 
@@ -80,17 +82,17 @@ Restart OpenCode. The plugin registers the agents, the memory MCP, the `consulta
 
 Answers are terminal-first: a full answer opens with `结论 / 理由 / 下一步`, ends with `一句话 / 下一步`, and puts evidence under `证据与来源（可跳过）`. Short answers skip the repetition. Facts are separated from inference and labeled with an epistemic status.
 
-**Daily questions go to `ask-lite`.** Select the `ask-lite` agent for quick lookups and explanations at a fraction of the cost; it escalates to `consultant` (one line, with a reason) when a question needs multi-source adversarial verification or is high-stakes. **Coding goes to `coder`**, which picks the lightest process that fits: a direct fix for a one-line change, a brief plan for a small feature, and a design gate plus quality gate for multi-file or correctness-critical work.
+**Daily questions go to `simple`.** Select the `simple` agent for quick lookups and explanations at a fraction of the cost; it escalates to `consultant` (one line, with a reason) when a question needs multi-source adversarial verification or is high-stakes, to `architect` for design, and to `author` for documents. **Coding goes to `coder`**, which picks the lightest process that fits: a direct fix for a one-line change, a brief plan for a small feature, and a design gate plus quality gate for multi-file or correctness-critical work.
 
 **Memory.** Consultations auto-save (question + conclusion summaries — never transcripts). Browse and manage them with the `/janus-memory` command or the `janus-memory` CLI. Prior experience and preferences surface in later consultations, with an outcome-feedback loop.
 
 **Models.** Run `/janus-models` for an explicit, interactive model-rotation workflow. With no arguments it inventories every suite agent's effective model and prompt source, then offers a menu: model evaluation, `model_prompt` evaluation, a combined recommendation, or execution. Model and prompt changes are written only to the user-level Janus config; the command shows an exact diff and waits for confirmation before writing. `/janus-models 帮助` lists the argument forms.
 
-**Documents.** Doc-mode documents are produced by a consultant + writer pair: the consultant owns intake, evidence, the outline approval, the author brief, verification, and publishing; the writer is the sole author of reader-facing prose and (unless `writer_docs_roots` is empty) the sole writer of approved document files under the configured roots (default `userdoc`). With `writer_docs_roots: []` the writer returns prose and the consultant publishes it. A document's writer session is reused across its feedback turns: the first writer dispatch captures a session handle (`return_handle: true`), the brief stores it as `writer_session_id`, and later bounded edits continue that session via `janus_dispatch_continue` — a generic dispatch mechanism (same caller, same workspace, idle target) that works for any role's session, not only the writer's.
+**Documents.** Doc-mode documents are produced by an author + author-writer pair: `author` owns intake, evidence, the outline approval, the brief, verification, and publishing; `author-writer` is the sole author of reader-facing prose and (unless `writer_docs_roots` is empty) the sole writer of approved document files under the configured roots (default `userdoc`). With `writer_docs_roots: []` the author-writer returns prose and the author publishes it. A document's writer session is reused across its feedback turns: the first author-writer dispatch captures a session handle (`return_handle: true`), the brief stores it as `writer_session_id`, and later bounded edits continue that session via `janus_dispatch_continue`.
 
-**Design.** A structural decision goes to the consultant's `design` mode (architecture, module boundaries, interfaces), not to `select` or a doc-mode architecture write-up. The consultant loads the `consultation-design` skill on entry; design and doc can be interleaved with research in one session. It works layer by layer: each decision brings at least two real options, a recommendation, what would change it, and a one-way/two-way reversibility label; one-way doors are approved individually and get an `arch-critic` pre-mortem, two-way doors get a default and one batch approval per layer. The result is a self-contained `design.md` at `~/.local/share/janus-agent/design/<projectId>/<designId>/design.md` — the consultant writes it, the `coder` only reads it and writes its `plan.md` beside it, then implements with a reduced L2 gate and a plan↔design check. Both agents have pre-approved access to that directory only; nothing is written into your project tree. See [docs/deployment.md](docs/deployment.md#data-state-and-cache-paths).
+**Design.** A structural decision goes to `architect` (architecture, module boundaries, interfaces), not to `select` or a doc-mode architecture write-up. The architect loads `consultation-design` and works layer by layer: each decision brings at least two real options, a recommendation, what would change it, and a one-way/two-way reversibility label; one-way doors are approved individually and get a `coder-reviewer` pre-mortem, two-way doors get a default and one batch approval per layer. The result is a self-contained `design.md` at `~/.local/share/janus-agent/design/<projectId>/<designId>/design.md` — the architect writes it, the `coder` only reads it and writes its `plan.md` beside it, then implements with a reduced L2 gate and a plan↔design check. Both roles have pre-approved access to that directory only; nothing is written into your project tree. See [docs/deployment.md](docs/deployment.md#data-state-and-cache-paths).
 
-**Configuration.** Optional JSONC config at `~/.config/janus-agent/config.jsonc` (or `$JANUS_CONFIG` / XDG): per-agent names/models/enable flags, `mode_models` and `tier_models` routing overrides, model-prompt overrides/disable markers, `writer_docs_roots`, team caps, memory and embedding settings. Legacy `agent_model`, `lite_*`, and `verifier_*` keys keep working. The full field reference lives in [docs/deployment.md](docs/deployment.md).
+**Configuration.** Optional JSONC config at `~/.config/janus-agent/config.jsonc` (or `$JANUS_CONFIG` / XDG): per-agent names/models/enable flags, `mode_models` and `tier_models` routing overrides, model-prompt overrides/disable markers, `writer_docs_roots`, team caps, memory and embedding settings. The full field reference lives in [docs/deployment.md](docs/deployment.md).
 
 **Verify your install:**
 

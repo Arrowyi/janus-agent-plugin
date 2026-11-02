@@ -11,7 +11,7 @@ Every case is marked with one of two grading tiers:
 - **deterministic** - The case's executable contract is covered by a pure-function,
   store, or dispatch-lifecycle regression test. The runner prints the test file
   that covers it. Run `bun test` to verify these. No live model is needed.
-- **model** - The case requires a live consultant agent (a real model) to judge
+- **model** - The case requires a live agent (a real model) to judge
   behavior that cannot be pinned by a pure function, such as reconciling
   conflicting sources, disclosing memory use, or honestly abstaining when
   evidence is insufficient. The runner prints `MANUAL` and the rubric question a
@@ -19,7 +19,7 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 83 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 doc-mode separation (writer/consultant) cases, C49-C55 writer-session reuse and continuation cases, C56-C59 design mode, and C75-C83 the mode-stack, arch-critic, dynamic model routing, continuation-lock, alias, and critique-contract cases.
+- `fixtures/consultation-cases.json` - 83 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, and C75-C83 the mode-stack, coder-reviewer, dynamic model routing, continuation-lock, removed-key rejection, and critique-contract cases.
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
@@ -61,7 +61,7 @@ To actually verify the deterministic cases, run the package test suite:
 bun test
 ```
 
-To verify the model-graded cases, run a live consultant agent against the
+To verify the model-graded cases, run a live agent against the
 given/when/then scenario and answer the printed rubric question for each.
 
 ## Deterministic coverage map
@@ -120,7 +120,7 @@ Adversarial rubric: **Reject “300s means failed”, silent inline substitution
 abort-on-expiry, and unknown-triggered backup model.** Also reject duplicate
 generation presented as recovery and cancelled claims after normal completion.
 Host session/message evidence, not specialist claims of being alive, determines
-execution status; an auditor's evidence-quality `unknown` is not dispatch failure.
+execution status; a consultant-auditor's evidence-quality `unknown` is not dispatch failure.
 Keep private messages, credentials, raw source copies and full transcripts out
 of repository evidence; retain only redacted structural observations and verdicts.
 
@@ -136,14 +136,14 @@ and its host permissions are retained, not replaced by bundled restrictions.
 
 | Role/target | Recoverable lifecycle | Configured attempts | Audit emphasis |
 | --- | --- | --- | --- |
-| explorer | Same launch/wait/cancel | One | Recover original evidence report; no duplicated gathering on expiry |
-| analyst | Same launch/wait/cancel | One | Integrate returned analysis; inline reasoning is not an independent check |
-| critic | Same launch/wait/cancel | One | Await challenge before dependent synthesis; no false review credit |
-| arch-critic | Same launch/wait/cancel | One | Await the pre-mortem/plan review before a one-way approval or implementation; no false review credit |
-| ask-lite | Same launch/wait/cancel | One | Bounded economical answer; a leaf that never dispatches |
-| auditor | Same launch/wait/cancel | One | Separate execution status from evidence-quality uncertainty |
-| bundled writer | Same launch/wait/cancel | One (single-model chain) | No fallback advance — a confirmed terminal retryable failure ends the job after one attempt; preserve outline gate and scoped-write roots (edit only under `writer_docs_roots`; `[]` = read-only fallback) |
-| delegate writer | Same launch/wait/cancel | One, pinned model or host selection | No plugin fallback advance; retain external host permissions |
+| common-explorer | Same launch/wait/cancel | One | Recover original evidence report; no duplicated gathering on expiry |
+| consultant-analyst | Same launch/wait/cancel | One | Integrate returned analysis; inline reasoning is not an independent check |
+| consultant-critic | Same launch/wait/cancel | One | Await challenge before dependent synthesis; no false review credit |
+| coder-reviewer | Same launch/wait/cancel | One | Await the pre-mortem/plan review before a one-way approval or implementation; no false review credit |
+| simple | Same launch/wait/cancel | One | Bounded economical answer; a leaf that never dispatches |
+| consultant-auditor | Same launch/wait/cancel | One | Separate execution status from evidence-quality uncertainty |
+| bundled author-writer | Same launch/wait/cancel | One (single-model chain) | No fallback advance — a confirmed terminal retryable failure ends the job after one attempt; preserve outline gate and scoped-write roots (edit only under `writer_docs_roots`; `[]` = read-only fallback) |
+| delegate author-writer | Same launch/wait/cancel | One, pinned model or host selection | No plugin fallback advance; retain external host permissions |
 
 Exercise pending/unknown/recovery/cancel for each role and both delegate model
 forms. Check configured-attempt routing separately from host-internal provider
@@ -154,8 +154,8 @@ retries; the plugin cannot claim control of an external delegate's internals.
 These cases check the entry layout and the coder's adaptive process, not model
 quality. Run them with a live model and record the observed tool trace:
 
-- **C31/C32** — bounded work goes to `ask-lite`; mechanical code goes to `coder-lite`; judgment code stays with `coder` (L3 can use a deep-tier model); the consultant does not implement code.
-- **C33/C34** — `janus` routes consulting/coding/quick answers; direct entry to `consultant`/`coder`/`ask-lite` does not bounce back.
+- **C31/C32** — bounded work goes to `simple`; mechanical code goes to `coder-lite`; judgment code stays with `coder` (L3 can use a deep-tier model); the consultant does not implement code.
+- **C33/C34** — `janus` routes consulting/coding/quick answers; direct entry to `consultant`/`coder`/`simple` does not bounce back.
 - **C35/C36/C37** — coder L0 skips the plan; L2 presents the design gate and waits; L3 runs the quality gate.
 - **C38** — a dispatched consultant does not ask the end user; it saves only when the task assigns `Memory ownership: consultant saves`, otherwise it returns a summary and the dispatcher owns the record.
 - **C39** — a close `select` answer opens with 结论/理由/下一步, says there is no clear winner, gives a tie-break and `把握`, puts evidence after the decision, and ends with a next action.
@@ -165,56 +165,56 @@ failure modes are process theater on L0 and skipped design on L2/L3.
 
 ## Author separation evaluation (C40-C48)
 
-These cases check the consultant/writer split in `doc` mode and
+These cases check the author/author-writer split in `doc` mode and
 maintenance. Run them with a live model and record the observed tool trace
-plus the writer's child-session trace:
+plus the author-writer's child-session trace:
 
-- **C40/C41** — all reader-facing prose (even a typo) is dispatched to `writer`; the writer writes only under `writer_docs_roots` and reports a denied outside path instead of working around it.
+- **C40/C41** — all reader-facing prose (even a typo) is dispatched to `author-writer`; the author-writer writes only under `writer_docs_roots` and reports a denied outside path instead of working around it.
 - **C42** — a repo-document blueprint returns the Phase 0 global model (`documentSpine`, `evidenceMap`, `systemModel` grounded in the inspected source revision).
 - **C43** — a legacy document without a brief triggers the three-option question with the auto-rebuild default; multiple candidates are listed with paths and titles.
-- **C44** — the writer returns a `sourceLedger` for every web lookup and the consultant verifies load-bearing claims before publishing.
-- **C45** — with `writer_docs_roots: []` the writer returns prose, the consultant publishes it, and the fallback mode is disclosed.
-- **C46** — `janus` routes document tasks to `consultant`, never to `writer` directly, and never asks the user to choose consultant vs writer.
-- **C47** — the writer never dispatches explorer; broad research returns to the consultant as a `researchRequest`.
-- **C48** — a structural change returns `needsConsultant`; the consultant presents the manifest delta for exactly one approval, then dispatches the writer and updates the brief.
+- **C44** — the author-writer returns a `sourceLedger` for every web lookup and `author` verifies load-bearing claims before publishing.
+- **C45** — with `writer_docs_roots: []` the author-writer returns prose, `author` publishes it, and the fallback mode is disclosed.
+- **C46** — `janus` hands document work to the user-selectable `author` entry, never to `author-writer` directly, and never asks the user to choose author vs author-writer.
+- **C47** — the author-writer never dispatches common-explorer; broad research returns to `author` as a `researchRequest`.
+- **C48** — a structural change returns `needsConsultant`; `author` presents the manifest delta for exactly one approval, then dispatches the author-writer and updates the brief.
 
-Reject a run where the consultant edits prose itself in doc mode, where
-the writer writes outside its roots, or where author state silently drifts
+Reject a run where `author` edits prose itself in doc mode, where
+the author-writer writes outside its roots, or where author state silently drifts
 from the brief and manifest.
 
 ## Writer session reuse and generic continuation evaluation (C49-C55)
 
 These cases check the Phase 2 generic session-reuse mechanism —
 `janus_dispatch` with `return_handle: true` and `janus_dispatch_continue` —
-both in the author workflow (writer session reuse) and as a role-agnostic
+both in the author workflow (author-writer session reuse) and as a role-agnostic
 dispatch capability. Record the tool trace plus the brief's
 `writer_session_id` field:
 
-- **C49/C51** — the first writer dispatch captures the session handle
+- **C49/C51** — the first author-writer dispatch captures the session handle
   (`return_handle: true`; completed envelope's `session_id`, or the pending
   envelope's `session_id` followed by a same-job wait) and stores it in the
   brief; the envelope `text` is used as the result and raw envelope JSON is
   never shown to the user.
-- **C50** — a maintenance edit on the same document and consultant session
-  continues the stored writer session (`janus_dispatch_continue`,
-  role `writer`) with a delta-sized prompt — no fresh writer job root for
+- **C50** — a maintenance edit on the same document and author session
+  continues the stored author-writer session (`janus_dispatch_continue`,
+  role `author-writer`) with a delta-sized prompt — no fresh author-writer job root for
   that turn, no replayed full brief, and no continue while the previous
-  writer job is pending.
+  author-writer job is pending.
 - **C52** — a busy/lost/foreign stored session: wait for the active job or
   fall back to a fresh dispatch with the full brief, update the stored id,
   and disclose the fresh session only if it changes cost or behavior.
-- **C53** — a different document gets a fresh writer session; no
-  cross-document reuse of a writer session.
-- **C54** — the mechanism is generic: an analyst session continues the same
+- **C53** — a different document gets a fresh author-writer session; no
+  cross-document reuse of an author-writer session.
+- **C54** — the mechanism is generic: a consultant-analyst session continues the same
   way (deterministic at the tool/lifecycle level; see the coverage map).
-- **C55** — a first writer dispatch that is the pre-approval blueprint runs
-  before the brief exists: the consultant retains that session id in working
+- **C55** — a first author-writer dispatch that is the pre-approval blueprint runs
+  before the brief exists: `author` retains that session id in working
   context, writes it into the brief when the brief is created at the outline
   gate, and uses it for the post-approval drafting continue — no early brief,
-  no lost id, no fresh writer session.
+  no lost id, no fresh author-writer session.
 
 Adversarial rubric: **Reject a fresh `janus_dispatch` where a reusable idle
-writer session exists for that document, a `janus_dispatch_continue` on a
+author-writer session exists for that document, a `janus_dispatch_continue` on a
 pending job, a continuation `job_id` passed as `session_id`, cross-document
 session reuse, and a lost session silently replaced without updating the
 brief's stored id.**
@@ -227,4 +227,4 @@ For each user turn, record the active **message** agent (not only the session la
 
 Use host session/message/part records for observational baseline examples. A prior session with zero dispatches shows what happened, **not** whether each work unit warranted a specialist or whether conversation length caused the decision. Paired live runs are required for a causal before/after comparison. In C22, begin with another primary agent for several turns, switch to consultant for the same new research request used in a fresh consultant session, and inspect `message.data.agent` per turn. In C21, use a controlled empty-child result and the dispatch-tool unit test; do not assume a provider will produce an empty reply on demand.
 
-C16's exclusion applies only to a clearly non-promotional authoritative specification. C23 is its positive-control counterpart: the source may be official while its claim about independent reviewers still needs an influence audit. C24 must run in a separate isolated config with `verifier_enabled: false`; verify both the dispatch preflight and the final answer's disclosure. C25 checks the writer blueprint before the outline gate, not chapter prose before approval. If model access, quotas, or installed skill overrides prevent a live run, report the exact missing verification instead of marking it passed.
+C16's exclusion applies only to a clearly non-promotional authoritative specification. C23 is its positive-control counterpart: the source may be official while its claim about independent reviewers still needs an influence audit. C24 must run in a separate isolated config with `consultant_auditor_enabled: false`; verify both the dispatch preflight and the final answer's disclosure. C25 checks the author-writer blueprint before the outline gate, not chapter prose before approval. If model access, quotas, or installed skill overrides prevent a live run, report the exact missing verification instead of marking it passed.

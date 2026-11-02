@@ -17,7 +17,7 @@
  *       is supported by opencode but parsing stdout for the assigned port is
  *       fragile across versions). Wait for readiness via /global/health.
  *   (e) Assert via HTTP: GET /config responds 200 and its JSON contains the
- *       `consultant` agent key, the `writer` agent key, and the
+ *       `consultant` agent key, the `author-writer` agent key, and the
  *       `janus-memory` mcp key.
  *   (f) Assert the consultation skill file and the janus-models command file
  *       were installed in the sandbox config directory.
@@ -47,7 +47,7 @@ import {
   resolvePluginEntry,
   toFileUrl,
   waitForHealth,
-  writerAssetPathForEntry,
+  authorWriterAssetPathForEntry,
 } from "./integration-helpers.ts"
 
 function readAgentPermission(
@@ -115,11 +115,11 @@ async function main(): Promise<void> {
 
   const assertions: Assertion[] = []
 
-  const writerAssetPath = writerAssetPathForEntry(adapterEntry)
+  const writerAssetPath = authorWriterAssetPathForEntry(adapterEntry)
   if (writerAssetPath !== undefined) {
     const writerAssetExists = existsSync(writerAssetPath)
     assertions.push({
-      name: "packaged writer asset exists in plugin prefix",
+      name: "packaged author-writer asset exists in plugin prefix",
       pass: writerAssetExists,
       detail: writerAssetExists ? writerAssetPath : `NOT FOUND: ${writerAssetPath}`,
     })
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
           const json: unknown = await resp.json()
           const hasConsultant = hasNestedKey(json, "agent", "consultant")
           const hasMemoryMcp = hasNestedKey(json, "mcp", "janus-memory")
-          const hasWriter = hasNestedKey(json, "agent", "writer")
+          const hasWriter = hasNestedKey(json, "agent", "author-writer")
           assertions.push({
             name: "config has consultant agent key",
             pass: hasConsultant,
@@ -188,11 +188,11 @@ async function main(): Promise<void> {
             detail: hasMemoryMcp ? "mcp.janus-memory present" : "mcp.janus-memory MISSING",
           })
           assertions.push({
-            name: "config has packaged writer agent key",
+            name: "config has packaged author-writer agent key",
             pass: hasWriter,
-            detail: hasWriter ? "agent.writer present" : "agent.writer MISSING",
+            detail: hasWriter ? "agent.author-writer present" : "agent.author-writer MISSING",
           })
-          for (const role of ["coder", "ask-lite", "coder-lite", "arch-critic", "auditor", "explorer", "analyst", "critic"]) {
+          for (const role of ["simple", "architect", "author", "coder", "coder-lite", "common-explorer", "consultant-analyst", "consultant-critic", "consultant-auditor", "coder-reviewer", "author-writer"]) {
             const present = hasNestedKey(json, "agent", role)
             assertions.push({
               name: `config has ${role} agent key`,
@@ -220,24 +220,33 @@ async function main(): Promise<void> {
           const designStateDir = join(sandboxData, "janus-agent", "design")
           const authorStateDir = join(sandboxData, "janus-agent", "author")
           const projectId = computeProjectId(sandboxProj)
-          const consultantExternal = readAgentPermission(json, "consultant")?.["external_directory"] as
-            | Record<string, string>
-            | undefined
           const coderExternal = readAgentPermission(json, "coder")?.["external_directory"] as
             | Record<string, string>
             | undefined
-          const consultantPrompt = readAgentPrompt(json, "consultant")
+          const architectExternal = readAgentPermission(json, "architect")?.["external_directory"] as
+            | Record<string, string>
+            | undefined
+          const authorExternal = readAgentPermission(json, "author")?.["external_directory"] as
+            | Record<string, string>
+            | undefined
+          const architectPrompt = readAgentPrompt(json, "architect")
+          const authorPrompt = readAgentPrompt(json, "author")
           const coderPrompt = readAgentPrompt(json, "coder")
 
           assertions.push({
-            name: "consultant grants external access to the design state dir",
-            pass: consultantExternal?.[`${designStateDir}/**`] === "allow",
-            detail: consultantExternal?.[`${designStateDir}/**`] ?? "design state dir not allowed",
+            name: "architect grants external access to the design state dir",
+            pass: architectExternal?.[`${designStateDir}/**`] === "allow",
+            detail: architectExternal?.[`${designStateDir}/**`] ?? "design state dir not allowed",
           })
           assertions.push({
-            name: "consultant grants external access to the author state dir",
-            pass: consultantExternal?.[`${authorStateDir}/**`] === "allow",
-            detail: consultantExternal?.[`${authorStateDir}/**`] ?? "author state dir not allowed",
+            name: "author grants external access to the author state dir",
+            pass: authorExternal?.[`${authorStateDir}/**`] === "allow",
+            detail: authorExternal?.[`${authorStateDir}/**`] ?? "author state dir not allowed",
+          })
+          assertions.push({
+            name: "author grants external access to the design state dir",
+            pass: authorExternal?.[`${designStateDir}/**`] === "allow",
+            detail: authorExternal?.[`${designStateDir}/**`] ?? "design state dir not allowed",
           })
           assertions.push({
             name: "coder grants external access to the design state dir",
@@ -250,14 +259,24 @@ async function main(): Promise<void> {
             detail: existsSync(designStateDir) ? designStateDir : `NOT FOUND: ${designStateDir}`,
           })
           assertions.push({
-            name: "consultant prompt names the design state dir and project id",
+            name: "architect prompt names the design state dir and project id",
             pass:
-              consultantPrompt !== undefined &&
-              consultantPrompt.includes(`Design state dir: \`${designStateDir}\``) &&
-              consultantPrompt.includes(`project id: \`${projectId}\``),
-            detail: consultantPrompt?.includes(designStateDir)
+              architectPrompt !== undefined &&
+              architectPrompt.includes(`Design state dir: \`${designStateDir}\``) &&
+              architectPrompt.includes(`project id: \`${projectId}\``),
+            detail: architectPrompt?.includes(designStateDir)
               ? `design dir + project id ${projectId}`
-              : "consultant prompt MISSING design binding",
+              : "architect prompt MISSING design binding",
+          })
+          assertions.push({
+            name: "author prompt names the author state dir and project id",
+            pass:
+              authorPrompt !== undefined &&
+              authorPrompt.includes(`Author state dir: \`${authorStateDir}\``) &&
+              authorPrompt.includes(`project id: \`${projectId}\``),
+            detail: authorPrompt?.includes(authorStateDir)
+              ? `author dir + project id ${projectId}`
+              : "author prompt MISSING author binding",
           })
           assertions.push({
             name: "coder prompt names the project design base dir",

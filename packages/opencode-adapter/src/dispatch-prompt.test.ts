@@ -5,19 +5,19 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { z } from "zod"
 import {
-  buildWriterRuntimeBindings,
+  buildAuthorWriterRuntimeBindings,
   injectCommonPrinciples,
   injectRuntimeBindings,
   loadCommonBase,
   loadCommonWrite,
-  registerAnalyst,
-  registerArchCritic,
+  registerAuthorWriter,
+  registerCommonExplorer,
   registerConsultantAgent,
-  registerCritic,
-  registerExplorer,
-  registerAskLite,
-  registerAuditor,
-  registerWriter,
+  registerConsultantAnalyst,
+  registerConsultantAuditor,
+  registerConsultantCritic,
+  registerCoderReviewer,
+  registerSimple,
   resolveAuthorStateDir,
 } from "./agent-registration.ts"
 import { resolveAsset } from "./asset-paths.ts"
@@ -27,28 +27,32 @@ const pluginConfig = {
   install_skill: true,
   install_commands: true,
   memory_enabled: true,
-  consultant_agent: "consultant",
-  auditor_agent: "auditor",
-  auditor_enabled: true,
-  arch_critic_agent: "arch-critic",
-  arch_critic_enabled: true,
-  explorer_agent: "explorer",
-  explorer_enabled: true,
-  analyst_agent: "analyst",
-  analyst_enabled: true,
-  critic_agent: "critic",
-  critic_enabled: true,
-  writer_agent: "writer",
-  writer_enabled: true,
-  writer_docs_roots: ["userdoc"],
-  coder_agent: "coder",
-  coder_enabled: true,
-  ask_lite_agent: "ask-lite",
-  ask_lite_enabled: true,
-  coder_lite_agent: "coder-lite",
-  coder_lite_enabled: true,
   janus_agent: "janus",
   janus_enabled: true,
+  simple_agent: "simple",
+  simple_enabled: true,
+  consultant_agent: "consultant",
+  architect_agent: "architect",
+  architect_enabled: true,
+  coder_agent: "coder",
+  coder_enabled: true,
+  author_agent: "author",
+  author_enabled: true,
+  common_explorer_agent: "common-explorer",
+  common_explorer_enabled: true,
+  consultant_analyst_agent: "consultant-analyst",
+  consultant_analyst_enabled: true,
+  consultant_critic_agent: "consultant-critic",
+  consultant_critic_enabled: true,
+  consultant_auditor_agent: "consultant-auditor",
+  consultant_auditor_enabled: true,
+  coder_reviewer_agent: "coder-reviewer",
+  coder_reviewer_enabled: true,
+  author_writer_agent: "author-writer",
+  author_writer_enabled: true,
+  writer_docs_roots: ["userdoc"],
+  coder_lite_agent: "coder-lite",
+  coder_lite_enabled: true,
 } satisfies JanusPluginConfig
 
 // Each read-only role runs a default model that resolves a shipped
@@ -56,38 +60,38 @@ const pluginConfig = {
 // The writer is separate: it also gets runtime bindings injected.
 const roles = [
   {
-    asset: "explorer.md",
-    name: "explorer",
+    asset: "common-explorer.md",
+    name: "common-explorer",
     block: "deepseekv41flash.md",
-    register: registerExplorer,
+    register: registerCommonExplorer,
     extras: ["principles/source-criteria.md"],
   },
   {
-    asset: "analyst.md",
-    name: "analyst",
+    asset: "consultant-analyst.md",
+    name: "consultant-analyst",
     block: "qwen38max.md",
-    register: registerAnalyst,
+    register: registerConsultantAnalyst,
     extras: ["principles/reasoning-failures.md", "principles/claim-types.md"],
   },
   {
-    asset: "critic.md",
-    name: "critic",
+    asset: "consultant-critic.md",
+    name: "consultant-critic",
     block: "gemini38flash.md",
-    register: registerCritic,
+    register: registerConsultantCritic,
     extras: ["principles/reasoning-failures.md", "principles/source-criteria.md"],
   },
   {
-    asset: "arch-critic.md",
-    name: "arch-critic",
+    asset: "coder-reviewer.md",
+    name: "coder-reviewer",
     block: "gemini38flash.md",
-    register: registerArchCritic,
+    register: registerCoderReviewer,
     extras: ["principles/engineering-principles.md"],
   },
   {
-    asset: "auditor.md",
-    name: "auditor",
+    asset: "consultant-auditor.md",
+    name: "consultant-auditor",
     block: "gemini38flash.md",
-    register: registerAuditor,
+    register: registerConsultantAuditor,
   },
 ] as const
 
@@ -153,7 +157,11 @@ describe("dispatch prompt routing contract", () => {
     for (const status of statuses) expect(prompt).toContain(`\`${status}\``)
     expect(prompt).toContain("`job_id`")
     expect(prompt).toContain("return_handle")
-    expect(prompt).toContain("writer_session_id")
+    // Author-mode writer-session state belongs to `author`, not `consultant`;
+    // the role asset text migrates in the prompt-asset phase, but the injected
+    // consultant bindings must already omit it.
+    const bindings = prompt.slice(prompt.indexOf("## Runtime Bindings (injected by opencode-adapter)"))
+    expect(bindings).not.toContain("writer_session_id")
     expect(prompt).not.toContain("<!-- RUNTIME-BINDINGS")
   })
 
@@ -189,9 +197,9 @@ describe("dispatch prompt routing contract", () => {
     })
   }
 
-  it("exposes nonterminal status identifiers when loading writer.md", async () => {
+  it("exposes nonterminal status identifiers when loading author-writer.md", async () => {
     // given
-    const path = resolveAsset("agents/writer.md")
+    const path = resolveAsset("agents/author-writer.md")
     // when
     const source = await readFile(path, "utf8")
     // then
@@ -201,7 +209,7 @@ describe("dispatch prompt routing contract", () => {
 
   it("documents the continuation packet flag without weakening the write rules", async () => {
     // given
-    const path = resolveAsset("agents/writer.md")
+    const path = resolveAsset("agents/author-writer.md")
     // when
     const source = await readFile(path, "utf8")
     // then: the continuation flag is documented, and the scoped-write rules
@@ -219,31 +227,31 @@ describe("dispatch prompt routing contract", () => {
     const parent = mkdtempSync(join(tmpdir(), "writer-author-prompt-"))
     const env = { HOME: parent } as NodeJS.ProcessEnv
     const config: { agent?: Record<string, unknown> } = {}
-    const source = await readFile(resolveAsset("agents/writer.md"), "utf8")
+    const source = await readFile(resolveAsset("agents/author-writer.md"), "utf8")
     const base = await loadCommonBase()
     const write = await loadCommonWrite()
 
     try {
       // when
-      await registerWriter(config, pluginConfig, env)
+      await registerAuthorWriter(config, pluginConfig, env)
 
-      // then — the writer keeps the write gate: base then write, then bindings
+      // then — author-writer keeps the write gate: base then write, then bindings
       const expected = injectRuntimeBindings(
         injectCommonPrinciples(
           injectCommonPrinciples(source, base),
           write,
         ),
-        buildWriterRuntimeBindings(pluginConfig, resolveAuthorStateDir(env)),
+        buildAuthorWriterRuntimeBindings(pluginConfig, resolveAuthorStateDir(env)),
       )
-      expect(promptSchema.parse(config.agent?.["writer"]).prompt).toBe(expected)
+      expect(promptSchema.parse(config.agent?.["author-writer"]).prompt).toBe(expected)
     } finally {
       rmSync(parent, { recursive: true, force: true })
     }
   })
 
-  it("keeps ask-lite as a leaf with escalation lines instead of dispatch discipline", async () => {
+  it("keeps simple as a leaf with escalation lines instead of dispatch discipline", async () => {
     // given
-    const path = resolveAsset("agents/ask-lite.md")
+    const path = resolveAsset("agents/simple.md")
     // when
     const source = await readFile(path, "utf8")
     // then
@@ -253,15 +261,15 @@ describe("dispatch prompt routing contract", () => {
     expect(source).not.toContain("janus_dispatch_wait")
   })
 
-  it("injects runtime bindings when registering ask-lite", async () => {
+  it("injects runtime bindings when registering simple", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfigWithWorkspace = { ...pluginConfig, ask_lite_workspace_dir: "/tmp/lite-ws-prompt" }
+    const pluginConfigWithWorkspace = { ...pluginConfig, simple_workspace_dir: "/tmp/lite-ws-prompt" }
     // when
-    await registerAskLite(config, pluginConfigWithWorkspace, "oc-lite-prompt")
+    await registerSimple(config, pluginConfigWithWorkspace, "oc-lite-prompt")
     // then
-    const prompt = promptSchema.parse(config.agent?.["ask-lite"]).prompt
-    expect(prompt).toContain("# Ask-Lite")
+    const prompt = promptSchema.parse(config.agent?.["simple"]).prompt
+    expect(prompt).toContain("# Simple")
     expect(prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
     expect(prompt).toContain("oc-lite-prompt")
     expect(prompt).toContain("/tmp/lite-ws-prompt")
@@ -274,9 +282,9 @@ describe("dispatch prompt routing contract", () => {
     const config: { agent?: Record<string, unknown> } = { agent: { "host-writer": hostEntry } }
     const delegatedConfig = { ...pluginConfig, writer_delegate_agent: "host-writer" }
     // when
-    await registerWriter(config, delegatedConfig)
+    await registerAuthorWriter(config, delegatedConfig)
     // then
     expect(config.agent?.["host-writer"]).toBe(hostEntry)
-    expect(config.agent?.[pluginConfig.writer_agent]).toBeUndefined()
+    expect(config.agent?.[pluginConfig.author_writer_agent]).toBeUndefined()
   })
 })

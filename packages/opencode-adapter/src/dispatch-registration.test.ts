@@ -6,7 +6,7 @@ import { setImmediate } from "node:timers/promises"
 import type { ToolDefinition } from "@opencode-ai/plugin"
 import * as dispatchTools from "./dispatch-tool.ts"
 import { JanusAgentPlugin } from "./plugin.ts"
-import { buildRuntimeBindings, buildCoderRuntimeBindings, buildJanusRuntimeBindings } from "./agent-registration.ts"
+import { buildConsultantRuntimeBindings, buildCoderRuntimeBindings, buildJanusRuntimeBindings } from "./agent-registration.ts"
 import { JanusPluginConfigSchema } from "./plugin-config.ts"
 import { createFakeClock } from "./dispatch-test-fixtures.ts"
 import { context, envelope, fixture, pluginInput } from "./dispatch-registration-fixtures.ts"
@@ -34,7 +34,7 @@ describe("unified dispatch registration", () => {
     const clock = createFakeClock()
     f.sdk.setStatusResult({ data: { ses_fake_1: { type: "busy" } } })
     const tools = createJanusDispatchTools(pluginInput(f.sdk).client, { clock })
-    const launched = tools.janus_dispatch.execute({ role: "analyst", prompt: "analyze" }, context())
+    const launched = tools.janus_dispatch.execute({ role: "consultant-analyst", prompt: "analyze" }, context())
     await setImmediate()
     for (let i = 0; i < 300; i++) {
       await setImmediate()
@@ -68,7 +68,7 @@ describe("unified dispatch registration", () => {
       const dispatch = tools["janus_dispatch"]
       const control = tools[`janus_dispatch_${action}`]
       if (!dispatch || !control) throw new Error("missing job control tool")
-      const job = envelope(await dispatch.execute({ role: "explorer", prompt: "search" }, context(controller.signal)))
+      const job = envelope(await dispatch.execute({ role: "common-explorer", prompt: "search" }, context(controller.signal)))
       if (action === "wait") f.finish()
       else {
         const abort = f.sdk.session.abort
@@ -93,12 +93,12 @@ describe("unified dispatch registration", () => {
     const f = fixture()
     f.sdk.setPromptAsyncRejection(new Error("lost acknowledgement"))
     const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
-    const job = envelope(await tools.janus_dispatch.execute({ role: "writer", prompt: "draft" }, context()))
+    const job = envelope(await tools.janus_dispatch.execute({ role: "author-writer", prompt: "draft" }, context()))
     expect(Object.keys(tools.janus_dispatch_cancel.args)).toEqual(["job_id"])
     expect(Object.keys(tools.janus_dispatch_wait.args)).toEqual(["job_id", "wait_ms"])
     // When the attacker supplies the actual owner in args instead of context.
     const maliciousArgs = {
-      job_id: job.job_id, parentID: "ses_parent", role: "analyst", agent: "evil", model: "evil/model", wait_ms: 0,
+      job_id: job.job_id, parentID: "ses_parent", role: "consultant-analyst", agent: "evil", model: "evil/model", wait_ms: 0,
     }
     const result = await tools.janus_dispatch_cancel.execute(maliciousArgs, { ...context(), sessionID: "ses_attacker" })
     // Then the context binding prevails and nothing is aborted/generated.
@@ -111,15 +111,15 @@ describe("unified dispatch registration", () => {
     // Given default role configuration.
     const config = JanusPluginConfigSchema.parse({})
     // When building runtime bindings consumed by the consultant.
-    const bindings = buildRuntimeBindings(config, "oc-test")
+    const bindings = buildConsultantRuntimeBindings(config, "oc-test")
     // Then routing-bearing structural tool names are available (no prose pin);
-    // the consultant line names `janus_dispatch_continue` twice — once in the
-    // job-tools list and once in the author-mode writer-session policy.
+    // the consultant bindings carry the job-tools list, not the author-mode
+    // writer-session policy.
     expect(bindings.match(/`janus_dispatch(?:_wait|_cancel|_continue)?`/g)).toEqual([
-      "`janus_dispatch`", "`janus_dispatch_wait`", "`janus_dispatch_cancel`", "`janus_dispatch_continue`", "`janus_dispatch_continue`",
+      "`janus_dispatch`", "`janus_dispatch_wait`", "`janus_dispatch_cancel`", "`janus_dispatch_continue`",
     ])
     expect(bindings).toContain("`return_handle: true`")
-    expect(bindings).toContain("`writer_session_id`")
+    expect(bindings).not.toContain("`writer_session_id`")
     const coderBindings = buildCoderRuntimeBindings(config)
     expect(coderBindings).toContain("`janus_dispatch_continue`")
     expect(coderBindings).toContain("`return_handle: true`")
@@ -150,14 +150,14 @@ describe("unified dispatch registration", () => {
     }
     const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
     const dispatchResult = await tools.janus_dispatch.execute(
-      { role: "writer", prompt: "draft chapter one", return_handle: true },
+      { role: "author-writer", prompt: "draft chapter one", return_handle: true },
       context(),
     )
     const parsed = envelope(dispatchResult)
     if (parsed.status !== "completed") throw new Error(`expected completed envelope: ${JSON.stringify(parsed)}`)
     // When continuing the writer's session with a maintenance prompt.
     const result = await tools.janus_dispatch_continue.execute(
-      { session_id: parsed.session_id, prompt: "apply the review fix", role: "writer" },
+      { session_id: parsed.session_id, prompt: "apply the review fix", role: "author-writer" },
       context(),
     )
     // Then the same session is prompted again and the result is plain text.
@@ -176,7 +176,7 @@ describe("unified dispatch registration", () => {
     }
     const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
     const dispatchResult = await tools.janus_dispatch.execute(
-      { role: "writer", prompt: "draft chapter one", return_handle: true },
+      { role: "author-writer", prompt: "draft chapter one", return_handle: true },
       context(),
     )
     const parsed = envelope(dispatchResult)
@@ -192,9 +192,9 @@ describe("unified dispatch registration", () => {
   })
 
   for (const scenario of [
-    { role: "explorer", field: "explorer", agent: "explorer", model: "opencode-go/deepseek-v4.1-flash" },
-    { role: "arch-critic", field: "arch_critic", agent: "arch-critic", model: "opencode/gemini-3.8-flash" },
-    { role: "ask-lite", field: "ask_lite", agent: "ask-lite", model: "opencode-go/deepseek-v4.1-flash" },
+    { role: "common-explorer", field: "common_explorer", agent: "common-explorer", model: "opencode-go/deepseek-v4.1-flash" },
+    { role: "coder-reviewer", field: "coder_reviewer", agent: "coder-reviewer", model: "opencode/claude-sonnet-5-5" },
+    { role: "simple", field: "simple", agent: "simple", model: "opencode-go/deepseek-v4.1-flash" },
   ] as const) {
     for (const custom of [false, true]) {
       it(`routes ${scenario.role} through the shared factory with ${custom ? "custom" : "default"} configuration`, async () => {
@@ -239,7 +239,7 @@ describe("unified dispatch registration", () => {
     it(`retains the disabled-bundled writer delegate override with ${pinned ? "a pinned model" : "host model selection"}`, async () => {
       // Given a delegate whose configuration differs from the bundled fallback.
       writeFileSync(join(directory, "config.jsonc"), JSON.stringify({
-        writer_enabled: false, writer_delegate_agent: "host-writer",
+        author_writer_enabled: false, writer_delegate_agent: "host-writer",
         ...(pinned ? { writer_delegate_model: "delegate/pinned" } : {}),
       }))
       const f = fixture()
@@ -251,7 +251,7 @@ describe("unified dispatch registration", () => {
       }
       const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
       // When dispatching the delegated writer despite the bundled disable flag.
-      const result = await tools.janus_dispatch.execute({ role: "writer", prompt: "draft" }, context())
+      const result = await tools.janus_dispatch.execute({ role: "author-writer", prompt: "draft" }, context())
       // Then host routing, optional model pinning and single-attempt semantics survive.
       expect(result).toBe("final report")
       expect(f.submissions.map((s) => ({ agent: s.body.agent, model: s.body.model }))).toEqual([{

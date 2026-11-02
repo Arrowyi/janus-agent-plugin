@@ -8,14 +8,8 @@ interface JournalSnapshot {
   readonly children: readonly SdkSession[]
 }
 
-const LEGACY_TITLE_ROLES: Readonly<Record<string, readonly string[]>> = {
-  auditor: ["verifier"],
-  "ask-lite": ["lite"],
-}
-
 function matchesDispatchTitle(title: string, role: string): boolean {
-  if (title === `[consultation-dispatch:v1] ${role}`) return true
-  return (LEGACY_TITLE_ROLES[role] ?? []).some((legacy) => title === `[consultation-dispatch:v1] ${legacy}`)
+  return title === `[consultation-dispatch:v1] ${role}`
 }
 
 export function bindJob(snapshot: JournalSnapshot, input: LoadJobInput): JournalResult<LoadedJob> {

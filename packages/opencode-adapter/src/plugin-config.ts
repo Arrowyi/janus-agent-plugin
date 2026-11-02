@@ -13,37 +13,39 @@ export { stripJsonc }
  * `$XDG_CONFIG_HOME/janus-agent/config.jsonc` or
  * `~/.config/janus-agent/config.jsonc`.
  */
-const roleCapsSchema = z.object({
-  explorer: z.number().int().min(0).default(0),
-  analyst: z.number().int().min(0).default(0),
-  critic: z.number().int().min(0).default(0),
-  arch_critic: z.number().int().min(0).default(0),
-  auditor: z.number().int().min(0).default(0),
-  writer: z.number().int().min(0).default(0),
-})
+const roleCapsSchema = z
+  .object({
+  common_explorer: z.number().int().min(0).default(0),
+  consultant_analyst: z.number().int().min(0).default(0),
+  consultant_critic: z.number().int().min(0).default(0),
+  coder_reviewer: z.number().int().min(0).default(0),
+  consultant_auditor: z.number().int().min(0).default(0),
+  author_writer: z.number().int().min(0).default(0),
+  })
+  .strict()
 
 const CONFIG_ROLES = [
   "janus",
-  "ask-lite",
+  "simple",
   "consultant",
+  "architect",
   "coder",
-  "explorer",
-  "auditor",
-  "analyst",
-  "critic",
-  "arch-critic",
-  "writer",
+  "author",
+  "common-explorer",
+  "consultant-auditor",
+  "consultant-analyst",
+  "consultant-critic",
+  "coder-reviewer",
+  "author-writer",
   "coder-lite",
 ] as const
 
 const CONFIG_MODES = ["select", "verify", "roadmap", "research", "guide", "design", "doc"] as const
 const CONFIG_TIERS = ["fast", "standard", "deep"] as const
 
-/** Normalize a public mode input, accepting the legacy plan/author names. */
+/** Normalize a public mode input to its canonical name. */
 export function normalizeConfigMode(value: string): ConfigMode | undefined {
   const normalized = value.trim().toLowerCase()
-  if (normalized === "plan") return "roadmap"
-  if (normalized === "author") return "doc"
   return (CONFIG_MODES as readonly string[]).includes(normalized)
     ? (normalized as ConfigMode)
     : undefined
@@ -63,49 +65,64 @@ const TierModelsSchema = z
   .object(Object.fromEntries(CONFIG_TIERS.map((tier) => [tier, RoleModelMapSchema.optional()])))
   .strict()
 
-export const JanusPluginConfigSchema = z.object({
+export const JanusPluginConfigSchema = z
+  .object({
+  $schema: z.string().optional(),
   janus_agent: z.string().default("janus"),
   janus_model: z.string().optional(),
   janus_enabled: z.boolean().default(true),
+  // Simple quick-answer entry.
+  simple_agent: z.string().default("simple"),
+  simple_model: z.string().optional(),
+  simple_enabled: z.boolean().default(true),
+  simple_workspace_dir: z.string().min(1).optional(),
   consultant_agent: z.string().default("consultant"),
   consultant_model: z.string().optional(),
-  critic_agent: z.string().default("critic"),
-  critic_model: z.string().optional(),
-  critic_enabled: z.boolean().default(true),
-  auditor_agent: z.string().default("auditor"),
-  auditor_model: z.string().optional(),
-  auditor_enabled: z.boolean().default(true),
-  arch_critic_agent: z.string().default("arch-critic"),
-  arch_critic_model: z.string().optional(),
-  arch_critic_enabled: z.boolean().default(true),
-  explorer_agent: z.string().default("explorer"),
-  explorer_model: z.string().optional(),
-  explorer_enabled: z.boolean().default(true),
-  analyst_agent: z.string().default("analyst"),
-  analyst_model: z.string().optional(),
-  analyst_enabled: z.boolean().default(true),
-  writer_agent: z.string().default("writer"),
-  writer_model: z.string().optional(),
-  writer_enabled: z.boolean().default(true),
-  // Project-relative directories the bundled writer may write approved
-  // document files into. `[]` disables writer file writes (read-only
-  // fallback: the writer returns prose and the consultant publishes).
-  writer_docs_roots: z.array(z.string().min(1)).default(["userdoc"]),
-  writer_delegate_agent: z.string().optional(),
-  writer_delegate_model: z.string().optional(),
+  // Architect: the design-team entry that writes design.md.
+  architect_agent: z.string().default("architect"),
+  architect_model: z.string().optional(),
+  architect_enabled: z.boolean().default(true),
   coder_agent: z.string().default("coder"),
   coder_model: z.string().optional(),
   coder_enabled: z.boolean().default(true),
-  ask_lite_agent: z.string().default("ask-lite"),
-  ask_lite_model: z.string().optional(),
-  ask_lite_enabled: z.boolean().default(true),
-  ask_lite_workspace_dir: z.string().min(1).optional(),
+  // Author: the documentation-team entry that writes the author brief.
+  author_agent: z.string().default("author"),
+  author_model: z.string().optional(),
+  author_enabled: z.boolean().default(true),
+  // Shared research floor plus the consultation team's specialists.
+  common_explorer_agent: z.string().default("common-explorer"),
+  common_explorer_model: z.string().optional(),
+  common_explorer_enabled: z.boolean().default(true),
+  consultant_analyst_agent: z.string().default("consultant-analyst"),
+  consultant_analyst_model: z.string().optional(),
+  consultant_analyst_enabled: z.boolean().default(true),
+  consultant_critic_agent: z.string().default("consultant-critic"),
+  consultant_critic_model: z.string().optional(),
+  consultant_critic_enabled: z.boolean().default(true),
+  consultant_auditor_agent: z.string().default("consultant-auditor"),
+  consultant_auditor_model: z.string().optional(),
+  consultant_auditor_enabled: z.boolean().default(true),
+  // coder's independent reviewer: design pre-mortems
+  // and code/plan review.
+  coder_reviewer_agent: z.string().default("coder-reviewer"),
+  coder_reviewer_model: z.string().optional(),
+  coder_reviewer_enabled: z.boolean().default(true),
+  // author's scoped-write executor.
+  author_writer_agent: z.string().default("author-writer"),
+  author_writer_model: z.string().optional(),
+  author_writer_enabled: z.boolean().default(true),
+  // Project-relative directories the bundled writer may write approved
+  // document files into. `[]` disables writer file writes (read-only
+  // fallback: the writer returns prose and the author publishes).
+  writer_docs_roots: z.array(z.string().min(1)).default(["userdoc"]),
+  writer_delegate_agent: z.string().optional(),
+  writer_delegate_model: z.string().optional(),
   coder_lite_agent: z.string().default("coder-lite"),
   coder_lite_model: z.string().optional(),
   coder_lite_enabled: z.boolean().default(true),
   // Optional per-mode and per-tier model overrides. Precedence at dispatch:
   // mode_models[mode][role] > tier_models[tier][role] > <role>_model >
-  // MODEL_DEFAULTS[role].
+  // TIER_MODEL_DEFAULTS[tier][role] > MODEL_DEFAULTS[role].
   mode_models: ModeModelsSchema.optional(),
   tier_models: TierModelsSchema.optional(),
   // Global model-adaptation prompt map, keyed by the provider-agnostic
@@ -140,140 +157,55 @@ export const JanusPluginConfigSchema = z.object({
       dimensions: z.number(),
     })
     .optional(),
-})
+  })
+  .strict()
 
 export type JanusPluginConfig = z.infer<typeof JanusPluginConfigSchema>
 
-/**
- * Legacy config keys accepted as aliases. New keys win when both are present;
- * the alias is applied before Zod defaults so a defaulted new key cannot shadow
- * a user's old value.
- */
-export const LEGACY_CONFIG_ALIASES: Readonly<Record<string, string>> = {
-  agent_model: "consultant_model",
-  lite_agent: "ask_lite_agent",
-  lite_model: "ask_lite_model",
-  lite_enabled: "ask_lite_enabled",
-  lite_workspace_dir: "ask_lite_workspace_dir",
-  verifier_agent: "auditor_agent",
-  verifier_model: "auditor_model",
-  verifier_enabled: "auditor_enabled",
-}
-
-const LEGACY_ROLE_ALIASES: Readonly<Record<string, string>> = {
-  verifier: "auditor",
-  lite: "ask-lite",
-  arch_critic: "arch-critic",
-  coder_lite: "coder-lite",
-  ask_lite: "ask-lite",
-}
-
-const LEGACY_MODE_ALIASES: Readonly<Record<string, string>> = {
-  plan: "roadmap",
-  author: "doc",
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-function renameKeys(
-  value: unknown,
-  aliases: Readonly<Record<string, string>>,
-): Record<string, unknown> | undefined {
-  if (!isRecord(value)) return undefined
-  const entries = Object.entries(value)
-  const isLegacy = (key: string) => aliases[key] !== undefined
-  const out: Record<string, unknown> = {}
-
-  // Canonical (new) keys win regardless of object iteration order. Apply them
-  // first, then fill only the canonical slots that are still empty from the
-  // legacy aliases.
-  for (const [key, entry] of entries) {
-    if (!isLegacy(key)) out[key] = entry
-  }
-  for (const [key, entry] of entries) {
-    if (!isLegacy(key)) continue
-    const canonical = aliases[key]!
-    if (out[canonical] === undefined) out[canonical] = entry
-  }
-  return out
-}
-
-/**
- * Normalize legacy config keys and role/mode map keys before schema parsing.
- * New keys always win over their old aliases.
- */
-export function normalizeConfigAliases(raw: unknown): unknown {
-  if (!isRecord(raw)) return raw
-  const out: Record<string, unknown> = { ...raw }
-
-  for (const [legacy, canonical] of Object.entries(LEGACY_CONFIG_ALIASES)) {
-    if (out[canonical] === undefined && out[legacy] !== undefined) out[canonical] = out[legacy]
-    delete out[legacy]
-  }
-
-  // build_* was removed with the host build role; leave the keys to Zod's
-  // default stripping so old configs keep loading.
-  delete out.build_agent
-  delete out.build_model
-  delete out.build_enabled
-
-  if (isRecord(out.mode_models)) {
-    const modes = renameKeys(out.mode_models, LEGACY_MODE_ALIASES) ?? {}
-    out.mode_models = Object.fromEntries(
-      Object.entries(modes).map(([mode, map]) => [mode, renameKeys(map, LEGACY_ROLE_ALIASES) ?? map]),
-    )
-  }
-  if (isRecord(out.tier_models)) {
-    out.tier_models = Object.fromEntries(
-      Object.entries(out.tier_models).map(([tier, map]) => [tier, renameKeys(map, LEGACY_ROLE_ALIASES) ?? map]),
-    )
-  }
-  if (isRecord(out.tier_role_caps)) {
-    out.tier_role_caps = Object.fromEntries(
-      Object.entries(out.tier_role_caps).map(([tier, caps]) => [
-        tier,
-        isRecord(caps) ? renameKeys(caps, { verifier: "auditor", "arch-critic": "arch_critic", arch_critic: "arch_critic" }) ?? caps : caps,
-      ]),
-    )
-  }
-  return out
-}
-
-// Cross-family audit structure: challenger (gemini) ≠ consultant (glm) ≠
-// analyst (qwen), so the challenge roles never share a model family with the
-// roles they audit — independent audit is restored. critic, auditor, and
-// arch-critic share gemini-3.8-flash (judgment ceiling: GPQA 95.3 / HLE 47.8 /
-// ARC-AGI-2 89.2), running on Zen pay-per-use ($1.50/$7.50) rather than a Go
-// pool — accepted because they are read-only, low-frequency challenge roles
-// (tier caps: fast 0 / standard 1 / deep 2), where judgment quality outranks
-// pool accounting. consultant runs glm-5.3 (TB4.0 41.8%, strongest
-// hard-agentic; the previous deepseek-v4-pro default was EOL-tracked — DeepSeek
-// routes it to V4.1-Flash). consultant and explorer route through
-// `opencode-go` so a Go/Go Plus subscription allowance absorbs their usage
-// (DeepSeek is served there at the same price as the direct API, with a
-// monthly per-model allowance). analyst is qwen3.8-max (qwen3.7-max was
-// retired from Go). explorer and ask-lite share deepseek-v4.1-flash. writer is
-// claude-sonnet-5-5 (TB4.0 70.6% vs 5's 12.4% — the previous
-// claude-sonnet-5 default's reputation collapsed) and, like every role,
-// resolves to a single model with no fallback. ask-lite is the economical
-// quick-answer entry on V4.1-Flash. coder is the judgment-heavy coding entry,
-// defaulting to the same strong agentic model as the consultant; coder-lite is
-// the mechanical lane on GLM-5.3-Flash (agentic-strong at half of
-// V4.1-Flash's peak price). The host build role was removed; coder owns
-// heavy coding and can take a deep-tier model override.
+// Shipped defaults, tuned for an OpenCode Go Plus subscription plus the small
+// Zen pay-per-use spend the review/audit seats need (2026-11-02).
+//
+// Pool economics: `deepseek-v4.1-flash`, `glm-5.3`, `glm-5.3-flash`,
+// `gemini-4-argon`, `kimi-k3.1-pro`, and `grok-4.7` all route through
+// `opencode-go`, so a Go Plus allowance absorbs their usage at a separate
+// per-model monthly cap; `claude-sonnet-5-5` is Zen pay-per-use and stays on
+// the low-frequency judgment seats. Concentrating the high-volume roles on the
+// large `deepseek-v4.1-flash` / `glm-5.3-flash` caps keeps the small
+// `gemini-4-argon` and `kimi-k3.1-pro` caps free for the seats that need them.
+//
+// Judgment/audit stays cross-family so a challenger never shares a family with
+// the role it audits: consultant and architect/author are Google
+// `gemini-4-argon` (AA index 53, lowest AA-Omniscience hallucination rate,
+// 1M context, TB4.0 57.6% Vals); consultant-analyst is Moonshot
+// `kimi-k3.1-pro` (AA-LCR 86.3%, GDPval-AA 1846, TB4.0 63.6% Vals);
+// consultant-critic, coder-reviewer, and author-writer are Anthropic
+// `claude-sonnet-5-5` (Vals Index 70.85%, TB4.0 64.1% Vals / 70.6% vendor,
+// clean prose); consultant-auditor is xAI `grok-4.7` (AA-Briefcase 1657,
+// AA-Omniscience hallucination 29% — the fourth family).
+//
+// Coding: `coder` is `glm-5.3` (TB4.0 38.9% Vals) with a shipped deep-tier
+// uplift to `kimi-k3.1-pro` for L3 work (see TIER_MODEL_DEFAULTS);
+// `coder-lite` is `glm-5.3-flash` (TB4.0 37.4% Vals at $1.22 per run), the
+// strongest small mechanical lane. Entry/retrieval: `janus` is
+// `glm-5.3-flash` (latency and tool-call stability at a flat $0.15/$0.50) and
+// `simple`/`common-explorer` are `deepseek-v4.1-flash` (1M context, largest Go
+// Plus cap). Every role resolves to a single model with no fallback. An
+// explicitly configured `consultant_model` still feeds architect and author
+// (see resolveUserScalarRoleModel), and any user `<role>_model` beats a
+// shipped tier default.
 export const MODEL_DEFAULTS = {
-  janus: "opencode-go/glm-5.3",
-  "ask-lite": "opencode-go/deepseek-v4.1-flash",
-  consultant: "opencode-go/glm-5.3",
+  janus: "opencode-go/glm-5.3-flash",
+  simple: "opencode-go/deepseek-v4.1-flash",
+  consultant: "opencode-go/gemini-4-argon",
+  architect: "opencode-go/gemini-4-argon",
   coder: "opencode-go/glm-5.3",
-  explorer: "opencode-go/deepseek-v4.1-flash",
-  auditor: "opencode/gemini-3.8-flash",
-  analyst: "opencode-go/qwen3.8-max",
-  critic: "opencode/gemini-3.8-flash",
-  "arch-critic": "opencode/gemini-3.8-flash",
-  writer: "opencode/claude-sonnet-5-5",
+  author: "opencode-go/gemini-4-argon",
+  "common-explorer": "opencode-go/deepseek-v4.1-flash",
+  "consultant-auditor": "opencode-go/grok-4.7",
+  "consultant-analyst": "opencode-go/kimi-k3.1-pro",
+  "consultant-critic": "opencode/claude-sonnet-5-5",
+  "coder-reviewer": "opencode/claude-sonnet-5-5",
+  "author-writer": "opencode/claude-sonnet-5-5",
   "coder-lite": "opencode-go/glm-5.3-flash",
 } as const
 
@@ -282,42 +214,77 @@ export type ConfigMode = (typeof CONFIG_MODES)[number]
 export type ConfigTier = (typeof CONFIG_TIERS)[number]
 export type RoleModelMap = Partial<Record<ModelRole, string>>
 
+/**
+ * Shipped per-tier model routing. A user `tier_models` entry or an explicit
+ * `<role>_model` still wins; this only supplies the default the plugin runs
+ * when the user has configured nothing. The single entry is coder's L3
+ * uplift: L0-L2 coding stays on `glm-5.3` (`coder`'s scalar default) and a
+ * `tier: "deep"` dispatch uses `kimi-k3.1-pro`, the strongest coding model in
+ * the Go Plus pool (TB4.0 63.6% Vals).
+ */
+export const TIER_MODEL_DEFAULTS: Partial<Record<ConfigTier, RoleModelMap>> = {
+  deep: {
+    coder: "opencode-go/kimi-k3.1-pro",
+  },
+}
+
 export interface RoleModelOptions {
   readonly mode?: ConfigMode
   readonly tier?: ConfigTier
 }
 
-function resolveScalarRoleModel(config: JanusPluginConfig, role: ModelRole): string {
+/**
+ * The user's explicitly configured scalar model for a role, or undefined when
+ * the user configured nothing. Architect and author also inherit an explicitly
+ * configured consultant model so an upgrade does not silently downgrade the
+ * users who tuned it.
+ */
+function resolveUserScalarRoleModel(
+  config: JanusPluginConfig,
+  role: ModelRole,
+): string | undefined {
   switch (role) {
     case "janus":
-      return config.janus_model ?? MODEL_DEFAULTS.janus
-    case "ask-lite":
-      return config.ask_lite_model ?? MODEL_DEFAULTS["ask-lite"]
+      return config.janus_model
+    case "simple":
+      return config.simple_model
     case "consultant":
-      return config.consultant_model ?? MODEL_DEFAULTS.consultant
+      return config.consultant_model
+    case "architect":
+      return config.architect_model ?? config.consultant_model
     case "coder":
-      return config.coder_model ?? MODEL_DEFAULTS.coder
-    case "explorer":
-      return config.explorer_model ?? MODEL_DEFAULTS.explorer
-    case "auditor":
-      return config.auditor_model ?? MODEL_DEFAULTS.auditor
-    case "analyst":
-      return config.analyst_model ?? MODEL_DEFAULTS.analyst
-    case "critic":
-      return config.critic_model ?? MODEL_DEFAULTS.critic
-    case "arch-critic":
-      return config.arch_critic_model ?? MODEL_DEFAULTS["arch-critic"]
-    case "writer":
-      return config.writer_model ?? MODEL_DEFAULTS.writer
+      return config.coder_model
+    case "author":
+      return config.author_model ?? config.consultant_model
+    case "common-explorer":
+      return config.common_explorer_model
+    case "consultant-auditor":
+      return config.consultant_auditor_model
+    case "consultant-analyst":
+      return config.consultant_analyst_model
+    case "consultant-critic":
+      return config.consultant_critic_model
+    case "coder-reviewer":
+      return config.coder_reviewer_model
+    case "author-writer":
+      return config.author_writer_model
     case "coder-lite":
-      return config.coder_lite_model ?? MODEL_DEFAULTS["coder-lite"]
+      return config.coder_lite_model
   }
+}
+
+function resolveScalarRoleModel(config: JanusPluginConfig, role: ModelRole): string {
+  return resolveUserScalarRoleModel(config, role) ?? MODEL_DEFAULTS[role]
 }
 
 /**
  * Resolve the model for a role with the configured precedence:
  * mode_models[mode][role] > tier_models[tier][role] > <role>_model >
- * MODEL_DEFAULTS[role].
+ * TIER_MODEL_DEFAULTS[tier][role] > MODEL_DEFAULTS[role].
+ *
+ * The shipped tier default sits below the user's scalar model so an explicit
+ * `<role>_model` choice is never silently overridden at dispatch time; a user
+ * who wants a different tier model sets `tier_models` itself.
  */
 export function resolveRoleModel(
   config: JanusPluginConfig,
@@ -332,7 +299,13 @@ export function resolveRoleModel(
     const tierModel = config.tier_models?.[options.tier]?.[role]
     if (tierModel !== undefined) return tierModel
   }
-  return resolveScalarRoleModel(config, role)
+  const userScalar = resolveUserScalarRoleModel(config, role)
+  if (userScalar !== undefined) return userScalar
+  if (options.tier !== undefined) {
+    const tierDefault = TIER_MODEL_DEFAULTS[options.tier]?.[role]
+    if (tierDefault !== undefined) return tierDefault
+  }
+  return MODEL_DEFAULTS[role]
 }
 
 export function resolveRoleModelChain(
@@ -350,12 +323,12 @@ export interface TeamCapsConfig {
 }
 
 export interface RoleCapsConfig {
-  explorer: number
-  analyst: number
-  critic: number
-  arch_critic: number
-  auditor: number
-  writer: number
+  common_explorer: number
+  consultant_analyst: number
+  consultant_critic: number
+  coder_reviewer: number
+  consultant_auditor: number
+  author_writer: number
 }
 
 export interface TierRoleCapsConfig {
@@ -371,9 +344,9 @@ export const TEAM_CAPS_DEFAULTS: TeamCapsConfig = {
 }
 
 export const TIER_ROLE_CAPS_DEFAULTS: TierRoleCapsConfig = {
-  fast: { explorer: 5, analyst: 0, critic: 0, arch_critic: 0, auditor: 0, writer: 0 },
-  standard: { explorer: 5, analyst: 1, critic: 1, arch_critic: 1, auditor: 1, writer: 1 },
-  deep: { explorer: 5, analyst: 3, critic: 2, arch_critic: 2, auditor: 2, writer: 2 },
+  fast: { common_explorer: 5, consultant_analyst: 0, consultant_critic: 0, coder_reviewer: 0, consultant_auditor: 0, author_writer: 0 },
+  standard: { common_explorer: 5, consultant_analyst: 1, consultant_critic: 1, coder_reviewer: 1, consultant_auditor: 1, author_writer: 1 },
+  deep: { common_explorer: 5, consultant_analyst: 3, consultant_critic: 2, coder_reviewer: 2, consultant_auditor: 2, author_writer: 2 },
 }
 
 export const COST_GUARD_USD_DEFAULT = 10
@@ -501,7 +474,7 @@ export async function loadPluginConfig(env: NodeJS.ProcessEnv): Promise<JanusPlu
     throw new Error(`janus-agent config: invalid JSON in ${configPath}: ${detail}`)
   }
 
-  const result = JanusPluginConfigSchema.safeParse(normalizeConfigAliases(parsed))
+  const result = JanusPluginConfigSchema.safeParse(parsed)
   if (!result.success) {
     throw new Error(
       `janus-agent config: invalid configuration in ${configPath}:\n${formatZodError(result.error)}`,

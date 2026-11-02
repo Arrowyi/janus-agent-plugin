@@ -34,9 +34,11 @@ import path from "node:path"
 export { splitModel, errorText, isRetryableModelError }
 
 /**
- * The ten dispatch roles: the four research/review specialists and the writer,
- * the two entry delegates (consultant, coder), the economical leaf (ask-lite),
- * and the mechanical lane (coder-lite).
+ * The ten dispatch roles: the shared research floor, the four consultation /
+ * R&D specialists, the documentation executor, the two entry delegates
+ * (consultant, coder), the economical leaf (simple), and the mechanical lane
+ * (coder-lite). `janus`, `architect`, and `author` are primary entries and are
+ * intentionally not dispatchable.
  */
 export { DISPATCH_ROLES }
 export type { DispatchRole }
@@ -59,27 +61,27 @@ export function resolveRoleTarget(
   options: RoleTargetOptions = {},
 ): RoleTarget {
   switch (role) {
-    case "explorer":
-      return { agentName: config.explorer_agent, model: resolveRoleModel(config, "explorer", options) }
-    case "analyst":
-      return { agentName: config.analyst_agent, model: resolveRoleModel(config, "analyst", options) }
-    case "critic":
-      return { agentName: config.critic_agent, model: resolveRoleModel(config, "critic", options) }
-    case "arch-critic":
-      return { agentName: config.arch_critic_agent, model: resolveRoleModel(config, "arch-critic", options) }
-    case "auditor":
-      return { agentName: config.auditor_agent, model: resolveRoleModel(config, "auditor", options) }
-    case "writer":
+    case "common-explorer":
+      return { agentName: config.common_explorer_agent, model: resolveRoleModel(config, "common-explorer", options) }
+    case "consultant-analyst":
+      return { agentName: config.consultant_analyst_agent, model: resolveRoleModel(config, "consultant-analyst", options) }
+    case "consultant-critic":
+      return { agentName: config.consultant_critic_agent, model: resolveRoleModel(config, "consultant-critic", options) }
+    case "coder-reviewer":
+      return { agentName: config.coder_reviewer_agent, model: resolveRoleModel(config, "coder-reviewer", options) }
+    case "consultant-auditor":
+      return { agentName: config.consultant_auditor_agent, model: resolveRoleModel(config, "consultant-auditor", options) }
+    case "author-writer":
       // A configured delegate keeps host-defined model selection; mode/tier
-      // overrides apply only to the bundled writer.
+      // overrides apply only to the bundled author-writer.
       if (config.writer_delegate_agent !== undefined) {
         return { agentName: config.writer_delegate_agent, model: config.writer_delegate_model }
       }
-      return { agentName: config.writer_agent, model: resolveRoleModel(config, "writer", options) }
+      return { agentName: config.author_writer_agent, model: resolveRoleModel(config, "author-writer", options) }
     case "coder":
       return { agentName: config.coder_agent, model: resolveRoleModel(config, "coder", options) }
-    case "ask-lite":
-      return { agentName: config.ask_lite_agent, model: resolveRoleModel(config, "ask-lite", options) }
+    case "simple":
+      return { agentName: config.simple_agent, model: resolveRoleModel(config, "simple", options) }
     case "coder-lite":
       return { agentName: config.coder_lite_agent, model: resolveRoleModel(config, "coder-lite", options) }
     case "consultant":
@@ -96,9 +98,9 @@ export interface DispatchToolDeps {
 /**
  * Build the four consultation job tools with one shared coordinator set.
  *
- * It dispatches ONLY to the consultation roles (`consultant`, `coder`,
- * `ask-lite`, `explorer`, `analyst`, `critic`, `arch-critic`, `auditor`,
- * `writer`, `coder-lite`)
+ * It dispatches ONLY to the ten dispatchable roles (`consultant`, `coder`,
+ * `simple`, `common-explorer`, `consultant-analyst`, `consultant-critic`,
+ * `coder-reviewer`, `consultant-auditor`, `author-writer`, `coder-lite`)
  * using the recoverable lifecycle coordinator. `janus_dispatch_continue`
  * reuses an existing dispatch session from the same caller. It is additive:
  * it neither shadows nor interferes with the built-in `task` tool or any
@@ -118,7 +120,7 @@ export function createJanusDispatchTools(
 
   const dispatch = tool({
     description:
-      "Dispatch ONLY to a consultation role (consultant, coder, ask-lite, explorer, analyst, critic, arch-critic, auditor, writer, coder-lite). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Optional mode, tier, and protocol select the model and prepend a methodology card to the first turn. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
+      "Dispatch ONLY to a dispatchable role (consultant, coder, simple, common-explorer, consultant-analyst, consultant-critic, coder-reviewer, consultant-auditor, author-writer, coder-lite). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Optional mode, tier, and protocol select the model and prepend a methodology card to the first turn. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
     args: {
       role: tool.schema.string(),
       prompt: tool.schema.string(),
@@ -144,13 +146,13 @@ export function createJanusDispatchTools(
       const prompt = prependProtocolCard(args.prompt, protocolCard)
       const config = await loadPluginConfig(process.env)
       const enabled: Record<DispatchRole, boolean> = {
-        explorer: config.explorer_enabled,
-        analyst: config.analyst_enabled,
-        critic: config.critic_enabled,
-        "arch-critic": config.arch_critic_enabled,
-        auditor: config.auditor_enabled,
-        writer: config.writer_enabled || config.writer_delegate_agent !== undefined,
-        "ask-lite": config.ask_lite_enabled,
+        "common-explorer": config.common_explorer_enabled,
+        "consultant-analyst": config.consultant_analyst_enabled,
+        "consultant-critic": config.consultant_critic_enabled,
+        "coder-reviewer": config.coder_reviewer_enabled,
+        "consultant-auditor": config.consultant_auditor_enabled,
+        "author-writer": config.author_writer_enabled || config.writer_delegate_agent !== undefined,
+        simple: config.simple_enabled,
         coder: config.coder_enabled,
         "coder-lite": config.coder_lite_enabled,
         consultant: true,
@@ -159,7 +161,7 @@ export function createJanusDispatchTools(
 
       const { agentName, model } = resolveRoleTarget(config, role, { mode, tier })
       const modelChain: Array<string | null> =
-        role === "writer" && config.writer_delegate_agent !== undefined
+        role === "author-writer" && config.writer_delegate_agent !== undefined
           ? [model ?? null]
           : resolveRoleModelChain(config, role, { mode, tier }).map((m) => m ?? null)
 
@@ -239,9 +241,6 @@ export function createJanusDispatchTools(
       if (loaded.spec.session_id !== undefined) {
         return `Error: ${targetSessionID} is a continuation job${target.parentID === context.sessionID ? "" : " attempt"}; use the original dispatch session_id, not a continuation job_id`
       }
-      if (loaded.spec.role === "build") {
-        return 'Error: the "build" role was removed; continue the original session only if its agent still exists, or start a fresh coder dispatch with tier: "deep"'
-      }
       role = loaded.spec.role
       if (target.parentID !== context.sessionID) {
         if (!loaded.children.some((child) => child.id === targetSessionID)) {
@@ -256,13 +255,13 @@ export function createJanusDispatchTools(
       }
 
       const enabled: Record<DispatchRole, boolean> = {
-        explorer: config.explorer_enabled,
-        analyst: config.analyst_enabled,
-        critic: config.critic_enabled,
-        "arch-critic": config.arch_critic_enabled,
-        auditor: config.auditor_enabled,
-        writer: config.writer_enabled || config.writer_delegate_agent !== undefined,
-        "ask-lite": config.ask_lite_enabled,
+        "common-explorer": config.common_explorer_enabled,
+        "consultant-analyst": config.consultant_analyst_enabled,
+        "consultant-critic": config.consultant_critic_enabled,
+        "coder-reviewer": config.coder_reviewer_enabled,
+        "consultant-auditor": config.consultant_auditor_enabled,
+        "author-writer": config.author_writer_enabled || config.writer_delegate_agent !== undefined,
+        simple: config.simple_enabled,
         coder: config.coder_enabled,
         "coder-lite": config.coder_lite_enabled,
         consultant: true,

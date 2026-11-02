@@ -1,27 +1,27 @@
 import { describe, expect, test } from "bun:test"
-import { computeInstallMetadata, resolvePluginEntry, toFileUrl, writerAssetPathForEntry } from "./integration-helpers.ts"
+import { computeInstallMetadata, resolvePluginEntry, toFileUrl, authorWriterAssetPathForEntry } from "./integration-helpers.ts"
 
-describe("writerAssetPathForEntry", () => {
-  test("resolves the writer asset for an installed bundle entry", () => {
+describe("authorWriterAssetPathForEntry", () => {
+  test("resolves the author-writer asset for an installed bundle entry", () => {
     const entry = "/tmp/stage/janus-agent-plugin/dist/index.js"
 
-    const assetPath = writerAssetPathForEntry(entry)
+    const assetPath = authorWriterAssetPathForEntry(entry)
 
-    expect(assetPath).toBe("/tmp/stage/janus-agent-plugin/assets/agents/writer.md")
+    expect(assetPath).toBe("/tmp/stage/janus-agent-plugin/assets/agents/author-writer.md")
   })
 
-  test("resolves the writer asset from a file:// URL", () => {
+  test("resolves the author-writer asset from a file:// URL", () => {
     const entry = "file:///tmp/stage/janus-agent-plugin/dist/index.js"
 
-    const assetPath = writerAssetPathForEntry(entry)
+    const assetPath = authorWriterAssetPathForEntry(entry)
 
-    expect(assetPath).toBe("/tmp/stage/janus-agent-plugin/assets/agents/writer.md")
+    expect(assetPath).toBe("/tmp/stage/janus-agent-plugin/assets/agents/author-writer.md")
   })
 
   test("returns undefined for a source-mode entry", () => {
     const entry = "/repo/packages/opencode-adapter/src/index.ts"
 
-    const assetPath = writerAssetPathForEntry(entry)
+    const assetPath = authorWriterAssetPathForEntry(entry)
 
     expect(assetPath).toBeUndefined()
   })
@@ -29,9 +29,9 @@ describe("writerAssetPathForEntry", () => {
   test("decodes a file:// URL with encoded spaces", () => {
     const entry = "file:///tmp/my%20dir/janus-agent-plugin/dist/index.js"
 
-    const assetPath = writerAssetPathForEntry(entry)
+    const assetPath = authorWriterAssetPathForEntry(entry)
 
-    expect(assetPath).toBe("/tmp/my dir/janus-agent-plugin/assets/agents/writer.md")
+    expect(assetPath).toBe("/tmp/my dir/janus-agent-plugin/assets/agents/author-writer.md")
   })
 })
 

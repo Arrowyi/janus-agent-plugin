@@ -196,7 +196,7 @@ describe("createJob", () => {
     const result = await createJob(sdk, {
       parentID: FAKE_PARENT_ID,
       directory: FAKE_DIRECTORY,
-      role: "analyst",
+      role: "consultant-analyst",
       agentName: "consultation-analyst",
       modelChain: ["opencode-go/qwen3.8-max"],
       prompt: "analyze this",
@@ -208,10 +208,10 @@ describe("createJob", () => {
     const session = sdk.sessions.get(jobID)
     expect(session?.parentID).toBe(FAKE_PARENT_ID)
     expect(session?.directory).toBe(path.normalize(FAKE_DIRECTORY))
-    expect(session?.title).toBe("[consultation-dispatch:v1] analyst")
+    expect(session?.title).toBe("[consultation-dispatch:v1] consultant-analyst")
 
     const spec = getJobSpec(sdk, jobID)
-    expect(spec.role).toBe("analyst")
+    expect(spec.role).toBe("consultant-analyst")
     expect(spec.agent_name).toBe("consultation-analyst")
     expect(spec.model_chain).toEqual(["opencode-go/qwen3.8-max"])
     expect(spec.prompt).toBe("analyze this")
@@ -249,7 +249,7 @@ describe("createJob", () => {
     const normal = assertOk(await createJob(sdk, {
       parentID: FAKE_PARENT_ID,
       directory: FAKE_DIRECTORY,
-      role: "writer",
+      role: "author-writer",
       agentName: "consultation-writer",
       modelChain: ["opencode/claude-sonnet-5-5"],
       prompt: "draft chapter one",
@@ -262,7 +262,7 @@ describe("createJob", () => {
     const continuation = assertOk(await createJob(sdk, {
       parentID: FAKE_PARENT_ID,
       directory: FAKE_DIRECTORY,
-      role: "writer",
+      role: "author-writer",
       agentName: "consultation-writer",
       modelChain: ["opencode/claude-sonnet-5-5"],
       prompt: "apply the review fix",
@@ -287,7 +287,7 @@ describe("appendRecord", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -331,7 +331,7 @@ describe("appendRecord", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -357,7 +357,7 @@ describe("createAttemptSession", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -365,11 +365,11 @@ describe("createAttemptSession", () => {
       }),
     )
 
-    const result = await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "analyst" })
+    const result = await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "consultant-analyst" })
     const { sessionID } = assertOk(result)
     const session = sdk.sessions.get(sessionID)
     expect(session?.parentID).toBe(jobID)
-    expect(session?.title).toBe("[consultation-dispatch:v1] attempt analyst")
+    expect(session?.title).toBe("[consultation-dispatch:v1] attempt consultant-analyst")
   })
 })
 
@@ -378,7 +378,7 @@ describe("loadJob", () => {
     it(`round2-1 validates journal semantics when ${scenario}`, async () => {
       // Given a two-model job with persisted records, not a mocked binding result.
       const sdk = createJournalFakeSdk()
-      const { jobID } = assertOk(await createJob(sdk, { parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "writer", agentName: "writer", modelChain: ["p/primary", "p/backup"], prompt: "fixture", clock: createFakeClock() }))
+      const { jobID } = assertOk(await createJob(sdk, { parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "author-writer", agentName: "author-writer", modelChain: ["p/primary", "p/backup"], prompt: "fixture", clock: createFakeClock() }))
       const reservation = makeAttemptReservation({ job_id: jobID, model: "p/primary" })
       const records: JournalRecord[] = []
       switch (scenario) {
@@ -388,8 +388,8 @@ describe("loadJob", () => {
         case "identical-reservations": records.push(reservation, { ...reservation, reserved_at: 2 }); break
         case "conflicting-receipts":
         case "identical-receipts": {
-          const first = assertOk(await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "writer" }))
-          const second = assertOk(await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "writer" }))
+          const first = assertOk(await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "author-writer" }))
+          const second = assertOk(await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "author-writer" }))
           const receipt = makeAttemptReceipt({ job_id: jobID, session_id: first.sessionID })
           records.push(reservation, receipt, { ...receipt, received_at: 2, session_id: scenario === "conflicting-receipts" ? second.sessionID : first.sessionID })
           break
@@ -404,11 +404,11 @@ describe("loadJob", () => {
       if (!result.ok) expect(result.error.reason).toBe("invalid-job")
     })
   }
-  for (const mismatch of [{ parent_id: "ses_foreign" }, { directory: "/foreign" }, { role: "writer" as const }]) {
+  for (const mismatch of [{ parent_id: "ses_foreign" }, { directory: "/foreign" }, { role: "author-writer" as const }]) {
     it(`fix-1 rejects a single forged spec when ${Object.keys(mismatch)[0]} differs`, async () => {
       // Given an owned root with exactly one schema-valid but inconsistent spec.
       const sdk = createJournalFakeSdk()
-      const root = await sdk.session.create({ body: { parentID: FAKE_PARENT_ID, title: "[consultation-dispatch:v1] analyst" }, query: { directory: FAKE_DIRECTORY } })
+      const root = await sdk.session.create({ body: { parentID: FAKE_PARENT_ID, title: "[consultation-dispatch:v1] consultant-analyst" }, query: { directory: FAKE_DIRECTORY } })
       if (root.data === undefined) throw new Error("missing root")
       await sdk.session.prompt({ path: { id: root.data.id }, body: { noReply: true, messageID: "msg-forged", parts: [{ type: "text", synthetic: true, ignored: true, text: JSON.stringify(makeJobSpec(mismatch)) }] }, query: { directory: FAKE_DIRECTORY } })
       // When recovering through the original owner.
@@ -423,8 +423,8 @@ describe("loadJob", () => {
     it(`fix-1 rejects a foreign job_id when the record is ${kind}`, async () => {
       // Given valid correlated records except for one foreign job binding.
       const sdk = createJournalFakeSdk()
-      const { jobID } = assertOk(await createJob(sdk, { parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "analyst", agentName: "analyst", modelChain: ["p/m"], prompt: "fixture", clock: createFakeClock() }))
-      const { sessionID } = assertOk(await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "analyst" }))
+      const { jobID } = assertOk(await createJob(sdk, { parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "consultant-analyst", agentName: "consultant-analyst", modelChain: ["p/m"], prompt: "fixture", clock: createFakeClock() }))
+      const { sessionID } = assertOk(await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "consultant-analyst" }))
       for (const record of [makeAttemptReservation({ job_id: kind === "reservation" ? "ses_foreign" : jobID }), makeAttemptReceipt({ job_id: kind === "receipt" ? "ses_foreign" : jobID, session_id: sessionID }), makeCancelIntent({ job_id: kind === "cancel" ? "ses_foreign" : jobID })]) {
         await sdk.session.prompt({ path: { id: jobID }, body: { noReply: true, parts: [{ type: "text", synthetic: true, ignored: true, text: JSON.stringify(record) }] }, query: { directory: FAKE_DIRECTORY } })
       }
@@ -440,7 +440,7 @@ describe("loadJob", () => {
     it(`fix-1 rejects returned children when ${Object.keys(mismatch)[0]} differs`, async () => {
       // Given a children response containing a foreign-bound session.
       const sdk = createJournalFakeSdk()
-      const { jobID } = assertOk(await createJob(sdk, { parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "analyst", agentName: "analyst", modelChain: ["p/m"], prompt: "fixture", clock: createFakeClock() }))
+      const { jobID } = assertOk(await createJob(sdk, { parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "consultant-analyst", agentName: "consultant-analyst", modelChain: ["p/m"], prompt: "fixture", clock: createFakeClock() }))
       sdk.session.children = async () => ({ data: [{ id: "ses_child", parentID: jobID, directory: FAKE_DIRECTORY, title: "child", time: { created: 0, updated: 0 }, ...mismatch }] })
       // When recovering.
       const result = await loadJob(sdk, { jobID, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
@@ -456,7 +456,7 @@ describe("loadJob", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -465,7 +465,7 @@ describe("loadJob", () => {
     )
 
     const { sessionID: attemptSessionID } = assertOk(
-      await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "analyst" }),
+      await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "consultant-analyst" }),
     )
     const reservationMessageID = "msg-test-reservation-1"
     const reservation = makeAttemptReservation({
@@ -505,7 +505,7 @@ describe("loadJob", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -540,7 +540,7 @@ describe("loadJob", () => {
     const original = assertOk(await createJob(sdk, {
       parentID: FAKE_PARENT_ID,
       directory: FAKE_DIRECTORY,
-      role: "writer",
+      role: "author-writer",
       agentName: "consultation-writer",
       modelChain: ["opencode/claude-sonnet-5-5"],
       prompt: "draft chapter one",
@@ -549,7 +549,7 @@ describe("loadJob", () => {
     const continuation = assertOk(await createJob(sdk, {
       parentID: FAKE_PARENT_ID,
       directory: FAKE_DIRECTORY,
-      role: "writer",
+      role: "author-writer",
       agentName: "consultation-writer",
       modelChain: ["opencode/claude-sonnet-5-5"],
       prompt: "apply the review fix",
@@ -583,17 +583,17 @@ describe("loadJob", () => {
     const original = assertOk(await createJob(sdk, {
       parentID: FAKE_PARENT_ID,
       directory: FAKE_DIRECTORY,
-      role: "writer",
+      role: "author-writer",
       agentName: "consultation-writer",
       modelChain: ["opencode/claude-sonnet-5-5"],
       prompt: "draft chapter one",
       clock,
     }))
-    const target = assertOk(await createAttemptSession(sdk, { jobID: original.jobID, directory: FAKE_DIRECTORY, role: "writer" }))
+    const target = assertOk(await createAttemptSession(sdk, { jobID: original.jobID, directory: FAKE_DIRECTORY, role: "author-writer" }))
     const continuation = assertOk(await createJob(sdk, {
       parentID: FAKE_PARENT_ID,
       directory: FAKE_DIRECTORY,
-      role: "writer",
+      role: "author-writer",
       agentName: "consultation-writer",
       modelChain: ["opencode/claude-sonnet-5-5"],
       prompt: "apply the review fix",
@@ -627,7 +627,7 @@ describe("loadJob", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -658,7 +658,7 @@ describe("loadJob", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "sensitive prompt text",
@@ -679,7 +679,7 @@ describe("loadJob", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -702,32 +702,6 @@ describe("loadJob", () => {
     expect(error.reason).toBe("job-unavailable")
   })
 
-  it("binds a legacy verifier-titled job normalized to auditor", async () => {
-    // Given a pre-upgrade root whose persisted role was normalized on read.
-    const sdk = createJournalFakeSdk()
-    const root = await sdk.session.create({
-      body: { parentID: FAKE_PARENT_ID, title: "[consultation-dispatch:v1] verifier" },
-      query: { directory: FAKE_DIRECTORY },
-    })
-    if (root.data === undefined) throw new Error("missing root")
-    await sdk.session.prompt({
-      path: { id: root.data.id },
-      body: {
-        noReply: true,
-        messageID: "msg-legacy-role",
-        parts: [{ type: "text", synthetic: true, ignored: true, text: JSON.stringify(makeJobSpec({ role: "auditor", agent_name: "auditor" })) }],
-      },
-      query: { directory: FAKE_DIRECTORY },
-    })
-
-    // When recovering the legacy job through its original owner.
-    const result = await loadJob(sdk, { jobID: root.data.id, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
-
-    // Then the normalized role still binds to the legacy title.
-    expect(result.ok).toBe(true)
-    if (result.ok) expect(result.value.spec.role).toBe("auditor")
-  })
-
   it("rejects corrupt manifest records with invalid-job", async () => {
     const sdk = createJournalFakeSdk()
     const clock = createFakeClock(1_000_000)
@@ -735,7 +709,7 @@ describe("loadJob", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -765,7 +739,7 @@ describe("loadJob", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -794,7 +768,7 @@ describe("loadJob", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -805,7 +779,7 @@ describe("loadJob", () => {
     const secondSpec: JobSpec = {
       v: 1,
       kind: "job-spec",
-      role: "explorer",
+      role: "common-explorer",
       agent_name: "consultation-explorer",
       model_chain: ["opencode-go/deepseek-v4.1-flash"],
       prompt: "explore",
@@ -826,7 +800,7 @@ describe("loadJob", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -854,7 +828,7 @@ describe("loadJob", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
@@ -884,14 +858,14 @@ describe("directory presence and zero generating requests", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",
         clock,
       }),
     )
-    await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "analyst" })
+    await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "consultant-analyst" })
     await appendRecord(sdk, { jobID, directory: FAKE_DIRECTORY, record: makeAttemptReservation({ job_id: jobID }) })
     await loadJob(sdk, { jobID, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
 
@@ -908,7 +882,7 @@ describe("directory presence and zero generating requests", () => {
       await createJob(sdk, {
         parentID: FAKE_PARENT_ID,
         directory: FAKE_DIRECTORY,
-        role: "analyst",
+        role: "consultant-analyst",
         agentName: "consultation-analyst",
         modelChain: ["opencode-go/qwen3.8-max"],
         prompt: "analyze this",

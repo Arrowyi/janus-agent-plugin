@@ -27,9 +27,9 @@ describe("embedsProviderErrorText", () => {
 
 describe("modelFailureHint", () => {
   it("names the model and the config override field", () => {
-    const hint = modelFailureHint("explorer", "opencode-go/deepseek-v4.1-flash")
+    const hint = modelFailureHint("common-explorer", "opencode-go/deepseek-v4.1-flash")
     expect(hint).toContain("(model: opencode-go/deepseek-v4.1-flash)")
-    expect(hint).toContain('set "explorer_model"')
+    expect(hint).toContain('set "common_explorer_model"')
     expect(hint).toContain("~/.config/janus-agent/config.jsonc")
     expect(hint).toContain("$JANUS_CONFIG")
   })
@@ -37,13 +37,12 @@ describe("modelFailureHint", () => {
   it("maps hyphenated roles to their underscored config fields", () => {
     expect(modelFailureHint("coder-lite", "opencode-go/glm-5.3-flash")).toContain('set "coder_lite_model"')
     expect(modelFailureHint("coder", "opencode-go/glm-5.3")).toContain('set "coder_model"')
-    expect(modelFailureHint("ask-lite", null)).toContain('set "ask_lite_model"')
-    expect(modelFailureHint("build", null)).toContain('set "coder_model"')
+    expect(modelFailureHint("simple", null)).toContain('set "simple_model"')
     expect(modelFailureHint("consultant", null)).toContain('set "consultant_model"')
   })
 
   it("omits the model label when the model is null", () => {
-    expect(modelFailureHint("ask-lite", null)).not.toContain("(model:")
+    expect(modelFailureHint("simple", null)).not.toContain("(model:")
   })
 })
 
@@ -52,15 +51,15 @@ describe("observationToOutcome failure hint", () => {
     const outcome = observationToOutcome(
       { kind: "failed", error: "APIError: 402", retryable: false },
       "ses_job",
-      "explorer",
+      "common-explorer",
       { index: 0, model: "opencode-go/deepseek-v4.1-flash", sessionID: "ses_child" },
       100,
     )
     expect(outcome.kind).toBe("failure")
     if (outcome.kind === "failure") {
-      expect(outcome.reason).toContain("explorer dispatch failed: APIError: 402")
+      expect(outcome.reason).toContain("common-explorer dispatch failed: APIError: 402")
       expect(outcome.reason).toContain("(model: opencode-go/deepseek-v4.1-flash)")
-      expect(outcome.reason).toContain('set "explorer_model"')
+      expect(outcome.reason).toContain('set "common_explorer_model"')
     }
   })
 
@@ -68,27 +67,27 @@ describe("observationToOutcome failure hint", () => {
     const outcome = observationToOutcome(
       { kind: "failed", error: "unrecognized provider error", retryable: false },
       "ses_job",
-      "analyst",
+      "consultant-analyst",
       { index: 0, model: "opencode-go/qwen3.8-max", sessionID: "ses_child" },
       100,
     )
     expect(outcome.kind).toBe("failure")
     if (outcome.kind === "failure") {
-      expect(outcome.reason).toBe("analyst dispatch failed: unrecognized provider error")
+      expect(outcome.reason).toBe("consultant-analyst dispatch failed: unrecognized provider error")
     }
   })
 })
 
 describe("buildChainFailureMessage hint", () => {
   it("carries the hint for provider errors", () => {
-    const message = buildChainFailureMessage("writer", ["opencode/claude-sonnet-5-5", "opencode-go/glm-5.3"], "APIError: 402")
+    const message = buildChainFailureMessage("author-writer", ["opencode/claude-sonnet-5-5", "opencode-go/glm-5.3"], "APIError: 402")
     expect(message).toContain("failed on every model in the chain")
-    expect(message).toContain('set "writer_model"')
+    expect(message).toContain('set "author_writer_model"')
     expect(message).toContain("degrade by answering inline")
   })
 
   it("stays unchanged for non-provider errors", () => {
-    const message = buildChainFailureMessage("writer", ["opencode/claude-sonnet-5-5"], "unrecognized provider error")
+    const message = buildChainFailureMessage("author-writer", ["opencode/claude-sonnet-5-5"], "unrecognized provider error")
     expect(message).not.toContain("Hint:")
   })
 })

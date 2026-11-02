@@ -54,7 +54,7 @@ describe("createJanusConfigHook", () => {
     }
   })
 
-  it("registers design-dir permissions and bindings for the consultant and coder", async () => {
+  it("splits business-state permissions across architect, author, and coder, leaving the consultant without them", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
@@ -73,31 +73,39 @@ describe("createJanusConfigHook", () => {
       const designDir = join(tmpHome, ".local/share/janus-agent/design")
       const authorDir = join(tmpHome, ".local/share/janus-agent/author")
       const projectId = computeProjectId(projectDir)
-      const consultant = config.agent?.["consultant"] as {
-        prompt: string
-        permission: Record<string, unknown>
-      }
-      const coder = config.agent?.["coder"] as {
-        prompt: string
-        permission: Record<string, unknown>
-      }
-      const consultantExternal = consultant.permission.external_directory as Record<string, string>
-      const coderExternal = coder.permission.external_directory as Record<string, string>
+      const consultant = config.agent?.["consultant"] as { prompt: string; permission: Record<string, unknown> }
+      const architect = config.agent?.["architect"] as { prompt: string; permission: Record<string, unknown> }
+      const author = config.agent?.["author"] as { prompt: string; permission: Record<string, unknown> }
+      const coder = config.agent?.["coder"] as { prompt: string; permission: Record<string, unknown> }
 
-      expect(consultantExternal[`${designDir}/**`]).toBe("allow")
-      expect(consultantExternal[`${authorDir}/**`]).toBe("allow")
+      expect(consultant.permission).toEqual({})
+      expect(consultant.prompt).not.toContain("Design state dir")
+      expect(consultant.prompt).not.toContain("Author state dir")
+
+      const architectExternal = architect.permission.external_directory as Record<string, string>
+      expect(architectExternal[`${designDir}/**`]).toBe("allow")
+      expect(architect.prompt).toContain(`Design state dir: \`${designDir}\``)
+      expect(architect.prompt).toContain(`project id: \`${projectId}\``)
+
+      const authorExternal = author.permission.external_directory as Record<string, string>
+      expect(authorExternal[`${authorDir}/**`]).toBe("allow")
+      expect(authorExternal[`${designDir}/**`]).toBe("allow")
+      expect(author.prompt).toContain(`Author state dir: \`${authorDir}\``)
+      expect(author.prompt).toContain(`${authorDir}/${projectId}/<docId>/brief.md`)
+
+      const coderExternal = coder.permission.external_directory as Record<string, string>
       expect(coderExternal[`${designDir}/**`]).toBe("allow")
-      expect(consultant.prompt).toContain(`Design state dir: \`${designDir}\``)
-      expect(consultant.prompt).toContain(`project id: \`${projectId}\``)
       expect(coder.prompt).toContain(`Design record: \`${designDir}/${projectId}\``)
+
       expect(existsSync(designDir)).toBe(true)
+      expect(existsSync(authorDir)).toBe(true)
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
     }
   })
 
 
-  it("registers the full team: explorer, analyst, critic, arch-critic, and auditor subagents with default models", async () => {
+  it("registers the full family with canonical names and default models", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
@@ -111,32 +119,28 @@ describe("createJanusConfigHook", () => {
       // when
       await hook(config)
 
-      // then
-      const consultant = config.agent?.["consultant"] as { model: string }
-      expect(consultant.model).toBe("opencode-go/glm-5.3")
-      const explorer = config.agent?.["explorer"] as { mode: string; model: string }
-      expect(explorer.mode).toBe("subagent")
-      expect(explorer.model).toBe("opencode-go/deepseek-v4.1-flash")
-      const analyst = config.agent?.["analyst"] as { mode: string; model: string }
-      expect(analyst.mode).toBe("subagent")
-      expect(analyst.model).toBe("opencode-go/qwen3.8-max")
-      const critic = config.agent?.["critic"] as { mode: string; model: string }
-      expect(critic.mode).toBe("subagent")
-      expect(critic.model).toBe("opencode/gemini-3.8-flash")
-      expect(config.agent?.["arch-critic"]).toMatchObject({
-        mode: "subagent",
-        model: "opencode/gemini-3.8-flash",
-      })
-      expect(config.agent?.["auditor"]).toMatchObject({
-        mode: "subagent",
-        model: "opencode/gemini-3.8-flash",
-      })
+      // then — the six single-word entries
+      expect(config.agent?.["janus"]).toMatchObject({ mode: "all", model: "opencode-go/glm-5.3-flash" })
+      expect(config.agent?.["simple"]).toMatchObject({ mode: "all", model: "opencode-go/deepseek-v4.1-flash" })
+      expect(config.agent?.["consultant"]).toMatchObject({ mode: "primary", model: "opencode-go/gemini-4-argon" })
+      expect(config.agent?.["architect"]).toMatchObject({ mode: "primary", model: "opencode-go/gemini-4-argon" })
+      expect(config.agent?.["coder"]).toMatchObject({ mode: "all", model: "opencode-go/glm-5.3" })
+      expect(config.agent?.["author"]).toMatchObject({ mode: "primary", model: "opencode-go/gemini-4-argon" })
+
+      // the seven hyphenated team members
+      expect(config.agent?.["common-explorer"]).toMatchObject({ mode: "subagent", model: "opencode-go/deepseek-v4.1-flash" })
+      expect(config.agent?.["consultant-analyst"]).toMatchObject({ mode: "subagent", model: "opencode-go/kimi-k3.1-pro" })
+      expect(config.agent?.["consultant-critic"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
+      expect(config.agent?.["coder-reviewer"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
+      expect(config.agent?.["consultant-auditor"]).toMatchObject({ mode: "subagent", model: "opencode-go/grok-4.7" })
+      expect(config.agent?.["author-writer"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
+      expect(config.agent?.["coder-lite"]).toMatchObject({ mode: "subagent", model: "opencode-go/glm-5.3-flash" })
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
     }
   })
 
-  it("registers the writer subagent by default with scoped-write permission over userdoc", async () => {
+  it("registers the author-writer subagent by default with scoped-write permission over userdoc", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
@@ -152,7 +156,7 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      const writer = config.agent?.["writer"] as {
+      const writer = config.agent?.["author-writer"] as {
         mode: string
         description: string
         steps: number
@@ -164,6 +168,10 @@ describe("createJanusConfigHook", () => {
       expect(writer.description).toContain("sole author of reader-facing prose")
       expect(writer.permission.bash).toBe("deny")
       expect(writer.permission.task).toBe("deny")
+      expect(writer.permission.janus_dispatch).toBe("deny")
+      expect(writer.permission.janus_dispatch_wait).toBe("deny")
+      expect(writer.permission.janus_dispatch_cancel).toBe("deny")
+      expect(writer.permission.janus_dispatch_continue).toBe("deny")
       expect(writer.permission.webfetch).toBe("allow")
       expect(writer.permission.websearch).toBe("allow")
       const edit = writer.permission.edit as Record<string, string>
@@ -181,7 +189,7 @@ describe("createJanusConfigHook", () => {
     }
   })
 
-  it("scopes the writer permission to writer_docs_roots from the plugin config", async () => {
+  it("scopes the author-writer permission to writer_docs_roots from the plugin config", async () => {
     // given
     const tmpHome = makeTempHome()
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-writerroots-"))
@@ -200,7 +208,7 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      const writer = config.agent?.["writer"] as { permission: Record<string, unknown> }
+      const writer = config.agent?.["author-writer"] as { permission: Record<string, unknown> }
       const edit = writer.permission.edit as Record<string, string>
       expect(edit["docs/guides/**"]).toBe("allow")
       expect(edit["userdoc/**"]).toBe("allow")
@@ -217,7 +225,7 @@ describe("createJanusConfigHook", () => {
     }
   })
 
-  it("registers a read-only writer when writer_docs_roots is empty", async () => {
+  it("registers a read-only author-writer when writer_docs_roots is empty", async () => {
     // given
     const tmpHome = makeTempHome()
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-writerempty-"))
@@ -236,7 +244,7 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      const writer = config.agent?.["writer"] as {
+      const writer = config.agent?.["author-writer"] as {
         permission: Record<string, unknown>
         prompt: string
       }
@@ -246,6 +254,10 @@ describe("createJanusConfigHook", () => {
         task: "deny",
         webfetch: "allow",
         websearch: "allow",
+        janus_dispatch: "deny",
+        janus_dispatch_wait: "deny",
+        janus_dispatch_cancel: "deny",
+        janus_dispatch_continue: "deny",
       })
       expect(writer.prompt).toContain("Write mode: `read-only`")
     } finally {
@@ -278,7 +290,7 @@ describe("createJanusConfigHook", () => {
     }
   })
 
-  it("includes the author brief path in the consultant prompt", async () => {
+  it("includes the author brief path in the author prompt", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
@@ -295,12 +307,13 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      const consultant = config.agent?.["consultant"] as { prompt: string }
+      const author = config.agent?.["author"] as { prompt: string }
       const authorDir = join(tmpHome, ".local", "share", "janus-agent", "author")
       const projectId = computeProjectId(projectDirectory)
-      expect(consultant.prompt).toContain(`Author state dir: \`${authorDir}\``)
-      expect(consultant.prompt).toContain(`project id: \`${projectId}\``)
-      expect(consultant.prompt).toContain(`${authorDir}/${projectId}/<docId>/brief.md`)
+      expect(author.prompt).toContain(`Author state dir: \`${authorDir}\``)
+      expect(author.prompt).toContain(`project id: \`${projectId}\``)
+      expect(author.prompt).toContain(`${authorDir}/${projectId}/<docId>/brief.md`)
+      expect((config.agent?.["consultant"] as { prompt: string }).prompt).not.toContain("Author state dir")
     } finally {
       delete process.env.XDG_DATA_HOME
       rmSync(tmpHome, { recursive: true, force: true })
@@ -308,12 +321,12 @@ describe("createJanusConfigHook", () => {
   })
 
 
-  it("omits the ask-lite agent when ask_lite_enabled=false", async () => {
+  it("omits simple when simple_enabled=false", async () => {
     // given
     const tmpHome = makeTempHome()
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-liteoff-"))
     const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, '{\n  "ask_lite_enabled": false\n}')
+    writeFileSync(configPath, '{\n  "simple_enabled": false\n}')
     process.env.HOME = tmpHome
     process.env.JANUS_CONFIG = configPath
     delete process.env.XDG_CONFIG_HOME
@@ -326,9 +339,9 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      expect(config.agent?.["ask-lite"]).toBeUndefined()
+      expect(config.agent?.["simple"]).toBeUndefined()
       const consultant = config.agent?.["consultant"] as { prompt: string }
-      expect(consultant.prompt).toContain("ask-lite DISABLED by configuration")
+      expect(consultant.prompt).toContain("simple DISABLED by configuration")
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
       rmSync(tmpConfigDir, { recursive: true, force: true })
@@ -392,7 +405,7 @@ describe("createJanusConfigHook", () => {
     }
   })
 
-  it("omits the bundled writer subagent when a delegate agent is configured", async () => {
+  it("omits the bundled author-writer when a delegate agent is configured", async () => {
     // given
     const tmpHome = makeTempHome()
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-writerdelegate-"))
@@ -410,19 +423,19 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      expect(config.agent?.["writer"]).toBeUndefined()
+      expect(config.agent?.["author-writer"]).toBeUndefined()
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
       rmSync(tmpConfigDir, { recursive: true, force: true })
     }
   })
 
-  it("omits the writer subagent when writer_enabled=false", async () => {
+  it("omits the author-writer when author_writer_enabled=false", async () => {
     // given
     const tmpHome = makeTempHome()
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-writeroff-"))
     const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, '{\n  "writer_enabled": false}')
+    writeFileSync(configPath, '{\n  "author_writer_enabled": false}')
     process.env.HOME = tmpHome
     process.env.JANUS_CONFIG = configPath
     delete process.env.XDG_CONFIG_HOME
@@ -435,19 +448,19 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      expect(config.agent?.["writer"]).toBeUndefined()
+      expect(config.agent?.["author-writer"]).toBeUndefined()
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
       rmSync(tmpConfigDir, { recursive: true, force: true })
     }
   })
 
-  it("still registers explorer and analyst when critic_enabled=false", async () => {
+  it("still registers common-explorer and consultant-analyst when consultant-critic is disabled", async () => {
     // given
     const tmpHome = makeTempHome()
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-critoff2-"))
     const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, '{\n  "critic_enabled": false\n}')
+    writeFileSync(configPath, '{\n  "consultant_critic_enabled": false\n}')
     process.env.HOME = tmpHome
     process.env.JANUS_CONFIG = configPath
     delete process.env.XDG_CONFIG_HOME
@@ -460,21 +473,21 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      expect(config.agent?.["critic"]).toBeUndefined()
-      expect(config.agent?.["explorer"]).toBeDefined()
-      expect(config.agent?.["analyst"]).toBeDefined()
+      expect(config.agent?.["consultant-critic"]).toBeUndefined()
+      expect(config.agent?.["common-explorer"]).toBeDefined()
+      expect(config.agent?.["consultant-analyst"]).toBeDefined()
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
       rmSync(tmpConfigDir, { recursive: true, force: true })
     }
   })
 
-  it("omits the critic subagent when critic_enabled=false", async () => {
+  it("omits the consultant-critic subagent when consultant_critic_enabled=false", async () => {
     // given
     const tmpHome = makeTempHome()
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-critoff-"))
     const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, '{\n  "critic_enabled": false\n}')
+    writeFileSync(configPath, '{\n  "consultant_critic_enabled": false\n}')
     process.env.HOME = tmpHome
     process.env.JANUS_CONFIG = configPath
     delete process.env.XDG_CONFIG_HOME
@@ -487,7 +500,7 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      expect(config.agent?.["critic"]).toBeUndefined()
+      expect(config.agent?.["consultant-critic"]).toBeUndefined()
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
       rmSync(tmpConfigDir, { recursive: true, force: true })
@@ -660,7 +673,7 @@ describe("createJanusConfigHook", () => {
     const tmpHome = makeTempHome()
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-direct-"))
     const configPath = join(tmpConfigDir, "custom.jsonc")
-    writeFileSync(configPath, '{\n  "agent_model": "test/model"\n}')
+    writeFileSync(configPath, '{\n  "consultant_model": "test/model"\n}')
     process.env.HOME = tmpHome
     process.env.JANUS_CONFIG = configPath
     delete process.env.XDG_CONFIG_HOME
@@ -686,7 +699,7 @@ describe("createJanusConfigHook", () => {
     const xdgHome = mkdtempSync(join(tmpdir(), "plugin-cfg-xdg-int-"))
     const consultationConfigDir = join(xdgHome, "janus-agent")
     mkdirSync(consultationConfigDir, { recursive: true })
-    writeFileSync(join(consultationConfigDir, "config.jsonc"), '{\n  "critic_agent": "xdg-critic"\n}')
+    writeFileSync(join(consultationConfigDir, "config.jsonc"), '{\n  "consultant_critic_agent": "xdg-critic"\n}')
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
     delete process.env.JANUS_CONFIG

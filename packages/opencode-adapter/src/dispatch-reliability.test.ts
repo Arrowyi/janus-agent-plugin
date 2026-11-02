@@ -116,9 +116,9 @@ describe("consultation dispatch reliability", () => {
   }
 
   for (const scenario of [
-    { role: "critic", config: { critic_enabled: false } },
-    { role: "auditor", config: { auditor_enabled: false } },
-    { role: "writer", config: { writer_enabled: false } },
+    { role: "consultant-critic", config: { consultant_critic_enabled: false } },
+    { role: "consultant-auditor", config: { consultant_auditor_enabled: false } },
+    { role: "author-writer", config: { author_writer_enabled: false } },
   ] as const) {
     it(`rejects a disabled ${scenario.role} before creating a child session`, async () => {
       writeFileSync(process.env.JANUS_CONFIG ?? "", JSON.stringify(scenario.config))
@@ -133,13 +133,13 @@ describe("consultation dispatch reliability", () => {
 
   it("uses an explicitly delegated writer even when the bundled writer is disabled", async () => {
     writeFileSync(process.env.JANUS_CONFIG ?? "", JSON.stringify({
-      writer_enabled: false,
+      author_writer_enabled: false,
       writer_delegate_agent: "host-writer",
     }))
     const fake = createRespondingFake("usable manuscript")
     const tool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock: createFakeClock() })
 
-    const result = await tool.execute({ role: "writer", prompt: "draft" }, context)
+    const result = await tool.execute({ role: "author-writer", prompt: "draft" }, context)
 
     expect(result).toBe("usable manuscript")
     const calls = fake.calls.filter((c) => (c as { method: string }).method === "promptAsync")
@@ -154,7 +154,7 @@ describe("consultation dispatch reliability", () => {
     it(`reports ${scenario.name} as unknown specialist output`, async () => {
       const { dispatch, fake } = fakeSession(scenario.parts as SdkTextPart[])
 
-      const result = (await dispatch.execute({ role: "analyst", prompt: "analyze evidence" }, context)) as string
+      const result = (await dispatch.execute({ role: "consultant-analyst", prompt: "analyze evidence" }, context)) as string
 
       const envelope = parseEnvelope(result)
       expect(envelope.status).toBe("unknown")
@@ -166,7 +166,7 @@ describe("consultation dispatch reliability", () => {
   it("preserves usable text from a completed child", async () => {
     const { dispatch } = fakeSession([{ type: "text", text: "finding with source" }])
 
-    const result = await dispatch.execute({ role: "analyst", prompt: "analyze evidence" }, context)
+    const result = await dispatch.execute({ role: "consultant-analyst", prompt: "analyze evidence" }, context)
 
     expect(result).toBe("finding with source")
   })
@@ -177,7 +177,7 @@ describe("consultation dispatch reliability", () => {
     fake.setPromptAsyncResult({ data: undefined })
     const dispatch = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock })
 
-    const promise = dispatch.execute({ role: "analyst", prompt: "analyze evidence" }, context)
+    const promise = dispatch.execute({ role: "consultant-analyst", prompt: "analyze evidence" }, context)
     await advanceClockTo(clock, PRODUCTION_WAIT_BUDGET_MS)
     const result = (await promise) as string
 

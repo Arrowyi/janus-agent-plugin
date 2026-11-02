@@ -171,7 +171,7 @@ describe("consultation mode consistency", () => {
   test("the claim-type table is generated from the single shared fragment", async () => {
     const fragment = (await readAsset("assets/principles/claim-types.md")).trim()
     const skill = await readAsset(skillPath("consultation"))
-    const analyst = await readAsset("assets/agents/analyst.md")
+    const analyst = await readAsset("assets/agents/consultant-analyst.md")
     const header = "| Claim type | Verification method |"
 
     expect(skill).toContain(fragment)
@@ -199,7 +199,7 @@ describe("consultation mode consistency", () => {
     expect(skill.split(fragment).length - 1).toBe(1)
     expect(skill).not.toContain("<!-- SOURCE-CRITERIA -->")
 
-    for (const file of ["assets/agents/explorer.md", "assets/agents/critic.md"]) {
+    for (const file of ["assets/agents/common-explorer.md", "assets/agents/consultant-critic.md"]) {
       const text = await readAsset(file)
       expect(text).toContain("shared Source Criteria")
       // The inline enumeration must live in the fragment, not the role asset.
@@ -218,10 +218,17 @@ describe("consultation mode consistency", () => {
     const consultant = await readAsset("assets/agents/consultant.md")
     const skill = await readAsset(skillPath("consultation"))
 
-    for (const role of ["explorer", "analyst", "critic", "arch-critic", "auditor", "writer", "ask-lite", "coder"]) {
+    for (const role of ["common-explorer", "consultant-analyst", "consultant-critic", "consultant-auditor", "simple"]) {
       expect(consultant).toContain(`\`${role}\``)
       expect(skill).toContain(`\`${role}\``)
     }
+    // The skill still names the other teams' lanes; the consultant prompt hands
+    // design and documentation off instead of claiming them.
+    for (const role of ["architect", "coder", "author", "author-writer", "coder-reviewer"]) {
+      expect(skill).toContain(`\`${role}\``)
+    }
+    expect(consultant).toContain("hand it back")
+    expect(consultant).not.toContain("You are the `writer`")
     expect(consultant).toContain("Step 1 — methodological floor")
     expect(skill).toContain("Route by the failure mode")
     expect(skill).toContain("### Dispatch Order")

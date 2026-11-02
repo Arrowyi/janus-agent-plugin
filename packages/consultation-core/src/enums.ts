@@ -30,8 +30,7 @@ export const SourceStanceSchema = z.enum(["supports", "contradicts", "qualifies"
  *   background) for an end-to-end goal — produces an operational playbook, not
  *   a single decision or a pure understanding report.
  * - doc: produce a structured authored document (tutorial, architecture,
- *   explanation) from a section manifest and verified claims. The old public
- *   name `author` is accepted as an input alias.
+ *   explanation) from a section manifest and verified claims.
  * - design: decide the future structure of a system (architecture, module
  *   boundaries, interfaces) and record the decision in a design record.
  */
@@ -46,25 +45,18 @@ export const ConsultationModeSchema = z.enum([
 ])
 
 /**
- * Public mode input: accepts the two legacy names (`plan`, `author`) and
- * normalizes them to the canonical schema values. Config and dispatch
- * boundaries use this schema; the internal `ConsultationModeSchema` stays
- * canonical so persisted/structured values have one form.
+ * Public mode input: trims and lowercases, then accepts only canonical names.
+ * Config and dispatch boundaries use this schema; the internal
+ * `ConsultationModeSchema` stays canonical so persisted/structured values have
+ * one form.
  */
 export const ConsultationModeInputSchema = z
   .string()
   .transform((value) => value.trim().toLowerCase())
-  .pipe(z.enum(["select", "verify", "roadmap", "research", "guide", "doc", "design", "plan", "author"]))
-  .transform((value): ConsultationMode => {
-    if (value === "plan") return "roadmap"
-    if (value === "author") return "doc"
-    return value
-  })
+  .pipe(ConsultationModeSchema)
 
 export function normalizeConsultationMode(value: string): ConsultationMode | undefined {
   const normalized = value.trim().toLowerCase()
-  if (normalized === "plan") return "roadmap"
-  if (normalized === "author") return "doc"
   return ConsultationModeSchema.safeParse(normalized).success
     ? (normalized as ConsultationMode)
     : undefined

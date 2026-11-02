@@ -1,17 +1,19 @@
 import { type Plugin, type Config } from "@opencode-ai/plugin"
 import { loadPluginConfig } from "./plugin-config.ts"
 import {
-  registerConsultantAgent,
-  registerCritic,
-  registerArchCritic,
-  registerExplorer,
-  registerAnalyst,
+  registerAuthor,
+  registerAuthorWriter,
+  registerArchitect,
   registerCoder,
-  registerAskLite,
   registerCoderLite,
-  registerAuditor,
-  registerWriter,
+  registerCoderReviewer,
+  registerCommonExplorer,
+  registerConsultantAgent,
+  registerConsultantAnalyst,
+  registerConsultantAuditor,
+  registerConsultantCritic,
   registerJanus,
+  registerSimple,
   resolveModelPrompt,
 } from "./agent-registration.ts"
 import { createJanusDispatchTools } from "./dispatch-tool.ts"
@@ -37,14 +39,22 @@ export function createJanusConfigHook(
     const namespace = computeNamespace(project.id, directory)
 
     // The directory supplies the author-brief and design-record project ids.
-    await registerConsultantAgent(config, pluginConfig, namespace, directory, env)
+    await registerConsultantAgent(config, pluginConfig, namespace)
+
+    if (pluginConfig.architect_enabled) {
+      await registerArchitect(config, pluginConfig, namespace, directory, env)
+    }
+
+    if (pluginConfig.author_enabled) {
+      await registerAuthor(config, pluginConfig, namespace, directory, env)
+    }
 
     if (pluginConfig.coder_enabled) {
       await registerCoder(config, pluginConfig, directory, env)
     }
 
-    if (pluginConfig.ask_lite_enabled) {
-      await registerAskLite(config, pluginConfig, namespace)
+    if (pluginConfig.simple_enabled) {
+      await registerSimple(config, pluginConfig, namespace)
     }
 
     if (pluginConfig.coder_lite_enabled) {
@@ -55,28 +65,28 @@ export function createJanusConfigHook(
       await registerJanus(config, pluginConfig)
     }
 
-    if (pluginConfig.explorer_enabled) {
-      await registerExplorer(config, pluginConfig)
+    if (pluginConfig.common_explorer_enabled) {
+      await registerCommonExplorer(config, pluginConfig)
     }
 
-    if (pluginConfig.analyst_enabled) {
-      await registerAnalyst(config, pluginConfig)
+    if (pluginConfig.consultant_analyst_enabled) {
+      await registerConsultantAnalyst(config, pluginConfig)
     }
 
-    if (pluginConfig.critic_enabled) {
-      await registerCritic(config, pluginConfig)
+    if (pluginConfig.consultant_critic_enabled) {
+      await registerConsultantCritic(config, pluginConfig)
     }
 
-    if (pluginConfig.arch_critic_enabled) {
-      await registerArchCritic(config, pluginConfig)
+    if (pluginConfig.coder_reviewer_enabled) {
+      await registerCoderReviewer(config, pluginConfig)
     }
 
-    if (pluginConfig.auditor_enabled) {
-      await registerAuditor(config, pluginConfig)
+    if (pluginConfig.consultant_auditor_enabled) {
+      await registerConsultantAuditor(config, pluginConfig)
     }
 
-    if (pluginConfig.writer_enabled) {
-      await registerWriter(config, pluginConfig, env, directory)
+    if (pluginConfig.author_writer_enabled) {
+      await registerAuthorWriter(config, pluginConfig, env, directory)
     }
 
     if (pluginConfig.memory_enabled) {

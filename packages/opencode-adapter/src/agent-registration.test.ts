@@ -5,27 +5,32 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   registerConsultantAgent,
-  registerCritic,
-  registerArchCritic,
-  registerExplorer,
-  registerAnalyst,
-  registerAuditor,
-  registerWriter,
+  registerConsultantCritic,
+  registerCoderReviewer,
+  registerCommonExplorer,
+  registerConsultantAnalyst,
+  registerConsultantAuditor,
+  registerAuthorWriter,
   registerCoder,
-  registerAskLite,
+  registerSimple,
   registerCoderLite,
   registerJanus,
-  buildRuntimeBindings,
-  buildAskLiteRuntimeBindings,
+  registerArchitect,
+  registerAuthor,
+  buildConsultantRuntimeBindings,
+  buildSimpleRuntimeBindings,
+  buildArchitectRuntimeBindings,
+  buildAuthorRuntimeBindings,
+  buildCoderRuntimeBindings,
   buildJanusRuntimeBindings,
-  buildAskLitePermission,
+  buildSimplePermission,
   buildCoderLitePermission,
-  buildWriterPermission,
-  buildWriterRuntimeBindings,
+  buildAuthorWriterPermission,
+  buildAuthorWriterRuntimeBindings,
   computeProjectId,
   resolveAuthorStateDir,
   resolveDesignStateDir,
-  resolveAskLiteWorkspaceDir as resolveAskLiteWorkspaceDirLocal,
+  resolveSimpleWorkspaceDir as resolveSimpleWorkspaceDirLocal,
   injectRuntimeBindings,
   injectCommonPrinciples,
   loadCommonBase,
@@ -41,39 +46,43 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     install_skill: true,
     install_commands: true,
     memory_enabled: true,
-    consultant_agent: "consultant",
-    auditor_agent: "auditor",
-    auditor_enabled: true,
-    arch_critic_agent: "arch-critic",
-    arch_critic_enabled: true,
-    explorer_enabled: true,
-    analyst_enabled: true,
-    critic_agent: "critic",
-    critic_enabled: true,
-    explorer_agent: "explorer",
-    analyst_agent: "analyst",
-    writer_agent: "writer",
-    writer_enabled: true,
-    writer_docs_roots: ["userdoc"],
-    coder_agent: "coder",
-    coder_enabled: true,
-    ask_lite_agent: "ask-lite",
-    ask_lite_enabled: true,
-    coder_lite_agent: "coder-lite",
-    coder_lite_enabled: true,
     janus_agent: "janus",
     janus_enabled: true,
+    simple_agent: "simple",
+    simple_enabled: true,
+    consultant_agent: "consultant",
+    architect_agent: "architect",
+    architect_enabled: true,
+    coder_agent: "coder",
+    coder_enabled: true,
+    author_agent: "author",
+    author_enabled: true,
+    common_explorer_agent: "common-explorer",
+    common_explorer_enabled: true,
+    consultant_analyst_agent: "consultant-analyst",
+    consultant_analyst_enabled: true,
+    consultant_critic_agent: "consultant-critic",
+    consultant_critic_enabled: true,
+    consultant_auditor_agent: "consultant-auditor",
+    consultant_auditor_enabled: true,
+    coder_reviewer_agent: "coder-reviewer",
+    coder_reviewer_enabled: true,
+    author_writer_agent: "author-writer",
+    author_writer_enabled: true,
+    writer_docs_roots: ["userdoc"],
+    coder_lite_agent: "coder-lite",
+    coder_lite_enabled: true,
     ...overrides,
   }
 }
 
-describe("buildRuntimeBindings", () => {
+describe("buildConsultantRuntimeBindings", () => {
   it("includes the memory MCP server line with tool names when memory is enabled", () => {
     // given
     const config = makeConfig({ memory_enabled: true })
 
     // when
-    const block = buildRuntimeBindings(config, "oc-abcdef123456")
+    const block = buildConsultantRuntimeBindings(config, "oc-abcdef123456")
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
@@ -90,7 +99,7 @@ describe("buildRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildRuntimeBindings(config, "oc-abcdef123456")
+    const block = buildConsultantRuntimeBindings(config, "oc-abcdef123456")
 
     // then
     expect(block).toContain("oc-abcdef123456")
@@ -102,51 +111,53 @@ describe("buildRuntimeBindings", () => {
     const config = makeConfig({ memory_enabled: false })
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("Memory: DISABLED by configuration (saving and recall are unavailable)")
     expect(block).not.toContain("janus-memory")
   })
 
-  it("includes the critic subagent name and model line when critic is enabled", () => {
+  it("includes the consultant-critic name and model line when it is enabled", () => {
     // given
-    const config = makeConfig({ critic_model: "openrouter/qwen-max" })
+    const config = makeConfig({ consultant_critic_model: "openrouter/qwen-max" })
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
-    expect(block).toContain("critic `critic`")
+    expect(block).toContain("consultant-critic `consultant-critic`")
     expect(block).toContain("openrouter/qwen-max")
+    expect(block).not.toContain("arch-critic")
   })
 
-  it("reports the default critic model when critic_model is unset", () => {
+  it("reports the default consultant-critic model when its model is unset", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
-    expect(block).toContain("opencode/gemini-3.8-flash")
+    expect(block).toContain("opencode/claude-sonnet-5-5")
   })
 
-  it("reports the consultant and team role models", () => {
+  it("reports the consultant and consultation-team role models", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("Consultant model")
-    expect(block).toContain("opencode-go/glm-5.3")
+    expect(block).toContain("opencode-go/gemini-4-argon")
     expect(block).toContain("Team subagents")
-    expect(block).toContain("explorer")
+    expect(block).toContain("common-explorer")
     expect(block).toContain("opencode-go/deepseek-v4.1-flash")
-    expect(block).toContain("analyst")
-    expect(block).toContain("opencode-go/qwen3.8-max")
+    expect(block).toContain("consultant-analyst")
+    expect(block).toContain("opencode-go/kimi-k3.1-pro")
+    expect(block).toContain("consultant-auditor")
   })
 
   it("reports the default team caps, tier matrix, and cost guard", () => {
@@ -154,15 +165,15 @@ describe("buildRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("round_cap=3")
     expect(block).toContain("explorer<=5")
     expect(block).toContain("critic_searches<=5")
-    expect(block).toContain("fast(e5,a0,c0,ac0,au0,w0)")
-    expect(block).toContain("standard(e5,a1,c1,ac1,au1,w1)")
-    expect(block).toContain("deep(e5,a3,c2,ac2,au2,w2)")
+    expect(block).toContain("fast(e5,a0,c0,au0)")
+    expect(block).toContain("standard(e5,a1,c1,au1)")
+    expect(block).toContain("deep(e5,a3,c2,au2)")
     expect(block).toContain("~$10 per provider")
   })
 
@@ -174,7 +185,7 @@ describe("buildRuntimeBindings", () => {
     })
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("round_cap=2")
@@ -187,88 +198,155 @@ describe("buildRuntimeBindings", () => {
     // given
     const config = makeConfig({
       tier_role_caps: {
-        fast: { explorer: 5, analyst: 0, critic: 0, arch_critic: 0, auditor: 0, writer: 0 },
-        standard: { explorer: 5, analyst: 2, critic: 1, arch_critic: 1, auditor: 1, writer: 0 },
-        deep: { explorer: 5, analyst: 4, critic: 3, arch_critic: 2, auditor: 2, writer: 0 },
+        fast: { common_explorer: 5, consultant_analyst: 0, consultant_critic: 0, coder_reviewer: 0, consultant_auditor: 0, author_writer: 0 },
+        standard: { common_explorer: 5, consultant_analyst: 2, consultant_critic: 1, coder_reviewer: 1, consultant_auditor: 1, author_writer: 0 },
+        deep: { common_explorer: 5, consultant_analyst: 4, consultant_critic: 3, coder_reviewer: 2, consultant_auditor: 2, author_writer: 0 },
       },
     })
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
-    expect(block).toContain("standard(e5,a2,c1,ac1,au1,w0)")
-    expect(block).toContain("deep(e5,a4,c3,ac2,au2,w0)")
+    expect(block).toContain("standard(e5,a2,c1,au1)")
+    expect(block).toContain("deep(e5,a4,c3,au2)")
   })
 
-  it("says critic DISABLED when critic_enabled is false", () => {
+  it("says consultant-critic DISABLED when it is disabled", () => {
     // given
-    const config = makeConfig({ critic_enabled: false })
+    const config = makeConfig({ consultant_critic_enabled: false })
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
-    expect(block).toContain("critic DISABLED by configuration")
+    expect(block).toContain("consultant-critic DISABLED by configuration")
   })
 
-  it("reports writer enabled state in team subagents", () => {
-    // given
-    const config = makeConfig({ writer_model: "test/writer-model" })
-
-    // when
-    const block = buildRuntimeBindings(config, "oc-ns")
-
-    // then
-    expect(block).toContain("writer `writer` (test/writer-model)")
-  })
-
-  it("says writer DISABLED when writer_enabled is false", () => {
-    // given
-    const config = makeConfig({ writer_enabled: false })
-
-    // when
-    const block = buildRuntimeBindings(config, "oc-ns")
-
-    // then
-    expect(block).toContain("writer DISABLED by configuration")
-  })
-
-  it("reports the lite leaf and coder delegate lines with their DISABLED states", () => {
+  it("reports the simple leaf and its DISABLED state", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
-    expect(block).toContain("Economical leaf: `ask-lite` (`opencode-go/deepseek-v4.1-flash`)")
-    expect(block).toContain("Coding delegate: `coder` (`opencode-go/glm-5.3`)")
+    expect(block).toContain("Economical leaf: `simple` (`opencode-go/deepseek-v4.1-flash`)")
 
     // given
-    const disabled = makeConfig({ ask_lite_enabled: false, coder_enabled: false })
+    const disabled = makeConfig({ simple_enabled: false })
 
     // when
-    const disabledBlock = buildRuntimeBindings(disabled, "oc-ns")
+    const disabledBlock = buildConsultantRuntimeBindings(disabled, "oc-ns")
 
     // then
-    expect(disabledBlock).toContain("Economical leaf: ask-lite DISABLED by configuration")
-    expect(disabledBlock).toContain("Coding delegate: coder DISABLED by configuration")
+    expect(disabledBlock).toContain("Economical leaf: simple DISABLED by configuration")
   })
 
-  it("reports the scoped writer write mode with the effective roots", () => {
+  it("does not expose coding, writer, or business-state directories", () => {
     // given
-    const config = makeConfig({ writer_docs_roots: ["./docs/guides/", "userdoc"] })
+    const config = makeConfig()
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
+
+    // then — those bindings belong to architect, coder, and author
+    expect(block).not.toContain("Coding delegate")
+    expect(block).not.toContain("Writer write mode")
+    expect(block).not.toContain("Author state dir")
+    expect(block).not.toContain("Design state dir")
+    expect(block).not.toContain("coder-reviewer")
+    expect(block).not.toContain("author-writer")
+  })
+})
+
+describe("buildArchitectRuntimeBindings", () => {
+  it("reports the design team, design directory, caps, and simple leaf", () => {
+    // given
+    const config = makeConfig()
+
+    // when
+    const block = buildArchitectRuntimeBindings(config, "oc-ns", {
+      designStateDir: "/xdg/data/janus-agent/design",
+      projectId: "my-project-a1b2c3d4",
+    })
 
     // then
+    expect(block).toContain("janus-memory")
+    expect(block).toContain("Architect model")
+    expect(block).toContain("common-explorer")
+    expect(block).toContain("coder-reviewer")
+    expect(block).toContain("consultant-analyst")
+    expect(block).toContain("consultant-auditor")
+    expect(block).toContain("Economical leaf: `simple`")
+    expect(block).toContain("Design state dir: `/xdg/data/janus-agent/design`")
+    expect(block).toContain("my-project-a1b2c3d4/<designId>/design.md")
+    expect(block).toContain("you are the only role that writes the design record")
+    expect(block).toContain("Memory namespace: `oc-ns`")
+    expect(block).not.toContain("Writer write mode")
+    expect(block).not.toContain("author-writer")
+  })
+
+  it("says coder-reviewer DISABLED when it is disabled", () => {
+    // given
+    const config = makeConfig({ coder_reviewer_enabled: false })
+
+    // when
+    const block = buildArchitectRuntimeBindings(config, "oc-ns", {
+      designStateDir: "/xdg/data/janus-agent/design",
+      projectId: "p-12345678",
+    })
+
+    // then
+    expect(block).toContain("coder-reviewer DISABLED by configuration")
+  })
+
+  it("reports the memory-disabled variant and namespace", () => {
+    const block = buildArchitectRuntimeBindings(makeConfig({ memory_enabled: false }), "oc-ns")
+    expect(block).toContain("Memory: DISABLED by configuration (saving and recall are unavailable)")
+    expect(block).toContain("Memory namespace: `oc-ns`")
+  })
+
+  it("warns when no project directory is known", () => {
+    // given
+    const config = makeConfig()
+
+    // when
+    const block = buildArchitectRuntimeBindings(config, "oc-ns")
+
+    // then
+    expect(block).toContain("no project directory supplied")
+  })
+})
+
+describe("buildAuthorRuntimeBindings", () => {
+  it("reports the documentation team, writer mode, brief and design dirs, and the writer-session rule", () => {
+    // given
+    const config = makeConfig()
+
+    // when
+    const block = buildAuthorRuntimeBindings(
+      config,
+      "oc-ns",
+      { authorStateDir: "/xdg/data/janus-agent/author", projectId: "my-project-a1b2c3d4" },
+      { designStateDir: "/xdg/data/janus-agent/design", projectId: "my-project-a1b2c3d4" },
+    )
+
+    // then
+    expect(block).toContain("Author model")
+    expect(block).toContain("Prose executor: author-writer")
+    expect(block).toContain("common-explorer")
+    expect(block).toContain("coder")
+    expect(block).toContain("consultant-critic")
+    expect(block).toContain("coder-reviewer")
     expect(block).toContain("Writer write mode: `scoped`")
-    expect(block).toContain("`docs/guides`")
-    expect(block).toContain("`userdoc`")
-    expect(block).toContain("sole author of reader-facing prose")
-    expect(block).toContain("you do not edit those roots in scoped mode")
+    expect(block).toContain("Author state dir: `/xdg/data/janus-agent/author`")
+    expect(block).toContain("/xdg/data/janus-agent/author/my-project-a1b2c3d4/<docId>/brief.md")
+    expect(block).toContain("author-writer reads it and never writes it")
+    expect(block).toContain("Design state dir: `/xdg/data/janus-agent/design`")
+    expect(block).toContain("read-only reference for architecture documents")
+    expect(block).toContain("writer_session_id")
+    expect(block).toContain("Memory namespace: `oc-ns`")
   })
 
   it("reports the read-only writer fallback when writer_docs_roots is empty", () => {
@@ -276,40 +354,70 @@ describe("buildRuntimeBindings", () => {
     const config = makeConfig({ writer_docs_roots: [] })
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildAuthorRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("Writer write mode: `read-only`")
     expect(block).toContain("you apply and publish the returned text as the disclosed publisher")
   })
 
-  it("includes the author state dir, project id, and brief path when an author binding is supplied", () => {
+  it("reports a configured writer delegate", () => {
+    // given
+    const config = makeConfig({ writer_delegate_agent: "host-writer" })
+
+    // when
+    const block = buildAuthorRuntimeBindings(config, "oc-ns")
+
+    // then
+    expect(block).toContain("delegated to `host-writer`")
+  })
+
+  it("omits the author and design directory lines when no binding is supplied", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns", {
-      authorStateDir: "/xdg/data/janus-agent/author",
+    const block = buildAuthorRuntimeBindings(config, "oc-ns")
+
+    // then
+    expect(block).not.toContain("Author state dir")
+    expect(block).not.toContain("Design state dir")
+    expect(block.endsWith("Memory namespace: `oc-ns`")).toBe(true)
+  })
+})
+
+describe("buildCoderRuntimeBindings", () => {
+  it("reports the research floor, reviewer, escalation path, and design record", () => {
+    // given
+    const config = makeConfig()
+
+    // when
+    const block = buildCoderRuntimeBindings(config, {
+      designStateDir: "/xdg/data/janus-agent/design",
       projectId: "my-project-a1b2c3d4",
     })
 
     // then
-    expect(block).toContain("Author state dir: `/xdg/data/janus-agent/author`")
-    expect(block).toContain("project id: `my-project-a1b2c3d4`")
-    expect(block).toContain("/xdg/data/janus-agent/author/my-project-a1b2c3d4/<docId>/brief.md")
-    expect(block).toContain("the writer reads it and never writes it")
+    expect(block).toContain("Coder model")
+    expect(block).toContain("Mechanical lane: `coder-lite`")
+    expect(block).toContain("Research floor: `common-explorer`")
+    expect(block).toContain("Independent reviewer: `coder-reviewer`")
+    expect(block).toContain('protocol: "code_plan_review"')
+    expect(block).toContain("hand it to the `architect`")
+    expect(block).toContain("Design record: `/xdg/data/janus-agent/design/my-project-a1b2c3d4`")
+    expect(block).not.toContain("Memory namespace")
   })
 
-  it("omits the author lines when no author binding is supplied", () => {
+  it("reports disabled research and review lanes", () => {
     // given
-    const config = makeConfig()
+    const config = makeConfig({ common_explorer_enabled: false, coder_reviewer_enabled: false })
 
     // when
-    const block = buildRuntimeBindings(config, "oc-ns")
+    const block = buildCoderRuntimeBindings(config)
 
     // then
-    expect(block).not.toContain("Author state dir")
-    expect(block.endsWith("Memory namespace: `oc-ns`")).toBe(true)
+    expect(block).toContain("Research floor: common-explorer DISABLED by configuration")
+    expect(block).toContain("Independent reviewer: coder-reviewer DISABLED by configuration")
   })
 })
 
@@ -554,7 +662,7 @@ describe("registerConsultantAgent", () => {
     expect(consultant.model).toBe("anthropic/claude-sonnet")
   })
 
-  it("defaults the model to glm-5.3 when consultant_model is not configured", async () => {
+  it("defaults the model to gemini-4-argon when consultant_model is not configured", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
@@ -564,7 +672,7 @@ describe("registerConsultantAgent", () => {
 
     // then
     const consultant = config.agent?.["consultant"] as { model?: string }
-    expect(consultant.model).toBe("opencode-go/glm-5.3")
+    expect(consultant.model).toBe("opencode-go/gemini-4-argon")
   })
 
   it("does NOT clobber a pre-existing user-defined consultant agent entry", async () => {
@@ -597,34 +705,7 @@ describe("registerConsultantAgent", () => {
     expect(consultant.prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
   })
 
-  it("includes the author state dir, project id, and brief path when the project directory is supplied", async () => {
-    // given
-    const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig()
-    const env = { HOME: "/home/test-user" } as NodeJS.ProcessEnv
-    const authorDir = "/home/test-user/.local/share/janus-agent/author"
-    const projectId = computeProjectId("/tmp/my-project")
-
-    // when
-    await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", env)
-
-    // then
-    const consultant = config.agent?.["consultant"] as { prompt: string }
-    expect(consultant.prompt).toContain(`Author state dir: \`${authorDir}\``)
-    expect(consultant.prompt).toContain(`project id: \`${projectId}\``)
-    expect(consultant.prompt).toContain(`${authorDir}/${projectId}/<docId>/brief.md`)
-    expect(consultant.prompt).toContain("Design state dir: `/home/test-user/.local/share/janus-agent/design`")
-    expect(consultant.prompt).toContain(`project id: \`${projectId}\``)
-
-    const permission = (consultant as unknown as { permission: Record<string, unknown> }).permission
-    const external = permission.external_directory as Record<string, string>
-    expect(external[`${authorDir}/**`]).toBe("allow")
-    expect(external["/home/test-user/.local/share/janus-agent/design/**"]).toBe("allow")
-    expect(consultant.prompt).toContain("the writer reads it and never writes it")
-    expect(consultant.prompt).toContain("Writer write mode: `scoped`")
-  })
-
-  it("omits the author lines when no project directory is supplied", async () => {
+  it("holds no business-state directory permission and no author/design/ writer bindings", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
@@ -633,189 +714,276 @@ describe("registerConsultantAgent", () => {
     await registerConsultantAgent(config, pluginConfig, "oc-ns")
 
     // then
-    const consultant = config.agent?.["consultant"] as { prompt: string }
+    const consultant = config.agent?.["consultant"] as {
+      prompt: string
+      permission: Record<string, unknown>
+    }
+    expect(consultant.permission).toEqual({})
     expect(consultant.prompt).not.toContain("Author state dir")
-    expect(consultant.prompt).toContain("Writer write mode: `scoped`")
+    expect(consultant.prompt).not.toContain("Design state dir")
+    expect(consultant.prompt).not.toContain("Writer write mode")
+    expect(consultant.prompt).not.toContain("Coding delegate")
+    expect(consultant.prompt).toContain("Economical leaf: `simple`")
   })
 })
 
-describe("registerCritic", () => {
-  it("registers the critic as a subagent with the critic.md body and a read-only permission", async () => {
+describe("registerArchitect", () => {
+  it("registers config.agent.architect as a primary entry with the design dir and the architect asset", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+    const env = { HOME: "/home/test-user" } as NodeJS.ProcessEnv
+
+    // when
+    await registerArchitect(config, pluginConfig, "oc-ns", "/tmp/my-project", env)
+
+    // then
+    const architect = config.agent?.["architect"] as {
+      mode: string
+      prompt: string
+      model: string
+      permission: Record<string, unknown>
+    }
+    expect(architect.mode).toBe("primary")
+    expect(architect.prompt).toContain("# Architect")
+    expect(architect.model).toBe("opencode-go/gemini-4-argon")
+    expect(architect.prompt).toContain("Design state dir")
+    expect(architect.prompt).toContain("design_premortem")
+    expect(architect.permission).toEqual({
+      external_directory: { "/home/test-user/.local/share/janus-agent/design/**": "allow" },
+    })
+  })
+
+  it("inherits an explicitly configured consultant model", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig({ consultant_model: "custom/consultant" })
+
+    // when
+    await registerArchitect(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+
+    // then
+    expect((config.agent?.["architect"] as { model: string }).model).toBe("custom/consultant")
+  })
+
+  it("does NOT clobber a pre-existing user-defined architect entry", async () => {
+    const userPrompt = "user architect"
+    const config: { agent?: Record<string, unknown> } = { agent: { architect: { mode: "primary", prompt: userPrompt } } }
+    await registerArchitect(config, makeConfig(), "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+    expect((config.agent?.["architect"] as { prompt: string }).prompt).toBe(userPrompt)
+  })
+})
+
+describe("registerAuthor", () => {
+  it("registers config.agent.author as a primary entry with brief and design dirs", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+    const env = { HOME: "/home/test-user" } as NodeJS.ProcessEnv
+
+    // when
+    await registerAuthor(config, pluginConfig, "oc-ns", "/tmp/my-project", env)
+
+    // then
+    const author = config.agent?.["author"] as {
+      mode: string
+      prompt: string
+      model: string
+      permission: Record<string, unknown>
+    }
+    expect(author.mode).toBe("primary")
+    expect(author.prompt).toContain("# Author")
+    expect(author.model).toBe("opencode-go/gemini-4-argon")
+    expect(author.prompt).toContain("Author state dir")
+    expect(author.prompt).toContain("writer_session_id")
+    expect(author.permission).toEqual({
+      external_directory: {
+        "/home/test-user/.local/share/janus-agent/author/**": "allow",
+        "/home/test-user/.local/share/janus-agent/design/**": "allow",
+      },
+    })
+  })
+
+  it("inherits an explicitly configured consultant model", async () => {
+    const config: { agent?: Record<string, unknown> } = {}
+    await registerAuthor(config, makeConfig({ consultant_model: "custom/consultant" }), "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+    expect((config.agent?.["author"] as { model: string }).model).toBe("custom/consultant")
+  })
+
+  it("does NOT clobber a pre-existing user-defined author entry", async () => {
+    const userPrompt = "user author"
+    const config: { agent?: Record<string, unknown> } = { agent: { author: { mode: "primary", prompt: userPrompt } } }
+    await registerAuthor(config, makeConfig(), "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+    expect((config.agent?.["author"] as { prompt: string }).prompt).toBe(userPrompt)
+  })
+})
+
+describe("registerConsultantCritic", () => {
+  it("registers the consultant-critic as a subagent with the role body and a leaf permission", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
 
     // when
-    await registerCritic(config, pluginConfig)
+    await registerConsultantCritic(config, pluginConfig)
 
     // then
-    const critic = config.agent?.["critic"] as {
+    const critic = config.agent?.["consultant-critic"] as {
       mode: string
       prompt: string
       description: string
       permission: Record<string, unknown>
     }
     expect(critic.mode).toBe("subagent")
-    expect(critic.prompt).toContain("# Critic")
+    expect(critic.prompt).toContain("# Consultant-Critic")
     expect(critic.prompt).toContain("counterEvidence")
-    expect(critic.description).toContain("counter-evidence")
-    expect(critic.description).toContain("plan-robustness")
-    expect(critic.permission).toMatchObject({ edit: "deny", bash: "deny", task: "deny" })
+    expect(critic.description).toContain("counter_evidence")
+    expect(critic.description).toContain("plan_robustness")
+    expect(critic.permission).toMatchObject({
+      edit: "deny", bash: "deny", task: "deny",
+      janus_dispatch: "deny", janus_dispatch_wait: "deny",
+      janus_dispatch_cancel: "deny", janus_dispatch_continue: "deny",
+    })
   })
 
-  it("sets the critic model when critic_model is configured", async () => {
+  it("sets the model when consultant_critic_model is configured", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig({ critic_model: "anthropic/claude-sonnet-4" })
+    const pluginConfig = makeConfig({ consultant_critic_model: "anthropic/claude-sonnet-4" })
 
     // when
-    await registerCritic(config, pluginConfig)
+    await registerConsultantCritic(config, pluginConfig)
 
     // then
-    const critic = config.agent?.["critic"] as { model?: string }
-    expect(critic.model).toBe("anthropic/claude-sonnet-4")
+    expect((config.agent?.["consultant-critic"] as { model?: string }).model).toBe("anthropic/claude-sonnet-4")
   })
 
-  it("defaults the critic model to gemini-3.8-flash when critic_model is unset", async () => {
-    // given
+  it("defaults the model to claude-sonnet-5-5", async () => {
     const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig()
-
-    // when
-    await registerCritic(config, pluginConfig)
-
-    // then
-    const critic = config.agent?.["critic"] as { model?: string }
-    expect(critic.model).toBe("opencode/gemini-3.8-flash")
+    await registerConsultantCritic(config, makeConfig())
+    expect((config.agent?.["consultant-critic"] as { model?: string }).model).toBe("opencode/claude-sonnet-5-5")
   })
 
-  it("uses the configured critic_agent name", async () => {
-    // given
+  it("uses the configured consultant_critic_agent name", async () => {
     const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig({ critic_agent: "my-devil" })
-
-    // when
-    await registerCritic(config, pluginConfig)
-
-    // then
+    await registerConsultantCritic(config, makeConfig({ consultant_critic_agent: "my-devil" }))
     expect(config.agent?.["my-devil"]).toBeDefined()
-    expect(config.agent?.["critic"]).toBeUndefined()
+    expect(config.agent?.["consultant-critic"]).toBeUndefined()
   })
 
-  it("does NOT clobber a pre-existing user-defined critic agent entry", async () => {
-    // given
+  it("does NOT clobber a pre-existing user-defined entry", async () => {
     const userPrompt = "user-defined critic prompt"
     const config: { agent?: Record<string, unknown> } = {
-      agent: { "critic": { mode: "subagent", prompt: userPrompt } },
+      agent: { "consultant-critic": { mode: "subagent", prompt: userPrompt } },
     }
-    const pluginConfig = makeConfig()
-
-    // when
-    await registerCritic(config, pluginConfig)
-
-    // then
-    const critic = config.agent?.["critic"] as { prompt: string }
-    expect(critic.prompt).toBe(userPrompt)
+    await registerConsultantCritic(config, makeConfig())
+    expect((config.agent?.["consultant-critic"] as { prompt: string }).prompt).toBe(userPrompt)
   })
 })
 
-describe("registerExplorer", () => {
-  it("registers the explorer subagent with the explorer.md body and default model", async () => {
+describe("registerCommonExplorer", () => {
+  it("registers the common-explorer subagent with the role body and default model", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
 
     // when
-    await registerExplorer(config, pluginConfig)
+    await registerCommonExplorer(config, pluginConfig)
 
     // then
-    const explorer = config.agent?.["explorer"] as {
+    const explorer = config.agent?.["common-explorer"] as {
       mode: string
       prompt: string
       model: string
       permission: Record<string, unknown>
     }
     expect(explorer.mode).toBe("subagent")
-    expect(explorer.prompt).toContain("# Explorer")
+    expect(explorer.prompt).toContain("# Common-Explorer")
     expect(explorer.model).toBe("opencode-go/deepseek-v4.1-flash")
-    expect(explorer.permission).toMatchObject({ edit: "deny", bash: "deny", task: "deny" })
+    expect(explorer.permission).toMatchObject({ edit: "deny", bash: "deny", task: "deny", janus_dispatch: "deny" })
   })
 
-  it("overrides the explorer model from explorer_model", async () => {
-    // given
+  it("overrides the model from common_explorer_model", async () => {
     const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig({ explorer_model: "test/explorer-model" })
-
-    // when
-    await registerExplorer(config, pluginConfig)
-
-    // then
-    const explorer = config.agent?.["explorer"] as { model: string }
-    expect(explorer.model).toBe("test/explorer-model")
+    await registerCommonExplorer(config, makeConfig({ common_explorer_model: "test/explorer-model" }))
+    expect((config.agent?.["common-explorer"] as { model: string }).model).toBe("test/explorer-model")
   })
 })
 
-describe("registerAnalyst", () => {
-  it("registers the analyst subagent with the analyst.md body and default model", async () => {
+describe("registerConsultantAnalyst", () => {
+  it("registers the consultant-analyst subagent with the role body and default model", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
 
     // when
-    await registerAnalyst(config, pluginConfig)
+    await registerConsultantAnalyst(config, pluginConfig)
 
     // then
-    const analyst = config.agent?.["analyst"] as {
+    const analyst = config.agent?.["consultant-analyst"] as {
       mode: string
       prompt: string
       model: string
       permission: Record<string, unknown>
     }
     expect(analyst.mode).toBe("subagent")
-    expect(analyst.prompt).toContain("# Analyst")
-    expect(analyst.model).toBe("opencode-go/qwen3.8-max")
-    expect(analyst.permission).toMatchObject({ edit: "deny", bash: "deny", task: "deny" })
+    expect(analyst.prompt).toContain("# Consultant-Analyst")
+    expect(analyst.model).toBe("opencode-go/kimi-k3.1-pro")
+    expect(analyst.permission).toMatchObject({ edit: "deny", bash: "deny", task: "deny", janus_dispatch: "deny" })
   })
 
-  it("overrides the analyst model from analyst_model", async () => {
-    // given
+  it("overrides the model from consultant_analyst_model", async () => {
     const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig({ analyst_model: "test/analyst-model" })
-
-    // when
-    await registerAnalyst(config, pluginConfig)
-
-    // then
-    const analyst = config.agent?.["analyst"] as { model: string }
-    expect(analyst.model).toBe("test/analyst-model")
+    await registerConsultantAnalyst(config, makeConfig({ consultant_analyst_model: "test/analyst-model" }))
+    expect((config.agent?.["consultant-analyst"] as { model: string }).model).toBe("test/analyst-model")
   })
 })
 
-describe("registerAuditor", () => {
-  it("uses the configured default critic-family model for the auditor", async () => {
+describe("registerCoderReviewer", () => {
+  it("registers the coder-reviewer subagent with a leaf permission", async () => {
     const config: { agent?: Record<string, unknown> } = {}
-
-    await registerAuditor(config, makeConfig())
-
-    expect(config.agent?.["auditor"]).toMatchObject({
+    await registerCoderReviewer(config, makeConfig())
+    expect(config.agent?.["coder-reviewer"]).toMatchObject({
       mode: "subagent",
-      model: "opencode/gemini-3.8-flash",
-      permission: { edit: "deny", bash: "deny", task: "deny" },
+      model: "opencode/claude-sonnet-5-5",
+      permission: {
+        edit: "deny", bash: "deny", task: "deny",
+        janus_dispatch: "deny", janus_dispatch_wait: "deny",
+        janus_dispatch_cancel: "deny", janus_dispatch_continue: "deny",
+      },
     })
   })
 })
 
-describe("buildWriterPermission", () => {
-  it("denies edit everywhere except the roots, denies bash and task, allows web lookups", () => {
+describe("registerConsultantAuditor", () => {
+  it("uses the configured default fourth-family model for the consultant-auditor", async () => {
+    const config: { agent?: Record<string, unknown> } = {}
+
+    await registerConsultantAuditor(config, makeConfig())
+
+    expect(config.agent?.["consultant-auditor"]).toMatchObject({
+      mode: "subagent",
+      model: "opencode-go/grok-4.7",
+      permission: { edit: "deny", bash: "deny", task: "deny", janus_dispatch: "deny" },
+    })
+  })
+})
+
+describe("buildAuthorWriterPermission", () => {
+  it("denies edit everywhere except the roots, denies bash/task/dispatch, allows web lookups", () => {
     // given
     const authorDir = "/xdg/data/janus-agent/author"
 
     // when
-    const permission = buildWriterPermission(["userdoc", "docs/guides"], authorDir)
+    const permission = buildAuthorWriterPermission(["userdoc", "docs/guides"], authorDir)
 
     // then
     expect(permission.bash).toBe("deny")
     expect(permission.task).toBe("deny")
+    expect(permission.janus_dispatch).toBe("deny")
+    expect(permission.janus_dispatch_wait).toBe("deny")
+    expect(permission.janus_dispatch_cancel).toBe("deny")
+    expect(permission.janus_dispatch_continue).toBe("deny")
     expect(permission.webfetch).toBe("allow")
     expect(permission.websearch).toBe("allow")
     const edit = permission.edit as Record<string, string>
@@ -830,7 +998,7 @@ describe("buildWriterPermission", () => {
 
   it("falls back to a flat edit deny when the roots array is empty", () => {
     // given // when
-    const permission = buildWriterPermission([], "/xdg/data/janus-agent/author")
+    const permission = buildAuthorWriterPermission([], "/xdg/data/janus-agent/author")
 
     // then
     expect(permission).toEqual({
@@ -839,6 +1007,10 @@ describe("buildWriterPermission", () => {
       task: "deny",
       webfetch: "allow",
       websearch: "allow",
+      janus_dispatch: "deny",
+      janus_dispatch_wait: "deny",
+      janus_dispatch_cancel: "deny",
+      janus_dispatch_continue: "deny",
     })
   })
 
@@ -847,7 +1019,7 @@ describe("buildWriterPermission", () => {
     const authorDir = "/xdg/data/janus-agent/author"
 
     // when
-    const permission = buildWriterPermission(["userdoc"], authorDir, "/tmp/project")
+    const permission = buildAuthorWriterPermission(["userdoc"], authorDir, "/tmp/project")
 
     // then
     const edit = permission.edit as Record<string, string>
@@ -867,7 +1039,7 @@ describe("buildWriterPermission", () => {
 
     try {
       // when
-      const permission = buildWriterPermission(["userdoc"], authorDir, dir)
+      const permission = buildAuthorWriterPermission(["userdoc"], authorDir, dir)
 
       // then
       const edit = permission.edit as Record<string, string>
@@ -880,18 +1052,18 @@ describe("buildWriterPermission", () => {
   })
 })
 
-describe("buildWriterRuntimeBindings", () => {
+describe("buildAuthorWriterRuntimeBindings", () => {
   it("reports the model, scoped mode, roots, author dir, search budget, and leaf rule", () => {
     // given
     const config = makeConfig({ writer_docs_roots: ["./docs/guides/"] })
     const authorDir = "/xdg/data/janus-agent/author"
 
     // when
-    const block = buildWriterRuntimeBindings(config, authorDir)
+    const block = buildAuthorWriterRuntimeBindings(config, authorDir)
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
-    expect(block).toContain("Writer model: `opencode/claude-sonnet-5-5`")
+    expect(block).toContain("Author-writer model: `opencode/claude-sonnet-5-5`")
     expect(block).toContain("Write mode: `scoped`")
     expect(block).toContain("`docs/guides`")
     expect(block).toContain(`Author state dir: \`${authorDir}\``)
@@ -899,8 +1071,8 @@ describe("buildWriterRuntimeBindings", () => {
     expect(block).toContain("Search budget")
     expect(block).toContain("researchRequest")
     expect(block).toContain("You are a leaf")
-    expect(block).toContain("no bash, no dispatch (`task: deny`), no memory tools")
-    expect(block).toContain("never dispatch explorer")
+    expect(block).toContain("no bash, no dispatch, no memory tools")
+    expect(block).toContain("never dispatch common-explorer")
   })
 
   it("reports the read-only mode when writer_docs_roots is empty", () => {
@@ -908,19 +1080,19 @@ describe("buildWriterRuntimeBindings", () => {
     const config = makeConfig({ writer_docs_roots: [] })
 
     // when
-    const block = buildWriterRuntimeBindings(config, "/xdg/data/janus-agent/author")
+    const block = buildAuthorWriterRuntimeBindings(config, "/xdg/data/janus-agent/author")
 
     // then
     expect(block).toContain("Write mode: `read-only`")
     expect(block).toContain("no file writes")
-    expect(block).toContain("the consultant publishes it")
+    expect(block).toContain("the author publishes it")
     expect(block).toContain("the roots array is empty")
   })
 })
 
-describe("registerWriter", () => {
-  // registerWriter always mkdirs the resolved author state dir — every test
-  // in this describe points it at a temp HOME so nothing lands under the
+describe("registerAuthorWriter", () => {
+  // registerAuthorWriter always mkdirs the resolved author state dir — every
+  // test in this describe points it at a temp HOME so nothing lands under the
   // real HOME.
   function tempAuthorEnv(): { env: NodeJS.ProcessEnv; authorDir: string; cleanup: () => void } {
     const parent = mkdtempSync(join(tmpdir(), "writer-author-"))
@@ -939,10 +1111,10 @@ describe("registerWriter", () => {
 
     try {
       // when
-      await registerWriter(config, pluginConfig, env)
+      await registerAuthorWriter(config, pluginConfig, env)
 
       // then
-      const writer = config.agent?.["writer"] as {
+      const writer = config.agent?.["author-writer"] as {
         mode: string
         description: string
         prompt: string
@@ -954,9 +1126,13 @@ describe("registerWriter", () => {
       expect(writer.model).toBe("opencode/claude-sonnet-5-5")
       expect(writer.steps).toBe(80)
       expect(writer.description).toContain("sole author of reader-facing prose")
-      expect(writer.description).toContain("Scoped-write author executor")
+      expect(writer.description).toContain("scoped-write author executor")
       expect(writer.permission.bash).toBe("deny")
       expect(writer.permission.task).toBe("deny")
+      expect(writer.permission.janus_dispatch).toBe("deny")
+      expect(writer.permission.janus_dispatch_wait).toBe("deny")
+      expect(writer.permission.janus_dispatch_cancel).toBe("deny")
+      expect(writer.permission.janus_dispatch_continue).toBe("deny")
       expect(writer.permission.webfetch).toBe("allow")
       expect(writer.permission.websearch).toBe("allow")
       const edit = writer.permission.edit as Record<string, string>
@@ -964,7 +1140,7 @@ describe("registerWriter", () => {
       expect(edit["userdoc/**"]).toBe("allow")
       const external = writer.permission.external_directory as Record<string, string>
       expect(external[`${authorDir}/**`]).toBe("allow")
-      expect(writer.prompt).toContain("# Writer")
+      expect(writer.prompt).toContain("# Author-Writer")
       expect(writer.prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
       expect(writer.prompt).not.toContain("<!-- RUNTIME-BINDINGS")
       expect(existsSync(authorDir)).toBe(true)
@@ -981,10 +1157,10 @@ describe("registerWriter", () => {
 
     try {
       // when
-      await registerWriter(config, pluginConfig, env)
+      await registerAuthorWriter(config, pluginConfig, env)
 
       // then
-      const writer = config.agent?.["writer"] as { permission: Record<string, unknown> }
+      const writer = config.agent?.["author-writer"] as { permission: Record<string, unknown> }
       const edit = writer.permission.edit as Record<string, string>
       expect(edit["docs/guides/**"]).toBe("allow")
       expect(edit["userdoc/**"]).toBeUndefined()
@@ -1001,10 +1177,10 @@ describe("registerWriter", () => {
 
     try {
       // when
-      await registerWriter(config, pluginConfig, env)
+      await registerAuthorWriter(config, pluginConfig, env)
 
       // then
-      const writer = config.agent?.["writer"] as {
+      const writer = config.agent?.["author-writer"] as {
         prompt: string
         permission: Record<string, unknown>
       }
@@ -1014,6 +1190,10 @@ describe("registerWriter", () => {
         task: "deny",
         webfetch: "allow",
         websearch: "allow",
+        janus_dispatch: "deny",
+        janus_dispatch_wait: "deny",
+        janus_dispatch_cancel: "deny",
+        janus_dispatch_continue: "deny",
       })
       expect(writer.prompt).toContain("Write mode: `read-only`")
     } finally {
@@ -1029,67 +1209,45 @@ describe("registerWriter", () => {
 
     try {
       // when
-      await registerWriter(config, pluginConfig, env)
+      await registerAuthorWriter(config, pluginConfig, env)
 
       // then
-      expect(config.agent?.["writer"]).toBeUndefined()
+      expect(config.agent?.["author-writer"]).toBeUndefined()
     } finally {
       cleanup()
     }
   })
 
-  it("does NOT clobber a pre-existing user-defined writer agent entry", async () => {
+  it("does NOT clobber a pre-existing user-defined author-writer entry", async () => {
     // given
     const { env, cleanup } = tempAuthorEnv()
     const userPrompt = "user-defined writer prompt"
     const config: { agent?: Record<string, unknown> } = {
-      agent: { "writer": { mode: "subagent", prompt: userPrompt } },
+      agent: { "author-writer": { mode: "subagent", prompt: userPrompt } },
     }
     const pluginConfig = makeConfig()
 
     try {
       // when
-      await registerWriter(config, pluginConfig, env)
+      await registerAuthorWriter(config, pluginConfig, env)
 
       // then
-      const writer = config.agent?.["writer"] as { prompt: string }
+      const writer = config.agent?.["author-writer"] as { prompt: string }
       expect(writer.prompt).toBe(userPrompt)
     } finally {
       cleanup()
     }
   })
-
-  it("reports the delegate in runtime bindings when configured", () => {
-    // given
-    const config = makeConfig({ writer_delegate_agent: "host-writer" })
-
-    // when
-    const block = buildRuntimeBindings(config, "oc-ns")
-
-    // then
-    expect(block).toContain("writer delegated to `host-writer`")
-  })
-
-  it("reports the writer model without a fallback in runtime bindings", () => {
-    // given
-    const config = makeConfig()
-
-    // when
-    const block = buildRuntimeBindings(config, "oc-ns")
-
-    // then
-    expect(block).toContain("writer `writer` (opencode/claude-sonnet-5-5)")
-  })
 })
 
-describe("resolveAskLiteWorkspaceDir", () => {
+describe("resolveSimpleWorkspaceDir", () => {
   it("defaults under XDG data home", () => {
     // given
     const config = makeConfig()
     const env = { HOME: "/home/test-user", XDG_DATA_HOME: "/xdg/data" } as NodeJS.ProcessEnv
 
     // when
-    const dir = resolveAskLiteWorkspaceDirLocal(config, env)
+    const dir = resolveSimpleWorkspaceDirLocal(config, env)
 
     // then
     expect(dir).toBe("/xdg/data/janus-agent/lite")
@@ -1101,18 +1259,18 @@ describe("resolveAskLiteWorkspaceDir", () => {
     const env = { HOME: "/home/test-user" } as NodeJS.ProcessEnv
 
     // when
-    const dir = resolveAskLiteWorkspaceDirLocal(config, env)
+    const dir = resolveSimpleWorkspaceDirLocal(config, env)
 
     // then
     expect(dir).toBe("/home/test-user/.local/share/janus-agent/lite")
   })
 
-  it("honors ask_lite_workspace_dir when configured", () => {
+  it("honors simple_workspace_dir when configured", () => {
     // given
-    const config = makeConfig({ ask_lite_workspace_dir: "/custom/lite-ws" })
+    const config = makeConfig({ simple_workspace_dir: "/custom/lite-ws" })
 
     // when
-    const dir = resolveAskLiteWorkspaceDirLocal(config, { HOME: "/home/test-user" } as NodeJS.ProcessEnv)
+    const dir = resolveSimpleWorkspaceDirLocal(config, { HOME: "/home/test-user" } as NodeJS.ProcessEnv)
 
     // then
     expect(dir).toBe("/custom/lite-ws")
@@ -1166,18 +1324,22 @@ describe("computeProjectId", () => {
   })
 })
 
-describe("buildAskLitePermission", () => {
+describe("buildSimplePermission", () => {
   it("allows reads and its own workspace, asks for every other write and non-readonly bash, denies dispatch", () => {
     // given
     const workspace = "/xdg/data/janus-agent/lite"
 
     // when
-    const permission = buildAskLitePermission(workspace)
+    const permission = buildSimplePermission(workspace)
 
     // then
     expect(permission.webfetch).toBe("allow")
     expect(permission.websearch).toBe("allow")
     expect(permission.task).toBe("deny")
+    expect(permission.janus_dispatch).toBe("deny")
+    expect(permission.janus_dispatch_wait).toBe("deny")
+    expect(permission.janus_dispatch_cancel).toBe("deny")
+    expect(permission.janus_dispatch_continue).toBe("deny")
     const edit = permission.edit as Record<string, string>
     expect(edit["*"]).toBe("ask")
     expect(edit[`${workspace}/**`]).toBe("allow")
@@ -1194,21 +1356,23 @@ describe("buildAskLitePermission", () => {
   })
 })
 
-describe("buildAskLiteRuntimeBindings", () => {
+describe("buildSimpleRuntimeBindings", () => {
   it("reports memory, own model, escalation targets, workspace, namespace, and leaf rule", () => {
     // given
     const config = makeConfig()
     const workspace = "/xdg/data/janus-agent/lite"
 
     // when
-    const block = buildAskLiteRuntimeBindings(config, workspace, "oc-ns")
+    const block = buildSimpleRuntimeBindings(config, workspace, "oc-ns")
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
     expect(block).toContain("janus-memory")
-    expect(block).toContain("Ask-lite model: `opencode-go/deepseek-v4.1-flash`")
+    expect(block).toContain("Simple model: `opencode-go/deepseek-v4.1-flash`")
     expect(block).toContain("Consultant:")
+    expect(block).toContain("Architect:")
     expect(block).toContain("Coder:")
+    expect(block).toContain("Author:")
     expect(block).toContain("Janus:")
     expect(block).toContain("You are a leaf: do not dispatch another agent")
     expect(block).toContain(`Your writable workspace: \`${workspace}\``)
@@ -1221,37 +1385,37 @@ describe("buildAskLiteRuntimeBindings", () => {
     const config = makeConfig({ memory_enabled: false })
 
     // when
-    const block = buildAskLiteRuntimeBindings(config, "/ws", "oc-ns")
+    const block = buildSimpleRuntimeBindings(config, "/ws", "oc-ns")
 
     // then
     expect(block).toContain("Memory: DISABLED by configuration (saving and recall are unavailable)")
   })
 })
 
-describe("registerAskLite", () => {
-  // registerAskLite always mkdirs its resolved workspace — every test in this
+describe("registerSimple", () => {
+  // registerSimple always mkdirs its resolved workspace — every test in this
   // describe must point it at a temp dir so nothing lands under the real HOME.
   function tempWorkspaceConfig(overrides: Partial<JanusPluginConfig> = {}): { pluginConfig: JanusPluginConfig; cleanup: () => void } {
     const workspaceParent = mkdtempSync(join(tmpdir(), "lite-ws-"))
     return {
-      pluginConfig: makeConfig({ ask_lite_workspace_dir: join(workspaceParent, "lite"), ...overrides }),
+      pluginConfig: makeConfig({ simple_workspace_dir: join(workspaceParent, "lite"), ...overrides }),
       cleanup: () => rmSync(workspaceParent, { recursive: true, force: true }),
     }
   }
 
-  it("registers mode all with the ask-lite.md body, injected bindings, and patterned permission", async () => {
+  it("registers mode all with the simple.md body, injected bindings, and patterned permission", async () => {
     // given — temp workspace so the test never creates anything under the real HOME
     const workspaceParent = mkdtempSync(join(tmpdir(), "lite-ws-"))
     const workspace = join(workspaceParent, "lite")
     const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig({ ask_lite_workspace_dir: workspace })
+    const pluginConfig = makeConfig({ simple_workspace_dir: workspace })
 
     try {
       // when
-      await registerAskLite(config, pluginConfig, "oc-testns")
+      await registerSimple(config, pluginConfig, "oc-testns")
 
       // then
-      const lite = config.agent?.["ask-lite"] as {
+      const lite = config.agent?.["simple"] as {
         mode: string
         description: string
         prompt: string
@@ -1261,7 +1425,7 @@ describe("registerAskLite", () => {
       expect(lite.mode).toBe("all")
       expect(lite.model).toBe("opencode-go/deepseek-v4.1-flash")
       expect(lite.description).toContain("Economical quick-answer entry")
-      expect(lite.prompt).toContain("# Ask-Lite")
+      expect(lite.prompt).toContain("# Simple")
       // Model adaptation is injected per request by the system hook; the
       // registered agent keeps the inert placeholder.
       expect(lite.prompt).toContain("<!-- MODEL-PROMPT")
@@ -1284,16 +1448,16 @@ describe("registerAskLite", () => {
     const workspaceParent = mkdtempSync(join(tmpdir(), "lite-ws-"))
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig({
-      ask_lite_workspace_dir: join(workspaceParent, "lite"),
-      ask_lite_model: "my-provider/other-model",
+      simple_workspace_dir: join(workspaceParent, "lite"),
+      simple_model: "my-provider/other-model",
     })
 
     try {
       // when
-      await registerAskLite(config, pluginConfig, "oc-ns")
+      await registerSimple(config, pluginConfig, "oc-ns")
 
       // then
-      const lite = config.agent?.["ask-lite"] as { prompt: string }
+      const lite = config.agent?.["simple"] as { prompt: string }
       expect(lite.prompt).toContain("<!-- MODEL-PROMPT")
       expect(lite.prompt).not.toContain("Driving DeepSeek V4.1-Flash")
     } finally {
@@ -1306,16 +1470,16 @@ describe("registerAskLite", () => {
     const workspaceParent = mkdtempSync(join(tmpdir(), "lite-ws-"))
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig({
-      ask_lite_workspace_dir: join(workspaceParent, "lite"),
+      simple_workspace_dir: join(workspaceParent, "lite"),
       model_prompts: { deepseekv41flash: "user flash block" },
     })
 
     try {
       // when
-      await registerAskLite(config, pluginConfig, "oc-ns")
+      await registerSimple(config, pluginConfig, "oc-ns")
 
       // then — the registered prompt is model-independent
-      const lite = config.agent?.["ask-lite"] as { prompt: string }
+      const lite = config.agent?.["simple"] as { prompt: string }
       expect(lite.prompt).not.toContain("user flash block")
       expect(lite.prompt).not.toContain("Driving DeepSeek V4.1-Flash")
       expect(lite.prompt).toContain("<!-- MODEL-PROMPT")
@@ -1328,64 +1492,64 @@ describe("registerAskLite", () => {
     // given
     const workspaceParent = mkdtempSync(join(tmpdir(), "lite-ws-"))
     const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig({ ask_lite_workspace_dir: join(workspaceParent, "lite") })
+    const pluginConfig = makeConfig({ simple_workspace_dir: join(workspaceParent, "lite") })
 
     // when
-    await registerAskLite(config, pluginConfig, "oc-ns")
+    await registerSimple(config, pluginConfig, "oc-ns")
 
     // then
     expect(existsSync(join(workspaceParent, "lite"))).toBe(true)
     rmSync(workspaceParent, { recursive: true, force: true })
   })
 
-  it("overrides the model from ask_lite_model", async () => {
+  it("overrides the model from simple_model", async () => {
     // given
-    const { pluginConfig, cleanup } = tempWorkspaceConfig({ ask_lite_model: "test/lite-m" })
+    const { pluginConfig, cleanup } = tempWorkspaceConfig({ simple_model: "test/lite-m" })
     const config: { agent?: Record<string, unknown> } = {}
 
     try {
       // when
-      await registerAskLite(config, pluginConfig, "oc-ns")
+      await registerSimple(config, pluginConfig, "oc-ns")
 
       // then
-      const lite = config.agent?.["ask-lite"] as { model: string }
+      const lite = config.agent?.["simple"] as { model: string }
       expect(lite.model).toBe("test/lite-m")
     } finally {
       cleanup()
     }
   })
 
-  it("uses the configured ask_lite_agent name", async () => {
+  it("uses the configured simple_agent name", async () => {
     // given
-    const { pluginConfig, cleanup } = tempWorkspaceConfig({ ask_lite_agent: "my-lite" })
+    const { pluginConfig, cleanup } = tempWorkspaceConfig({ simple_agent: "my-lite" })
     const config: { agent?: Record<string, unknown> } = {}
 
     try {
       // when
-      await registerAskLite(config, pluginConfig, "oc-ns")
+      await registerSimple(config, pluginConfig, "oc-ns")
 
       // then
       expect(config.agent?.["my-lite"]).toBeDefined()
-      expect(config.agent?.["ask-lite"]).toBeUndefined()
+      expect(config.agent?.["simple"]).toBeUndefined()
     } finally {
       cleanup()
     }
   })
 
-  it("does NOT clobber a pre-existing user-defined ask-lite agent entry", async () => {
+  it("does NOT clobber a pre-existing user-defined simple agent entry", async () => {
     // given
     const userPrompt = "user-defined lite prompt"
     const config: { agent?: Record<string, unknown> } = {
-      agent: { "ask-lite": { mode: "all", prompt: userPrompt } },
+      agent: { "simple": { mode: "all", prompt: userPrompt } },
     }
     const { pluginConfig, cleanup } = tempWorkspaceConfig()
 
     try {
       // when
-      await registerAskLite(config, pluginConfig, "oc-ns")
+      await registerSimple(config, pluginConfig, "oc-ns")
 
       // then
-      const lite = config.agent?.["ask-lite"] as { prompt: string }
+      const lite = config.agent?.["simple"] as { prompt: string }
       expect(lite.prompt).toBe(userPrompt)
     } finally {
       cleanup()
@@ -1412,7 +1576,7 @@ describe("registerCoder", () => {
     }
     expect(coder.mode).toBe("all")
     expect(coder.model).toBe("opencode-go/glm-5.3")
-    expect(coder.description).toContain("Coding entry point")
+    expect(coder.description).toContain("coding and maintenance entry")
     expect(coder.prompt).toContain("# Coder")
     expect(coder.prompt).toContain("Task triage")
     expect(coder.prompt).toContain("## Dispatched mode")
@@ -1604,7 +1768,7 @@ describe("registerCoderLite", () => {
 })
 
 describe("buildJanusRuntimeBindings", () => {
-  it("reports own model, consultant/coder/lite/explorer routes, and job-tool discipline, with no memory line", () => {
+  it("reports own model, the simple/consultant/coder routes, the primary architect/author entries, and job-tool discipline", () => {
     // given
     const config = makeConfig()
 
@@ -1613,27 +1777,32 @@ describe("buildJanusRuntimeBindings", () => {
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
-    expect(block).toContain("Janus model: `opencode-go/glm-5.3`")
-    expect(block).toContain("`consultant` (agent `consultant`, `opencode-go/glm-5.3`)")
+    expect(block).toContain("Janus model: `opencode-go/glm-5.3-flash`")
+    expect(block).toContain("`simple` (agent `simple`, `opencode-go/deepseek-v4.1-flash`)")
+    expect(block).toContain("`consultant` (agent `consultant`, `opencode-go/gemini-4-argon`)")
     expect(block).toContain("`coder` (agent `coder`, `opencode-go/glm-5.3`)")
-    expect(block).toContain("`ask-lite` (agent `ask-lite`, `opencode-go/deepseek-v4.1-flash`)")
-    expect(block).toContain("`explorer` (agent `explorer`")
-    expect(block).toContain("bounded evidence gathering")
+    expect(block).toContain("`architect` (agent `architect`, `opencode-go/gemini-4-argon`)")
+    expect(block).toContain("`author` (agent `author`, `opencode-go/gemini-4-argon`)")
+    expect(block).toContain("not dispatchable")
     expect(block).toContain("janus_dispatch_wait")
+    expect(block).not.toContain("`explorer` (agent")
     expect(block).not.toContain("`build` (agent")
     expect(block).not.toContain("janus-memory")
     expect(block).not.toContain("Memory namespace")
   })
 
-  it("reports the DISABLED ask-lite variant", () => {
+  it("reports the DISABLED simple and team-entry variants", () => {
     // given
-    const config = makeConfig({ ask_lite_enabled: false })
+    const config = makeConfig({ simple_enabled: false, architect_enabled: false, author_enabled: false, coder_enabled: false })
 
     // when
     const block = buildJanusRuntimeBindings(config)
 
     // then
-    expect(block).toContain("ask-lite DISABLED by configuration")
+    expect(block).toContain("simple DISABLED by configuration")
+    expect(block).toContain("architect DISABLED by configuration")
+    expect(block).toContain("author DISABLED by configuration")
+    expect(block).toContain("coder DISABLED by configuration")
   })
 })
 
@@ -1655,7 +1824,7 @@ describe("registerJanus", () => {
       permission: Record<string, unknown>
     }
     expect(janus.mode).toBe("all")
-    expect(janus.model).toBe("opencode-go/glm-5.3")
+    expect(janus.model).toBe("opencode-go/glm-5.3-flash")
     expect(janus.description).toContain("Daily-driver primary")
     expect(janus.prompt).toContain("# Janus")
     expect(janus.prompt).toContain("## Routing")
@@ -1681,7 +1850,7 @@ describe("registerJanus", () => {
     const janus = config.agent?.["janus"] as { prompt: string }
     expect(janus.prompt).toContain("Route by **ask**, not by sentence")
     expect(janus.prompt).toContain("durable artifact → `doc`")
-    expect(janus.prompt).toContain("Layering: janus splits asks before picking a specialist")
+    expect(janus.prompt).toContain("Layering: janus splits asks and routes each to its team entry")
     expect(janus.prompt.indexOf("### Mode Routing (shared)")).toBeGreaterThan(
       janus.prompt.indexOf("## Dispatch Lifecycle (shared)"),
     )
@@ -1731,49 +1900,53 @@ describe("registerJanus", () => {
 })
 
 const READ_ONLY_AGENT_KEYS = [
-  "explorer",
-  "analyst",
-  "critic",
-  "arch-critic",
-  "auditor",
+  "common-explorer",
+  "consultant-analyst",
+  "consultant-critic",
+  "coder-reviewer",
+  "consultant-auditor",
 ] as const
 
 describe("common operating principles injection", () => {
   it("injects the common base into every prompt and the common write gate only into writable roles", async () => {
-    // given — temp lite workspace so registerAskLite never creates anything
+    // given — temp lite workspace so registerSimple never creates anything
     // under the real HOME
     const workspaceParent = mkdtempSync(join(tmpdir(), "lite-ws-"))
     const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig({ ask_lite_workspace_dir: join(workspaceParent, "lite") })
+    const pluginConfig = makeConfig({ simple_workspace_dir: join(workspaceParent, "lite") })
 
     try {
-      // when — register the full ten-agent family into one config
+      // when — register the full thirteen-role family into one config
       await registerJanus(config, pluginConfig)
       await registerConsultantAgent(config, pluginConfig, "oc-ns")
+      await registerArchitect(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
+      await registerAuthor(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
       await registerCoder(config, pluginConfig)
       await registerCoderLite(config, pluginConfig)
-      await registerAskLite(config, pluginConfig, "oc-ns")
-      await registerExplorer(config, pluginConfig)
-      await registerAnalyst(config, pluginConfig)
-      await registerCritic(config, pluginConfig)
-      await registerArchCritic(config, pluginConfig)
-      await registerAuditor(config, pluginConfig)
+      await registerSimple(config, pluginConfig, "oc-ns")
+      await registerCommonExplorer(config, pluginConfig)
+      await registerConsultantAnalyst(config, pluginConfig)
+      await registerConsultantCritic(config, pluginConfig)
+      await registerCoderReviewer(config, pluginConfig)
+      await registerConsultantAuditor(config, pluginConfig)
       // Temp HOME keeps the writer's author state dir off the real HOME.
-      await registerWriter(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
+      await registerAuthorWriter(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
 
       // then
       expect(Object.keys(config.agent ?? {}).sort()).toEqual([
-        "analyst",
-        "arch-critic",
-        "ask-lite",
-        "auditor",
+        "architect",
+        "author",
+        "author-writer",
         "coder",
         "coder-lite",
+        "coder-reviewer",
+        "common-explorer",
         "consultant",
-        "critic",
-        "explorer",
+        "consultant-analyst",
+        "consultant-auditor",
+        "consultant-critic",
         "janus",
-        "writer",
+        "simple",
       ])
       for (const [name, entry] of Object.entries(config.agent ?? {})) {
         const prompt = (entry as { prompt: string }).prompt
@@ -1799,18 +1972,18 @@ describe("common operating principles injection", () => {
     const leaf = (await readFile(resolveAsset("principles/research-leaf.md"), "utf8")).trim()
 
     // when
-    await registerExplorer(config, pluginConfig)
-    await registerAnalyst(config, pluginConfig)
-    await registerCritic(config, pluginConfig)
-    await registerAuditor(config, pluginConfig)
+    await registerCommonExplorer(config, pluginConfig)
+    await registerConsultantAnalyst(config, pluginConfig)
+    await registerConsultantCritic(config, pluginConfig)
+    await registerConsultantAuditor(config, pluginConfig)
 
     // then
-    for (const key of ["analyst", "critic"]) {
+    for (const key of ["consultant-analyst", "consultant-critic"]) {
       const prompt = (config.agent?.[key] as { prompt: string }).prompt
       expect(prompt).toContain(failures)
       expect(prompt.indexOf(failures)).toBeGreaterThan(prompt.indexOf(leaf))
     }
-    for (const key of ["explorer", "auditor"]) {
+    for (const key of ["common-explorer", "consultant-auditor"]) {
       const prompt = (config.agent?.[key] as { prompt: string }).prompt
       expect(prompt).not.toContain(failures)
     }
@@ -1825,17 +1998,17 @@ describe("common operating principles injection", () => {
     const leaf = (await readFile(resolveAsset("principles/research-leaf.md"), "utf8")).trim()
 
     // when
-    await registerExplorer(config, pluginConfig)
-    await registerAnalyst(config, pluginConfig)
-    await registerCritic(config, pluginConfig)
-    await registerAuditor(config, pluginConfig)
+    await registerCommonExplorer(config, pluginConfig)
+    await registerConsultantAnalyst(config, pluginConfig)
+    await registerConsultantCritic(config, pluginConfig)
+    await registerConsultantAuditor(config, pluginConfig)
 
     // then — one table, in the analyst prompt, after the research-leaf rules
-    const analyst = (config.agent?.["analyst"] as { prompt: string }).prompt
+    const analyst = (config.agent?.["consultant-analyst"] as { prompt: string }).prompt
     expect(analyst).toContain(claimTypes)
     expect(analyst.indexOf(claimTypes)).toBeGreaterThan(analyst.indexOf(leaf))
     expect(analyst.indexOf(claimTypes)).toBeGreaterThan(analyst.indexOf(failures))
-    for (const key of ["explorer", "critic", "auditor"]) {
+    for (const key of ["common-explorer", "consultant-critic", "consultant-auditor"]) {
       const prompt = (config.agent?.[key] as { prompt: string }).prompt
       expect(prompt).not.toContain(claimTypes)
     }
@@ -1849,19 +2022,19 @@ describe("common operating principles injection", () => {
     const leaf = (await readFile(resolveAsset("principles/research-leaf.md"), "utf8")).trim()
 
     // when
-    await registerExplorer(config, pluginConfig)
-    await registerAnalyst(config, pluginConfig)
-    await registerCritic(config, pluginConfig)
-    await registerAuditor(config, pluginConfig)
+    await registerCommonExplorer(config, pluginConfig)
+    await registerConsultantAnalyst(config, pluginConfig)
+    await registerConsultantCritic(config, pluginConfig)
+    await registerConsultantAuditor(config, pluginConfig)
 
     // then — one copy, in the explorer and critic prompts, after the research-leaf rules
-    for (const key of ["explorer", "critic"]) {
+    for (const key of ["common-explorer", "consultant-critic"]) {
       const prompt = (config.agent?.[key] as { prompt: string }).prompt
       expect(prompt).toContain(criteria)
       expect(prompt.split(criteria).length - 1).toBe(1)
       expect(prompt.indexOf(criteria)).toBeGreaterThan(prompt.indexOf(leaf))
     }
-    for (const key of ["analyst", "auditor"]) {
+    for (const key of ["consultant-analyst", "consultant-auditor"]) {
       const prompt = (config.agent?.[key] as { prompt: string }).prompt
       expect(prompt).not.toContain(criteria)
     }
@@ -1875,20 +2048,20 @@ describe("common operating principles injection", () => {
 
     // when
     await registerConsultantAgent(config, pluginConfig, "oc-ns")
-    await registerExplorer(config, pluginConfig)
-    await registerAnalyst(config, pluginConfig)
-    await registerCritic(config, pluginConfig)
-    await registerAuditor(config, pluginConfig)
+    await registerCommonExplorer(config, pluginConfig)
+    await registerConsultantAnalyst(config, pluginConfig)
+    await registerConsultantCritic(config, pluginConfig)
+    await registerConsultantAuditor(config, pluginConfig)
 
     // then
     const consultant = (config.agent?.["consultant"] as { prompt: string }).prompt
     expect(consultant).toContain(policy)
     expect(consultant.split(policy).length - 1).toBe(1)
     for (const key of [
-      "explorer",
-      "analyst",
-      "critic",
-      "auditor",
+      "common-explorer",
+      "consultant-analyst",
+      "consultant-critic",
+      "consultant-auditor",
     ]) {
       const prompt = (config.agent?.[key] as { prompt: string }).prompt
       expect(prompt).not.toContain(policy)
@@ -1900,15 +2073,18 @@ describe("existing agents carry the inert MODEL-PROMPT placeholder", () => {
   it("every plugin-owned agent asset contains the placeholder", async () => {
     // given
     const assets = [
-      "agents/consultant.md",
-      "agents/explorer.md",
-      "agents/analyst.md",
-      "agents/critic.md",
-      "agents/auditor.md",
-      "agents/writer.md",
       "agents/janus.md",
+      "agents/simple.md",
+      "agents/consultant.md",
+      "agents/architect.md",
       "agents/coder.md",
-      "agents/ask-lite.md",
+      "agents/author.md",
+      "agents/common-explorer.md",
+      "agents/consultant-analyst.md",
+      "agents/consultant-critic.md",
+      "agents/consultant-auditor.md",
+      "agents/coder-reviewer.md",
+      "agents/author-writer.md",
       "agents/coder-lite.md",
     ]
 
@@ -1955,15 +2131,15 @@ describe("existing agents carry the inert MODEL-PROMPT placeholder", () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig({
-      critic_model: "my/critic-m",
+      consultant_critic_model: "my/critic-m",
       model_prompts: { criticm: "challenge aggressively" },
     })
 
     // when
-    await registerCritic(config, pluginConfig)
+    await registerConsultantCritic(config, pluginConfig)
 
     // then
-    const critic = config.agent?.["critic"] as { prompt: string }
+    const critic = config.agent?.["consultant-critic"] as { prompt: string }
     expect(critic.prompt).not.toContain("challenge aggressively")
     expect(critic.prompt).toContain("<!-- MODEL-PROMPT")
   })
@@ -2082,25 +2258,27 @@ describe("model-prompt blocks are model-property only", () => {
 
   it("lite and janus prompts encode the entry/leaf boundaries", async () => {
     // given
-    const lite = await readFile(resolveAsset("agents/ask-lite.md"), "utf8")
+    const lite = await readFile(resolveAsset("agents/simple.md"), "utf8")
     const janus = await readFile(resolveAsset("agents/janus.md"), "utf8")
 
     // when // then
     expect(lite).toContain("You are a leaf: you never dispatch another agent.")
     expect(lite).toContain("escalate to `consultant`")
     expect(lite).toContain("escalate to `coder`")
-    expect(lite).toContain("personal plans, system design, or durable documents")
+    expect(lite).toContain("personal plans and guides belong to `consultant`")
+    expect(lite).toContain("architecture belongs to `architect`")
+    expect(lite).toContain("durable documents belong to `author`")
     expect(janus).toContain("## Routing")
     expect(janus).toContain("`coder`")
-    expect(janus).toContain("A 1-2 tool-call task you can do yourself")
-    // The inline small-edit carve-out must never swallow the document lane.
-    expect(janus).toContain("except document tasks")
-    expect(janus).toContain("never an edit to a document file")
-    expect(janus).toContain("Do not run your own design gate")
-    expect(janus).toContain("the consultant's `design` mode")
-    expect(janus).toContain("An implementation plan for a codebase is `coder`")
-    expect(janus).toContain("Reading, summarizing, or explaining an existing document")
-    expect(janus).toContain("The dispatch tool also exposes `coder-lite`")
+    expect(janus).toContain("one- or two-tool-call edit to code or config")
+    // The inline carve-out must never swallow the document lane.
+    expect(janus).toContain("a document edit is never inline")
+    expect(janus).toContain("Route a design or document task to its entry even when it looks small")
+    expect(janus).toContain("Do not run a design gate")
+    expect(janus).toContain("a system-design decision goes to `architect`")
+    expect(janus).toContain("implementation goes to `coder`")
+    expect(janus).toContain("a read-only question about an existing document")
+    expect(janus).toContain("`architect` and `author` are deliberately absent from this tool")
     expect(lite).toContain("read-only document Q&A")
   })
 
@@ -2117,15 +2295,18 @@ describe("model-prompt blocks are model-property only", () => {
   it("role assets do not hard-code model names or benchmark tokens", async () => {
     // given — role positioning lives here; model properties live in model-prompts
     const roleAssets = [
-      "agents/consultant.md",
-      "agents/explorer.md",
-      "agents/analyst.md",
-      "agents/critic.md",
-      "agents/auditor.md",
-      "agents/writer.md",
       "agents/janus.md",
+      "agents/simple.md",
+      "agents/consultant.md",
+      "agents/architect.md",
       "agents/coder.md",
-      "agents/ask-lite.md",
+      "agents/author.md",
+      "agents/common-explorer.md",
+      "agents/consultant-analyst.md",
+      "agents/consultant-critic.md",
+      "agents/consultant-auditor.md",
+      "agents/coder-reviewer.md",
+      "agents/author-writer.md",
       "agents/coder-lite.md",
       "skills/consultation/SKILL.md",
     ]

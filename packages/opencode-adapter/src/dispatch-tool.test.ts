@@ -100,16 +100,16 @@ async function exhaustBudget(clock: ReturnType<typeof createFakeClock>): Promise
 describe("resolveRoleTarget", () => {
   it("maps every role to its agent and default model", () => {
     const expected = {
-      explorer: { agentName: "explorer", model: "opencode-go/deepseek-v4.1-flash" },
-      analyst: { agentName: "analyst", model: "opencode-go/qwen3.8-max" },
-      critic: { agentName: "critic", model: "opencode/gemini-3.8-flash" },
-      "arch-critic": { agentName: "arch-critic", model: "opencode/gemini-3.8-flash" },
-      auditor: { agentName: "auditor", model: "opencode/gemini-3.8-flash" },
-      writer: { agentName: "writer", model: "opencode/claude-sonnet-5-5" },
+      "common-explorer": { agentName: "common-explorer", model: "opencode-go/deepseek-v4.1-flash" },
+      "consultant-analyst": { agentName: "consultant-analyst", model: "opencode-go/kimi-k3.1-pro" },
+      "consultant-critic": { agentName: "consultant-critic", model: "opencode/claude-sonnet-5-5" },
+      "coder-reviewer": { agentName: "coder-reviewer", model: "opencode/claude-sonnet-5-5" },
+      "consultant-auditor": { agentName: "consultant-auditor", model: "opencode-go/grok-4.7" },
+      "author-writer": { agentName: "author-writer", model: "opencode/claude-sonnet-5-5" },
       coder: { agentName: "coder", model: "opencode-go/glm-5.3" },
-      "ask-lite": { agentName: "ask-lite", model: "opencode-go/deepseek-v4.1-flash" },
+      simple: { agentName: "simple", model: "opencode-go/deepseek-v4.1-flash" },
       "coder-lite": { agentName: "coder-lite", model: "opencode-go/glm-5.3-flash" },
-      consultant: { agentName: "consultant", model: "opencode-go/glm-5.3" },
+      consultant: { agentName: "consultant", model: "opencode-go/gemini-4-argon" },
     } as const
     for (const [role, target] of Object.entries(expected)) {
       expect(resolveRoleTarget(config(), role as keyof typeof expected)).toEqual(target)
@@ -117,36 +117,36 @@ describe("resolveRoleTarget", () => {
   })
 
   it("applies scalar overrides, aliases, delegate routing, and mode/tier precedence", () => {
-    expect(resolveRoleTarget(config({ analyst_model: "test/analyst" }), "analyst")).toEqual({
-      agentName: "analyst",
+    expect(resolveRoleTarget(config({ consultant_analyst_model: "test/analyst" }), "consultant-analyst")).toEqual({
+      agentName: "consultant-analyst",
       model: "test/analyst",
     })
-    expect(resolveRoleTarget(config({ ask_lite_agent: "my-lite", ask_lite_model: "test/lite" }), "ask-lite")).toEqual({
-      agentName: "my-lite",
-      model: "test/lite",
+    expect(resolveRoleTarget(config({ simple_agent: "my-simple", simple_model: "test/simple" }), "simple")).toEqual({
+      agentName: "my-simple",
+      model: "test/simple",
     })
-    expect(resolveRoleTarget(config({ writer_delegate_agent: "host-writer" }), "writer")).toEqual({
+    expect(resolveRoleTarget(config({ writer_delegate_agent: "host-writer" }), "author-writer")).toEqual({
       agentName: "host-writer",
       model: undefined,
     })
     expect(
-      resolveRoleTarget(config({ writer_delegate_agent: "host-writer", writer_delegate_model: "p/m" }), "writer"),
+      resolveRoleTarget(config({ writer_delegate_agent: "host-writer", writer_delegate_model: "p/m" }), "author-writer"),
     ).toEqual({ agentName: "host-writer", model: "p/m" })
     expect(
-      resolveRoleTarget(config({ writer_agent: "custom-writer", writer_model: "provider/writer-model" }), "writer"),
+      resolveRoleTarget(config({ author_writer_agent: "custom-writer", author_writer_model: "provider/writer-model" }), "author-writer"),
     ).toEqual({ agentName: "custom-writer", model: "provider/writer-model" })
 
     const routed = config({
-      analyst_model: "scalar/model",
-      tier_models: { deep: { analyst: "tier/model" } },
-      mode_models: { research: { analyst: "mode/model" } },
+      consultant_analyst_model: "scalar/model",
+      tier_models: { deep: { "consultant-analyst": "tier/model" } },
+      mode_models: { research: { "consultant-analyst": "mode/model" } },
     })
-    expect(resolveRoleTarget(routed, "analyst", { tier: "deep" })).toEqual({
-      agentName: "analyst",
+    expect(resolveRoleTarget(routed, "consultant-analyst", { tier: "deep" })).toEqual({
+      agentName: "consultant-analyst",
       model: "tier/model",
     })
-    expect(resolveRoleTarget(routed, "analyst", { mode: "research", tier: "deep" })).toEqual({
-      agentName: "analyst",
+    expect(resolveRoleTarget(routed, "consultant-analyst", { mode: "research", tier: "deep" })).toEqual({
+      agentName: "consultant-analyst",
       model: "mode/model",
     })
   })
@@ -181,9 +181,9 @@ describe("createJanusDispatchTool", () => {
     writeFileSync(
       configPath,
       JSON.stringify({
-        explorer_model: "provider-a/explorer-m",
-        analyst_model: "provider-b/analyst-m",
-        critic_model: "provider-c/critic-m",
+        common_explorer_model: "provider-a/explorer-m",
+        consultant_analyst_model: "provider-b/analyst-m",
+        consultant_critic_model: "provider-c/critic-m",
       }),
     )
     process.env.JANUS_CONFIG = configPath
@@ -202,7 +202,7 @@ describe("createJanusDispatchTool", () => {
     const fake = createRespondingFake("the analyst result", clock)
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock })
 
-    const result = await dispatchTool.execute({ role: "analyst", prompt: "analyze claims" }, fakeContext())
+    const result = await dispatchTool.execute({ role: "consultant-analyst", prompt: "analyze claims" }, fakeContext())
 
     expect(result).toBe("the analyst result")
     expect(promptAsyncCount(fake)).toBe(1)
@@ -214,7 +214,7 @@ describe("createJanusDispatchTool", () => {
 
     const prompt = lastPromptAsyncCall(fake)
     expect(prompt.input.path.id).toMatch(/^ses_fake_/)
-    expect(prompt.input.body.agent).toBe("analyst")
+    expect(prompt.input.body.agent).toBe("consultant-analyst")
     expect(prompt.input.body.model).toEqual({ providerID: "provider-b", modelID: "analyst-m" })
     expect(prompt.input.body.parts).toEqual([{ type: "text", text: "analyze claims" }])
   })
@@ -224,7 +224,7 @@ describe("createJanusDispatchTool", () => {
     fake.session.create = async () => ({ error: "boom", data: undefined })
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock: createFakeClock() })
 
-    const result = await dispatchTool.execute({ role: "critic", prompt: "challenge" }, fakeContext())
+    const result = await dispatchTool.execute({ role: "consultant-critic", prompt: "challenge" }, fakeContext())
 
     expect(result).toContain("failed to create job")
     expect(result).toContain("unrecognized provider error")
@@ -236,7 +236,7 @@ describe("createJanusDispatchTool", () => {
     fake.setPromptAsyncError({ status: 500, message: "model auth failed" })
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock: createFakeClock() })
 
-    const result = await dispatchTool.execute({ role: "explorer", prompt: "search" }, fakeContext())
+    const result = await dispatchTool.execute({ role: "common-explorer", prompt: "search" }, fakeContext())
 
     expect(result).toContain("explorer dispatch failed")
     expect(result).toContain("unrecognized provider error")
@@ -270,7 +270,7 @@ describe("createJanusDispatchTool", () => {
     }
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock })
 
-    const result = await dispatchTool.execute({ role: "writer", prompt: "blueprint" }, fakeContext())
+    const result = await dispatchTool.execute({ role: "author-writer", prompt: "blueprint" }, fakeContext())
 
     expect(result).toContain("writer dispatch failed")
     expect(result).toContain("opencode/claude-sonnet-5-5")
@@ -304,7 +304,7 @@ describe("createJanusDispatchTool", () => {
     }
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock })
 
-    const result = await dispatchTool.execute({ role: "writer", prompt: "blueprint" }, fakeContext())
+    const result = await dispatchTool.execute({ role: "author-writer", prompt: "blueprint" }, fakeContext())
 
     expect(result).toContain("opencode/claude-sonnet-5-5")
     expect(result).toContain("degrade")
@@ -337,7 +337,7 @@ describe("createJanusDispatchTool", () => {
     }
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock })
 
-    const result = await dispatchTool.execute({ role: "writer", prompt: "blueprint" }, fakeContext())
+    const result = await dispatchTool.execute({ role: "author-writer", prompt: "blueprint" }, fakeContext())
 
     expect(result).toContain("writer dispatch failed")
     expect(promptAsyncCount(fake)).toBe(1)
@@ -349,7 +349,7 @@ describe("createJanusDispatchTool", () => {
     const fake = createRespondingFake("host wrote it", clock)
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock })
 
-    const result = await dispatchTool.execute({ role: "writer", prompt: "blueprint" }, fakeContext())
+    const result = await dispatchTool.execute({ role: "author-writer", prompt: "blueprint" }, fakeContext())
 
     expect(result).toBe("host wrote it")
     expect(promptAsyncCount(fake)).toBe(1)
@@ -358,20 +358,20 @@ describe("createJanusDispatchTool", () => {
     expect(prompt.input.body.model).toBeUndefined()
   })
 
-  it("rejects the ask-lite role when ask_lite_enabled=false", async () => {
+  it("rejects simple when simple_enabled=false", async () => {
     // given
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-liteoff-"))
     const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, '{\n  "ask_lite_enabled": false\n}')
+    writeFileSync(configPath, '{\n  "simple_enabled": false\n}')
     process.env.JANUS_CONFIG = configPath
     const tools = createJanusDispatchTools(createFakeSdk() as unknown as PluginInput["client"])
 
     try {
       // when
-      const result = await tools.janus_dispatch.execute({ role: "ask-lite", prompt: "quick lookup" }, fakeContext())
+      const result = await tools.janus_dispatch.execute({ role: "simple", prompt: "quick lookup" }, fakeContext())
 
       // then
-      expect(result).toBe("Error: ask-lite is disabled by configuration")
+      expect(result).toBe("Error: simple is disabled by configuration")
     } finally {
       delete process.env.JANUS_CONFIG
       rmSync(tmpConfigDir, { recursive: true, force: true })
@@ -402,7 +402,7 @@ describe("createJanusDispatchTool", () => {
     }
   })
 
-  it("rejects the removed build role with a clear error", async () => {
+  it("rejects an unknown role with the canonical role list", async () => {
     // given
     const fake = createRespondingFake("done")
     const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
@@ -411,33 +411,9 @@ describe("createJanusDispatchTool", () => {
     const result = await tools.janus_dispatch.execute({ role: "build", prompt: "refactor X" }, fakeContext())
 
     // then
-    expect(result).toContain('the "build" role was removed')
+    expect(result).toContain("expected one of")
+    expect(result).toContain("common-explorer")
     expect(promptAsyncCount(fake)).toBe(0)
-  })
-
-  it("accepts the legacy plan mode alias and applies the mode model", async () => {
-    // given
-    const tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-mode-"))
-    const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, JSON.stringify({ mode_models: { roadmap: { analyst: "mode/analyst" } } }))
-    process.env.JANUS_CONFIG = configPath
-    const fake = createRespondingFake("done")
-    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
-
-    try {
-      // when
-      const result = await tools.janus_dispatch.execute(
-        { role: "analyst", prompt: "review the roadmap", mode: "plan" },
-        fakeContext(),
-      )
-
-      // then
-      expect(result).toBe("done")
-      expect(lastPromptAsyncCall(fake).input.body.model).toEqual({ providerID: "mode", modelID: "analyst" })
-    } finally {
-      delete process.env.JANUS_CONFIG
-      rmSync(tmpConfigDir, { recursive: true, force: true })
-    }
   })
 
   it("prepends the protocol card to the first turn", async () => {
@@ -447,7 +423,7 @@ describe("createJanusDispatchTool", () => {
 
     // when
     const result = await tools.janus_dispatch.execute(
-      { role: "critic", prompt: "challenge this conclusion", protocol: "counter_evidence" },
+      { role: "consultant-critic", prompt: "challenge this conclusion", protocol: "counter_evidence" },
       fakeContext(),
     )
 
@@ -465,12 +441,12 @@ describe("createJanusDispatchTool", () => {
 
     // when
     const result = await tools.janus_dispatch.execute(
-      { role: "analyst", prompt: "review", protocol: "design_premortem" },
+      { role: "consultant-analyst", prompt: "review", protocol: "design_premortem" },
       fakeContext(),
     )
 
     // then
-    expect(result).toContain("protocol design_premortem is not supported by role analyst")
+    expect(result).toContain("protocol design_premortem is not supported by role consultant-analyst")
     expect(promptAsyncCount(fake)).toBe(0)
   })
 
@@ -498,7 +474,7 @@ describe("createJanusDispatchTool", () => {
     const fake = createFakeSdk()
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { lifecycle: spyLifecycle })
 
-    await dispatchTool.execute({ role: "analyst", prompt: "analyze evidence" }, fakeContext())
+    await dispatchTool.execute({ role: "consultant-analyst", prompt: "analyze evidence" }, fakeContext())
 
     expect(captured).toHaveLength(1)
     expect(captured[0]!.waitMs ?? PRODUCTION_WAIT_BUDGET_MS).toBe(PRODUCTION_WAIT_BUDGET_MS)
@@ -518,7 +494,7 @@ describe("createJanusDispatchTool", () => {
     const fake = createFakeSdk()
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { lifecycle: spyLifecycle })
 
-    await dispatchTool.execute({ role: "writer", prompt: "draft", return_handle: true }, fakeContext())
+    await dispatchTool.execute({ role: "author-writer", prompt: "draft", return_handle: true }, fakeContext())
 
     expect(captured[0]!.returnHandle).toBe(true)
   })
@@ -551,14 +527,14 @@ describe("janus_dispatch return_handle results", () => {
     const fake = createRespondingFake("the writer result", clock)
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock })
 
-    const result = await dispatchTool.execute({ role: "writer", prompt: "draft chapter one", return_handle: true }, fakeContext())
+    const result = await dispatchTool.execute({ role: "author-writer", prompt: "draft chapter one", return_handle: true }, fakeContext())
 
     const parsed = parseOutcomeEnvelope(outputText(result))
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) throw parsed.error
     expect(parsed.value.status).toBe("completed")
     if (parsed.value.status !== "completed") throw new Error("expected completed envelope")
-    expect(parsed.value.role).toBe("writer")
+    expect(parsed.value.role).toBe("author-writer")
     expect(parsed.value.job_id).toMatch(/^ses_fake_/)
     expect(parsed.value.session_id).toMatch(/^ses_fake_/)
     expect(parsed.value.attempt.index).toBe(0)
@@ -569,7 +545,7 @@ describe("janus_dispatch return_handle results", () => {
     const fake = createRespondingFake("plain writer result")
     const dispatchTool = createJanusDispatchTool(fake as unknown as PluginInput["client"])
 
-    const result = await dispatchTool.execute({ role: "writer", prompt: "draft chapter one" }, fakeContext())
+    const result = await dispatchTool.execute({ role: "author-writer", prompt: "draft chapter one" }, fakeContext())
 
     expect(outputText(result)).toBe("plain writer result")
     expect(parseOutcomeEnvelope(outputText(result)).ok).toBe(false)
@@ -604,7 +580,7 @@ describe("janus_dispatch_continue", () => {
 
   async function dispatchWriterWithHandle(fake: FakeSdk, tools: ReturnType<typeof createTools>, responseText = "chapter one prose"): Promise<{ jobID: string; sessionID: string; text: string }> {
     const result = await tools.janus_dispatch.execute(
-      { role: "writer", prompt: "draft chapter one", return_handle: true },
+      { role: "author-writer", prompt: "draft chapter one", return_handle: true },
       fakeContext(),
     )
     const parsed = parseOutcomeEnvelope(outputText(result))
@@ -632,12 +608,12 @@ describe("janus_dispatch_continue", () => {
     // Both prompts went to the same reused session.
     expect(asyncs[0]!.input.path.id).toBe(sessionID)
     expect(asyncs[1]!.input.path.id).toBe(sessionID)
-    expect(asyncs[1]!.input.body.agent).toBe("writer")
+    expect(asyncs[1]!.input.body.agent).toBe("author-writer")
     expect(asyncs[1]!.input.body.parts).toEqual([{ type: "text", text: "apply the review fix to chapter one" }])
     // A continuation job root was created under the caller, with the reuse journaled.
     const creates = fake.calls.filter((c) => (c as { method: string }).method === "create") as Array<{ input: { body: { title: string; parentID: string } } }>
     expect(creates).toHaveLength(2)
-    expect(creates[1]!.input.body.title).toBe("[consultation-dispatch:v1] writer")
+    expect(creates[1]!.input.body.title).toBe("[consultation-dispatch:v1] author-writer")
     expect(creates[1]!.input.body.parentID).toBe("ses_parent")
   })
 
@@ -650,7 +626,7 @@ describe("janus_dispatch_continue", () => {
     // The user changes the writer route between the first turn and the follow-up.
     writeFileSync(
       configPath,
-      JSON.stringify({ writer_agent: "other-writer", writer_model: "other/model" }),
+      JSON.stringify({ author_writer_agent: "other-writer", author_writer_model: "other/model" }),
     )
 
     const result = await tools.janus_dispatch_continue.execute(
@@ -661,7 +637,7 @@ describe("janus_dispatch_continue", () => {
     expect(result).toBe("maintenance applied")
     const asyncs = fake.calls.filter((c) => (c as { method: string }).method === "promptAsync") as Array<{ input: { body: { agent?: string; model?: { providerID: string; modelID: string } } } }>
     expect(asyncs).toHaveLength(2)
-    expect(asyncs[1]!.input.body.agent).toBe("writer")
+    expect(asyncs[1]!.input.body.agent).toBe("author-writer")
     expect(asyncs[1]!.input.body.model).toEqual({ providerID: "opencode", modelID: "claude-sonnet-5-5" })
   })
 
@@ -672,13 +648,13 @@ describe("janus_dispatch_continue", () => {
     const fake = createFakeSdk()
     const { jobID, attemptSessionID } = await (async () => {
       const created = await createJob(fake, {
-        parentID: "ses_parent", directory: "/tmp/project", role: "writer",
-        agentName: "writer", modelChain: ["opencode/claude-sonnet-5-5", "opencode-go/glm-5.3"],
+        parentID: "ses_parent", directory: "/tmp/project", role: "author-writer",
+        agentName: "author-writer", modelChain: ["opencode/claude-sonnet-5-5", "opencode-go/glm-5.3"],
         prompt: "draft chapter one", clock,
       })
       if (!created.ok) throw created.error
       const jobID = created.value.jobID
-      const child = await createAttemptSession(fake, { jobID, directory: "/tmp/project", role: "writer" })
+      const child = await createAttemptSession(fake, { jobID, directory: "/tmp/project", role: "author-writer" })
       if (!child.ok) throw child.error
       const messageID = "msg-attempt-child-0"
       for (const record of [
@@ -719,7 +695,7 @@ describe("janus_dispatch_continue", () => {
     expect(promptAsyncCalls).toBe(1)
     // The continuation root was created under the caller.
     const creates = fake.calls.filter((c) => (c as { method: string }).method === "create") as Array<{ input: { body: { title: string; parentID: string } } }>
-    expect(creates.at(-1)!.input.body.title).toBe("[consultation-dispatch:v1] writer")
+    expect(creates.at(-1)!.input.body.title).toBe("[consultation-dispatch:v1] author-writer")
     expect(creates.at(-1)!.input.body.parentID).toBe("ses_parent")
     expect(jobID).toMatch(/^ses_fake_/)
   })
@@ -731,7 +707,7 @@ describe("janus_dispatch_continue", () => {
     const tools = createTools(fake, clock)
 
     const firstResult = await (async () => {
-      const launched = tools.janus_dispatch.execute({ role: "writer", prompt: "draft chapter one" }, fakeContext())
+      const launched = tools.janus_dispatch.execute({ role: "author-writer", prompt: "draft chapter one" }, fakeContext())
       await exhaustBudget(clock)
       return outputText(await launched)
     })()
@@ -761,7 +737,7 @@ describe("janus_dispatch_continue", () => {
     const fake = createRespondingFake("analyst analysis", clock)
     const tools = createTools(fake, clock)
     const result = await tools.janus_dispatch.execute(
-      { role: "analyst", prompt: "analyze the evidence", return_handle: true },
+      { role: "consultant-analyst", prompt: "analyze the evidence", return_handle: true },
       fakeContext(),
     )
     const parsed = parseOutcomeEnvelope(outputText(result))
@@ -778,10 +754,10 @@ describe("janus_dispatch_continue", () => {
     // A mismatched role is rejected without a new prompt.
     const before = promptAsyncCount(fake)
     const mismatch = await tools.janus_dispatch_continue.execute(
-      { session_id: sessionID, prompt: "re-analyze", role: "writer" },
+      { session_id: sessionID, prompt: "re-analyze", role: "author-writer" },
       fakeContext(),
     )
-    expect(mismatch).toMatch(/^Error: role writer does not match/)
+    expect(mismatch).toMatch(/^Error: role author-writer does not match/)
     expect(promptAsyncCount(fake)).toBe(before)
   })
 
@@ -901,14 +877,14 @@ describe("janus_dispatch_continue", () => {
     const tools = createTools(fake, clock)
     const { sessionID } = await dispatchWriterWithHandle(fake, tools)
 
-    writeFileSync(configPath, JSON.stringify({ writer_enabled: false }))
+    writeFileSync(configPath, JSON.stringify({ author_writer_enabled: false }))
     const before = promptAsyncCount(fake)
     const result = await tools.janus_dispatch_continue.execute(
       { session_id: sessionID, prompt: "apply the review fix" },
       fakeContext(),
     )
 
-    expect(result).toBe("Error: writer is disabled by configuration")
+    expect(result).toBe("Error: author-writer is disabled by configuration")
     expect(promptAsyncCount(fake)).toBe(before)
   })
 
@@ -923,7 +899,7 @@ describe("janus_dispatch_continue", () => {
     // Unknown arg fields are rejected by the strict args schema before any
     // SDK access or context binding is consulted.
     const maliciousArgs = {
-      session_id: sessionID, prompt: "apply the review fix", role: "writer" as const,
+      session_id: sessionID, prompt: "apply the review fix", role: "author-writer" as const,
       parentID: "ses_evil", agent: "evil", model: "evil/model", return_handle: true,
     }
     const rejected = await tools.janus_dispatch_continue.execute(maliciousArgs, { ...fakeContext(), sessionID: "ses_attacker" })
@@ -1014,8 +990,8 @@ describe("janus_dispatch_continue", () => {
     const clock = createFakeClock()
     const fake = createFakeSdk()
     const created = await createJob(fake, {
-      parentID: "ses_parent", directory: "/tmp/project", role: "writer",
-      agentName: "writer", modelChain: ["opencode/claude-sonnet-5-5"],
+      parentID: "ses_parent", directory: "/tmp/project", role: "author-writer",
+      agentName: "author-writer", modelChain: ["opencode/claude-sonnet-5-5"],
       prompt: "draft chapter one", clock,
     })
     if (!created.ok) throw created.error

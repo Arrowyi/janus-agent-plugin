@@ -82,7 +82,7 @@ Never present medium/low confidence as certain. For `select`/`guide`, if the top
 
 One consultation — question plus conclusion as an inductive summary (归纳总结), never verbatim — is the saved unit; profiles, preferences, and taxonomy derive from it.
 
-Save automatically at the end of every direct-user consultation. For a dispatched task, save only when it names the executing agent as memory owner (`Memory ownership: consultant saves` / `ask-lite saves`); otherwise return a summary and let the dispatcher own the record.
+Save automatically at the end of every direct-user consultation. For a dispatched task, save only when it names the executing agent as memory owner (`Memory ownership: consultant saves` / `simple saves`); otherwise return a summary and let the dispatcher own the record.
 
 1. Distinct questions become separate records; one deep question becomes one record with its conclusion refined. A record holds the question and conclusion, supporting claims, evidence (provenance and grade), and preferences.
 2. Before saving, recall prior consultations; a near-duplicate updates the prior record instead of duplicating it.

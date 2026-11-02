@@ -6,10 +6,10 @@ Three failure modes dominate it: unverified attributes or causal efficacy, survi
 
 Dispatch baseline:
 
-- `explorer` whenever candidate attributes, real-world outcomes, or base rates need external verification beyond one user-supplied or single-page authoritative spec.
-- `auditor` in the same parallel wave when candidate reputation rests on experiential reports, rankings, community recommendations, school-of-thought advocacy, or self-authored claims.
-- `analyst` when the question is whether a behavioral pattern, method, or intervention has genuine causal efficacy rather than correlation or survivorship bias.
-- `critic` with `protocol: "counter_evidence"` when switch cost is high or a single winner is recommended over close contenders.
+- `common-explorer` whenever candidate attributes, real-world outcomes, or base rates need external verification beyond one user-supplied or single-page authoritative spec.
+- `consultant-auditor` in the same parallel wave when candidate reputation rests on experiential reports, rankings, community recommendations, school-of-thought advocacy, or self-authored claims.
+- `consultant-analyst` when the question is whether a behavioral pattern, method, or intervention has genuine causal efficacy rather than correlation or survivorship bias.
+- `consultant-critic` with `protocol: "counter_evidence"` when switch cost is high or a single winner is recommended over close contenders.
 
 Before recommending, check reversibility and switch cost — how hard the pick is to undo — and the base rate: what usually happens to people who choose each option. Keep the tie-break when the top two are close.
 

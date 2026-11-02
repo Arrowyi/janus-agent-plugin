@@ -63,12 +63,10 @@ describe("enums", () => {
   });
 
   it("normalizes the legacy plan/author mode names", () => {
-    expect(ConsultationModeInputSchema.parse("plan")).toBe("roadmap")
-    expect(ConsultationModeInputSchema.parse("author")).toBe("doc")
-    expect(ConsultationModeInputSchema.parse("roadmap")).toBe("roadmap")
+        expect(ConsultationModeInputSchema.parse("roadmap")).toBe("roadmap")
     expect(ConsultationModeInputSchema.parse("doc")).toBe("doc")
-    expect(normalizeConsultationMode("plan")).toBe("roadmap")
-    expect(normalizeConsultationMode("author")).toBe("doc")
+        expect(normalizeConsultationMode("plan")).toBeUndefined()
+    expect(normalizeConsultationMode("author")).toBeUndefined()
     expect(normalizeConsultationMode("nope")).toBeUndefined()
   });
 

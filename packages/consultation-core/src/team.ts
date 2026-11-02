@@ -12,12 +12,12 @@ import { DecomposedClaimSchema } from "./research-contracts.ts"
 import { GradedSourceSchema } from "./research-contracts.ts"
 
 export const TeamRoleSchema = z.enum([
-  "explorer",
-  "analyst",
-  "critic",
-  "arch_critic",
-  "auditor",
-  "writer",
+  "common_explorer",
+  "consultant_analyst",
+  "consultant_critic",
+  "coder_reviewer",
+  "consultant_auditor",
+  "author_writer",
 ])
 export type TeamRole = z.infer<typeof TeamRoleSchema>
 
@@ -38,18 +38,18 @@ export const DEFAULT_TEAM_CAPS: TeamCaps = {
 }
 
 export interface RoleCaps {
-  explorer: number
-  analyst: number
-  critic: number
-  arch_critic: number
-  auditor: number
-  writer: number
+  common_explorer: number
+  consultant_analyst: number
+  consultant_critic: number
+  coder_reviewer: number
+  consultant_auditor: number
+  author_writer: number
 }
 
 export const TIER_ROLE_CAPS: Record<Tier, RoleCaps> = {
-  fast: { explorer: 5, analyst: 0, critic: 0, arch_critic: 0, auditor: 0, writer: 0 },
-  standard: { explorer: 5, analyst: 1, critic: 1, arch_critic: 1, auditor: 1, writer: 1 },
-  deep: { explorer: 5, analyst: 3, critic: 2, arch_critic: 2, auditor: 2, writer: 2 },
+  fast: { common_explorer: 5, consultant_analyst: 0, consultant_critic: 0, coder_reviewer: 0, consultant_auditor: 0, author_writer: 0 },
+  standard: { common_explorer: 5, consultant_analyst: 1, consultant_critic: 1, coder_reviewer: 1, consultant_auditor: 1, author_writer: 1 },
+  deep: { common_explorer: 5, consultant_analyst: 3, consultant_critic: 2, coder_reviewer: 2, consultant_auditor: 2, author_writer: 2 },
 }
 
 export function tierRoleCaps(tier: Tier): RoleCaps {

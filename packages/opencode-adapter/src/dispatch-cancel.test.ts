@@ -66,7 +66,7 @@ function status(text: string) {
 
 const aborted = { name: "MessageAbortedError", data: { message: "aborted" } } as const
 const retryable = { name: "APIError", data: { message: "unavailable", isRetryable: true } } as const
-const writerChainSeam = makeJobSpec({ role: "writer", agent_name: "consultation-writer", model_chain: ["opencode/claude-sonnet-5-5", "opencode-go/glm-5.3"] })
+const writerChainSeam = makeJobSpec({ role: "author-writer", agent_name: "consultation-writer", model_chain: ["opencode/claude-sonnet-5-5", "opencode-go/glm-5.3"] })
 
 test("fix-3 removes sleep abort listeners when the timer settles normally", async () => {
   // Given a reusable caller signal.

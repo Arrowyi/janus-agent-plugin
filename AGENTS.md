@@ -9,7 +9,7 @@ This plugin ships to other users, so a deployment must be reproducible from buil
 - Keep the bundle self-contained. `script/build.ts` marks nothing external and the memory MCP server resolves to the bundled `memory-mcp-server.js` sibling, so no `node_modules` ships with an install. An external runtime import breaks packaged installs.
 - Source-mode entries are for this repo's own test runs only, never for a working setup or a release.
 
-Full detail: [docs/deployment.md](docs/deployment.md#deployment-rule).
+Full detail: the "部署规则" section of [docs/deployment.md](docs/deployment.md).
 
 ## What changed → which verification
 
@@ -34,7 +34,7 @@ Full detail: [docs/deployment.md](docs/deployment.md#deployment-rule).
 2. Run `bun test` and `bun run typecheck` (plus `bun run gen:skill` after a skill change).
 3. Run `bun run install:local`, then prove the installed artifact:
    `JANUS_PLUGIN_ENTRY=~/.local/share/janus-agent-plugin/dist/index.js bun run integration`.
-4. Restart OpenCode so it loads the new bundle (the `config` hook re-registers agents, the memory MCP, the skill, and the command).
+4. Restart OpenCode so it loads the new bundle (the `config` hook re-registers agents, the memory MCP, the skill, and the three commands).
 5. When changing `/janus-models`, update `assets/commands/janus-models.md`, `command-installer.ts`, `script/install-local.ts` (`REQUIRED_INSTALLED_FILES`), the command tests, the integration assertion, and the README/deployment docs together.
 
 Role model defaults live in `packages/opencode-adapter/src/plugin-config.ts` (`MODEL_DEFAULTS` and the shipped `TIER_MODEL_DEFAULTS`) and are mirrored in `docs/deployment.md`; update both, plus the assertions in `plugin.test.ts`, `agent-registration.test.ts`, and `dispatch-tool.test.ts`. A shipped model with no `assets/model-prompts/<key>.md` block ships without driving notes, so add the block and its `REQUIRED_INSTALLED_FILES` entry in the same change.

@@ -1,59 +1,56 @@
-# Janus Agent Plugin Architecture
+# Janus Agent Plugin 架构
 
-The living architecture specification for the janus-agent plugin, describing the current implementation and mechanism. Harness: OpenCode. The core is harness-neutral; Codex, Senpi, and other hosts plug in through thin adapters. Change history lives in git, not in this document.
+本文档是 janus-agent 插件的现行架构规范，描述当前实现与机制。宿主：OpenCode。核心与宿主无关；Codex、Senpi 及其他宿主通过薄适配器接入。变更历史由 git 承载，不在本文档中。
 
-## 1. Executive Decision
+## 1. 总体决策
 
-Build an independent Janus agent plugin with a harness-neutral consultation core, a harness-neutral memory core, a local SQLite store, a local MCP interface, and a thin OpenCode adapter.
+构建一个独立的 Janus agent 插件：宿主无关的咨询核心、宿主无关的记忆核心、本地 SQLite 存储、本地 MCP 接口，以及一个薄的 OpenCode 适配器。
 
-The public experience is a 13-role family across three teams plus two independent entries: `janus` (default front desk/routing) and `simple` (economical quick answers). The **consultation team** is `consultant` plus `common-explorer`, `consultant-analyst`, `consultant-critic`, and `consultant-auditor`; it owns evidence-driven advice in five modes — `select`, `verify`, `roadmap`, `research`, `guide`. The **R&D team** is `architect` plus `coder` and the `coder-reviewer`/`coder-lite` lanes; `architect` owns system design and the `design.md` record, `coder` owns implementation with adaptive L0–L3 process weight, and `coder-reviewer` pre-mortems one-way designs and reviews the coder's plan/diff. The **documentation team** is `author` plus `author-writer`; `author` owns intake, evidence, the outline approval, the author brief, verification, and publishing, and writes no reader-facing prose; `author-writer` is the sole author of reader-facing prose and, in scoped-write mode, the sole writer of approved files under `writer_docs_roots`. `consultant`, `architect`, and `author` hand work off rather than swallowing another team's lane.
+对外体验是三团队之上的 13 角色家族，外加两个独立入口：`janus`（默认前台/路由）与 `simple`（经济型快答）。**咨询团队**是 `consultant` 加 `common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`；它以五种模式——`select`、`verify`、`roadmap`、`research`、`guide`——负责证据驱动的建议。**研发团队**是 `architect` 加 `coder` 与 `coder-reviewer`/`coder-lite` 车道；`architect` 负责系统设计与 `design.md` 记录，`coder` 以自适应 L0-L3 过程权重负责实现，`coder-reviewer` 对单向门设计做事前验尸并审查 coder 的计划/diff。**文档团队**是 `author` 加 `author-writer`；`author` 负责接单、证据、大纲审批、作者简报、验证与发布，不写读者可见正文；`author-writer` 是读者可见正文的唯一执笔者，且在限定写入模式下是 `writer_docs_roots` 之下已批准文件的唯一写入者。`consultant`、`architect`、`author` 之间移交工作，而不是吞并其他团队的领地。
 
-The memory system stores only user-approved experience packages. It does not automatically persist complete conversations. Canonical experience records remain independent of classification schemes, summarization models, embedding models, and storage indexes. Every derived view can be rebuilt.
+记忆系统只存储用户批准过的经验包。它不自动保存完整对话。权威经验记录独立于分类方案、摘要模型、embedding 模型与存储索引。每个派生视图都可重建。
 
-Implementation must occur in a separate repository or directory selected by the user. No plugin code belongs in the current oh-my-openagent repository.
+## 2. 产品目标
 
-## 2. Product Goals
+1. 给出简洁、人类友好的回答——决策问题给决策简报，理解问题给可读报告。
+2. 抵御谣言、相关联来源、营销压力、水军造势与无依据的共识。
+3. 对不同断言类型与风险等级施加不同的证据标准。
+4. 在用户生成内容中检测刻意欺骗（付费吹捧、协同抹黑）。
+5. 通过有界研究与渐进式记忆披露保持 token 效率。
+6. 积累用户批准的经验，而不把先前的模型结论变成循环证据。
+7. 保持核心在不同 agent 宿主与模型提供商之间的可移植性。
+8. 保护溯源、修订、删除权与迁移安全。
 
-1. Give concise, human-friendly answers — a decision brief for decision questions, a readable report for understanding questions.
-2. Resist rumors, correlated sources, marketing pressure, astroturfing, and unsupported consensus.
-3. Apply different evidence standards to different claim types and risk levels.
-4. Detect deliberate deception (paid shilling, coordinated smearing) in user-generated sources.
-5. Preserve token efficiency through bounded research and progressive memory disclosure.
-6. Accumulate user-approved experience without turning previous model conclusions into circular evidence.
-7. Keep the core portable across agent harnesses and model providers.
-8. Preserve provenance, revisions, deletion rights, and migration safety.
+## 3. 非目标
 
-## 3. Non-Goals
+本插件不做：
 
-The first version will not:
+- 支持多宿主并发写入；
+- 跨机器同步记忆；
+- 建立账户系统或远程记忆服务；
+- 保存完整对话记录（只保存咨询记录的归纳式摘要）；
+- 把旧建议当作独立证据；
+- 提供专业的医疗、法律、金融或安全决策；
+- 发布或要求独立的 `research-director` agent——深度研究是 consultant 的 `research` 模式；
+- 让每次咨询都用多个子 agent。
 
-- join or modify the oh-my-openagent product architecture;
-- support concurrent writers from multiple harnesses;
-- synchronize memory across machines;
-- create an account system or remote memory service;
-- save full transcripts (only inductive summaries of consultation records);
-- treat old recommendations as independent evidence;
-- provide professional medical, legal, financial, or safety decisions;
-- ship or require a separate `research-director` agent — deep research is a `research` mode of the consultant;
-- make every consultation use multiple subagents.
-
-## 4. Architecture Overview
+## 4. 架构总览
 
 ```mermaid
 flowchart TB
-    U[User] --> OA[OpenCode Adapter]
+    U[用户] --> OA[OpenCode 适配器]
     OA --> A[Consultant Agent]
-    A --> S[Consultation Skill]
-    S --> CC[Consultation Core]
-    CC --> MR[Memory Port]
-    MR --> MCP[Memory MCP]
-    MCP --> MC[Memory Core]
-    MC --> DB[(SQLite Canonical Ledger)]
-    MC --> IDX[Rebuildable Indexes]
-    CC --> SP[Search and Source Ports]
+    A --> S[咨询 Skill]
+    S --> CC[咨询核心]
+    CC --> MR[记忆端口]
+    MR --> MCP[记忆 MCP]
+    MCP --> MC[记忆核心]
+    MC --> DB[(SQLite 权威账本)]
+    MC --> IDX[可重建索引]
+    CC --> SP[搜索与来源端口]
 ```
 
-### 4.1 Proposed Repository Shape
+### 4.1 仓库形态
 
 ```text
 janus-agent-plugin/
@@ -63,19 +60,19 @@ janus-agent-plugin/
 │   ├── memory-sqlite/
 │   ├── memory-mcp/
 │   └── opencode-adapter/
-├── skill-src/consultation/    # skill sources (never shipped)
+├── skill-src/consultation/    # skill 源（绝不随包发布）
 ├── assets/
 │   ├── agents/consultant.md
-│   ├── principles/*.md        # common base/write + shared prompt fragments
-│   └── skills/consultation/SKILL.md   # generated from skill-src/
+│   ├── principles/*.md        # 公共基线/写入门 + 共享提示词片段
+│   └── skills/consultation/SKILL.md   # 由 skill-src/ 生成
 ├── evals/
 ├── docs/
 └── package.json
 ```
 
-This is one installable product with internal package boundaries. It is not a collection of separately configured user projects.
+这是一个带内部包边界的单一可安装产品，不是一组分别配置的用户项目。
 
-### 4.2 Dependency Direction
+### 4.2 依赖方向
 
 ```text
 consultation-core  memory-core
@@ -88,486 +85,485 @@ consultation-core  memory-core
         +------ opencode-adapter
 ```
 
-Core packages must not import OpenCode or the MCP SDK. Adapters translate host and transport concepts into core ports.
+核心包不得导入 OpenCode 或 MCP SDK。适配器把宿主与传输概念翻译为核心端口。
 
-## 5. Component Responsibilities
+## 5. 组件职责
 
 ### 5.1 Consultant Agent
 
-The `consultant` primary agent owns the evidence workflow and final expression for the five consultation modes. `janus` is the default front desk; `simple` is the economical leaf; `architect` owns design; `coder` owns coding; `author` owns durable documents. The consultant routes each request to one of `select`, `verify`, `roadmap`, `research`, or `guide`, and a tier (fast, standard, or deep; `roadmap` and `guide` never use fast). It:
+`consultant` 主入口负责五种咨询模式的证据流程与最终表达。`janus` 是默认前台；`simple` 是经济叶节点；`architect` 负责设计；`coder` 负责编码；`author` 负责持久文档。consultant 把每个请求路由到 `select`、`verify`、`roadmap`、`research` 或 `guide` 之一，并选择档位（fast、standard 或 deep；`roadmap` 与 `guide` 从不用 fast）。它：
 
-- detects the mode from intent and chooses the tier;
-- identifies decision-changing missing information;
-- asks at most one to three initial questions when needed;
-- invokes search, memory, and the consultation team (`common-explorer`, `consultant-analyst`, `consultant-critic`, `consultant-auditor`);
-- retains final synthesis and verification over delegated research without writing prose or production code;
-- returns a mode-specific decision brief, a readable research report, or a composite guide;
-- hands `design` work to `architect` and durable documents to `author`;
-- recognizes natural-language memory intents.
+- 从意图识别模式并选择档位；
+- 识别会改变决策的缺失信息；
+- 必要时至多提一到三个初始问题；
+- 调用搜索、记忆与咨询团队（`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`）；
+- 把最终综合与验证留在自己手里，把检索类工作交给团队，但不写正文、不写生产代码；
+- 返回模式专属的决策简报、可读研究报告或复合攻略；
+- 把 `design` 工作移交给 `architect`、持久文档移交给 `author`；
+- 识别自然语言的记忆意图。
 
-It does not directly implement persistence or source grading rules.
+它不直接实现持久化或来源分级规则。
 
-### 5.1.1 Mode Stack and on-demand playbooks
+### 5.1.1 模式栈与按需手册
 
-The consultant keeps one session across its five evidence modes: each turn re-evaluates the ask and carries verified evidence, constraints, and accepted decisions forward. A switch to `design` or `doc` is a handoff to `architect` or `author`, which load `consultation-design` or `consultation-doc`; a nested local unknown suspends the main mode, dispatches a bounded `common-explorer`/`consultant-analyst` task, then resumes. A `coder` or `author-writer` task that may be revisited is dispatched with `return_handle: true` and continued through `janus_dispatch_continue` by its owning entry. Only the core `consultation` skill is always relevant; the heavy playbooks are loaded on demand.
+consultant 在其五个证据模式上共用一个会话：每一轮重新评估诉求，并把已验证的证据、约束与已接受的决策向前携带。切换到 `design` 或 `doc` 是向 `architect` 或 `author` 的移交，由它们载入 `consultation-design` 或 `consultation-doc`；嵌套的局部未知会暂停主模式，派发一个有界的 `common-explorer`/`consultant-analyst` 任务后恢复。可能被反复回访的 `coder` 或 `author-writer` 任务以 `return_handle: true` 派发，并由其归属入口通过 `janus_dispatch_continue` 续接。只有核心 `consultation` skill 常驻相关；重型手册按需载入。
 
-### 5.2 Consultation Skill
+### 5.2 咨询 Skill
 
-The reusable core `consultation` skill defines the shared cognitive workflow; `consultation-design` and `consultation-doc` carry the heavy design and document playbooks and are loaded on demand:
+可复用的核心 `consultation` skill 定义共享的认知流程；`consultation-design` 与 `consultation-doc` 承载重型设计与文档手册，按需载入：
 
-- claim decomposition;
-- evidence and source evaluation;
-- risk classification;
-- counter-evidence requirements;
-- decision preference handling;
-- confidence language;
-- short output structure;
-- the design method (admission, layered decisions, quality scenarios, reversibility gates, the design record);
-- memory preview and save behavior.
+- 断言分解；
+- 证据与来源评估；
+- 风险分类；
+- 反证要求；
+- 决策偏好处理；
+- 把握度语言；
+- 短输出结构；
+- 设计方法（准入、分层决策、质量场景、可逆性门、设计记录）；
+- 记忆预览与保存行为。
 
-The skills are reusable by agents other than `consultant`. The agent prompt may preload the core skill, but the skill remains the authoritative workflow source. `skill-src/{consultation,consultation-design,consultation-doc}/**` is the source of truth and `script/gen-skill.ts` generates the three `assets/skills/*/SKILL.md` files (wired into the build); a freshness test fails on drift. `script/skill-consistency.test.ts` checks the seven-mode schema against the consultant prompt, the generated skills, and the eval `modes` metadata, and `script/prompt-lint.test.ts` enforces per-skill word budgets and duplicate-sentence discipline.
+这些 skill 可被 `consultant` 之外的 agent 复用。agent 提示词可以预载核心 skill，但 skill 始终是权威流程来源。`skill-src/{consultation,consultation-design,consultation-doc}/**` 是唯一事实源，`script/gen-skill.ts` 生成三个 `assets/skills/*/SKILL.md`（已接入构建）；过期测试会报错。`script/skill-consistency.test.ts` 检查七模式 schema 与 consultant 提示词、生成的 skill、eval 的 `modes` 元数据一致；`script/prompt-lint.test.ts` 强制每 skill 字数预算与重复句纪律。
 
-### 5.3 Consultation Core
+### 5.3 咨询核心
 
-The consultation core provides deterministic contracts and policy helpers. It owns:
+咨询核心提供确定性契约与策略辅助。它负责：
 
-- validated classifications and policy decisions;
-- consultation intensity rules;
-- risk rules;
-- evidence packet schemas;
-- fact, inference, preference, and prediction distinctions;
-- output contracts;
-- research budget enforcement;
-- source and memory provenance requirements;
-- ports for reasoning, search, memory, and clock.
+- 校验过的分类与策略决策；
+- 咨询强度规则；
+- 风险规则；
+- 证据包 schema；
+- 事实、推断、偏好与预测的区分；
+- 输出契约；
+- 研究预算强制；
+- 来源与记忆溯源要求；
+- 推理、搜索、记忆与时钟的端口。
 
-Reasoning remains model-driven. The core validates structured model output and enforces rules that must not depend on prompt compliance.
+推理仍是模型驱动的。核心校验结构化的模型输出，并强制那些不能依赖提示词自觉遵守的规则。
 
-### 5.4 Memory Core
+### 5.4 记忆核心
 
-The memory core owns:
+记忆核心负责：
 
-- canonical experience schemas;
-- revision and status transitions;
-- progressive retrieval planning;
-- taxonomy and tag relationships;
-- provenance and validity rules;
-- sensitive-field policies;
-- forget and cascade-delete semantics;
-- import, export, and rebuild contracts.
+- 权威经验 schema；
+- 修订与状态迁移；
+- 渐进式检索规划；
+- 分类与标签关系；
+- 溯源与有效性规则；
+- 敏感字段策略；
+- 遗忘与级联删除语义；
+- 导入、导出与重建契约。
 
-It does not know OpenCode sessions, MCP transports, or SQLite statements.
+它不知道 OpenCode 会话、MCP 传输或 SQL 语句。
 
-### 5.5 Memory SQLite Adapter
+### 5.5 记忆 SQLite 适配器
 
-The SQLite adapter owns:
+SQLite 适配器负责：
 
-- schema migrations;
-- transactions and idempotency;
-- multi-process safety (WAL, busy timeout, write transactions);
-- canonical record persistence;
-- FTS indexes;
-- derived summaries and embedding records;
-- backup, recovery, and rebuild support.
+- schema 迁移；
+- 事务与幂等；
+- 多进程安全（WAL、busy timeout、写事务）；
+- 权威记录持久化；
+- FTS 索引；
+- 派生摘要与 embedding 记录；
+- 备份、恢复与重建支持。
 
-### 5.6 Memory MCP
+### 5.6 记忆 MCP
 
-The local stdio MCP server exposes a stable cross-harness memory boundary. It remains thin and delegates all domain behavior to memory core.
+本地 stdio MCP 服务器暴露一个跨宿主稳定的记忆边界。它保持薄，把全部领域行为委托给记忆核心。
 
-### 5.7 OpenCode Adapter
+### 5.7 OpenCode 适配器
 
-The first adapter:
+适配器：
 
-- registers the six entries — `janus` (front desk), `simple` (economical leaf), `consultant` (consultation team), `architect` (R&D design), `coder` (R&D implementation), and `author` (documentation);
-- registers the consultation subagents — `common-explorer`, `consultant-analyst`, `consultant-critic`, and `consultant-auditor` (read-only, shell-denied, and dispatch-denied);
-- registers the R&D subagents `coder-reviewer` (read-only review) and `coder-lite` (mechanical coding lane, leaf, step-capped), and the documentation subagent `author-writer` (edit allowed only under the configured `writer_docs_roots`, default `userdoc`; an empty roots array selects the read-only fallback; shell and dispatch denied; step-capped at 80);
-- creates the fixed author state directory (`$XDG_DATA_HOME/janus-agent/author`) where `author` writes per-document briefs, and the design state directory (`$XDG_DATA_HOME/janus-agent/design`) where `architect` writes `design.md`; `author` gets access to the author and design dirs, `architect` to the design dir, and `coder` to the design dir (it reads `design.md`, writes `plan.md`); `consultant` has no business-state directory permission;
-- makes the core consultation skill and its design/doc sub-skills available;
-- registers or launches the bundled local memory MCP;
-- maps OpenCode session IDs into namespaced core IDs;
-- exposes model and provider configuration;
-- installs the `janus-memory` browse command;
-- assembles each prompt from the role asset, model block, shared fragments (`research-leaf`, `reasoning-failures`, `dispatch-hub`), the common base, the common write gate (skipped for read-only roles), and runtime bindings, with a reviewed golden snapshot per role;
-- does not contain evidence, recommendation, or persistence logic.
+- 注册六个主入口——`janus`（前台）、`simple`（经济叶节点）、`consultant`（咨询团队）、`architect`（研发设计）、`coder`（研发实现）、`author`（文档）；
+- 注册咨询子 agent——`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`（只读、禁 shell、禁派发）；
+- 注册研发子 agent `coder-reviewer`（只读审查）与 `coder-lite`（机械编码车道、叶节点、步数上限），以及文档子 agent `author-writer`（仅允许编辑配置的 `writer_docs_roots` 之下，默认 `userdoc`；空根数组选择只读回退；禁 shell 与派发；步数上限 80）；
+- 创建固定的 author 状态目录（`$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报）、design 状态目录（`$XDG_DATA_HOME/janus-agent/design`，`architect` 在其中写 `design.md`），以及跨团队 handoff 状态目录（`$XDG_DATA_HOME/janus-agent/handoff`，五个主入口在其中追加 `handoff.md` 文档）；`author` 拥有 author 与 design 两目录权限，`architect` 拥有 design 目录权限，`coder` 拥有 design 目录权限（读 `design.md`、写 `plan.md`）；handoff 目录由 `janus`、`consultant`、`architect`、`coder`、`author` 五者共享，是 `consultant` 与 `janus` 唯一持有的业务态目录；
+- 提供核心咨询 skill 及其设计/文档子 skill；
+- 注册或启动内置的本地记忆 MCP；
+- 把 OpenCode 会话 ID 映射为带命名空间的核心 ID；
+- 暴露模型与提供商配置；
+- 安装 `/janus-memory` 浏览、`/janus-models` 模型轮换、`/janus-handoff` 交接管理三条命令；
+- 按「角色 asset + 模型块 + 共享片段（`research-leaf`、`reasoning-failures`、`dispatch-hub`）+ 公共基线 + 公共写入门（只读角色跳过）+ 运行时绑定」组装每个提示词，每个角色配一份经评审的金样快照；
+- 不包含证据、建议或持久化逻辑。
 
-## 6. Consultation Workflow
+## 6. 咨询工作流
 
 ```mermaid
 flowchart TD
-    Q[User Question] --> MODE[Detect Mode: select / verify / plan / research / guide / author / design]
-    MODE --> T[Choose Tier: fast / standard / deep]
-    T --> M[Recall Memory + Surface Pending Outcomes]
-    M --> C{Decision-Changing Info Missing?}
-    C -->|Yes| ASK[Ask 1-3 Questions]
-    C -->|No| D[Decompose Claims]
+    Q[用户问题] --> MODE[识别模式: select / verify / roadmap / research / guide / doc / design]
+    MODE --> T[选择档位: fast / standard / deep]
+    T --> M[召回记忆 + 呈报待定结果]
+    M --> C{缺失会改变决策的信息？}
+    C -->|是| ASK[提 1-3 个问题]
+    C -->|否| D[分解断言]
     ASK --> D
-    D --> R[Identify missing evidence + task-fit roles]
-    R --> G[Gather + Grade Evidence via Channel Ladder]
-    G --> V{Source influence uncertain or relevant?}
-    V -->|Yes| IA[Verifier: Bounded Intent Audit]
-    V -->|No| A{Material interpretation uncertain?}
+    D --> R[识别缺失证据 + 任务匹配角色]
+    R --> G[经渠道阶梯收集并分级证据]
+    G --> V{来源影响不确定或相关？}
+    V -->|是| IA[审计员: 有界意图审计]
+    V -->|否| A{实质性解读不确定？}
     IA --> A
-    A -->|Yes| AN[Analyst: Independent Analysis]
-    A -->|No| X{Consequential conclusion needs challenge?}
+    A -->|是| AN[分析员: 独立分析]
+    A -->|否| X{重大结论需要挑战？}
     AN --> X
-    X -->|Yes| CE[Critic: Counter-Evidence]
-    X -->|No| SYN[Synthesize]
+    X -->|是| CE[批评员: 反证]
+    X -->|否| SYN[综合]
     CE --> SYN
-    SYN --> O[Mode-Specific Brief or Readable Report]
-    O --> SAVE[Auto-Save Consultation Record + Register Outcome]
+    SYN --> O[模式专属简报或可读报告]
+    O --> SAVE[自动保存咨询记录 + 登记结果]
 ```
 
-`doc` consultations run a dedicated state machine behind one outline-approval gate, with a strict author separation — the `author-writer` is the sole author of reader-facing prose and `author` writes none:
+`doc` 咨询在一道大纲审批门之后运行专属状态机，并保持严格的作者分离——`author-writer` 是读者可见正文的唯一执笔者，`author` 一字不写：
 
 ```text
-route -> intake (audience/delivery/scope) -> explore load-bearing claims
--> author-writer blueprint -> outline + file manifest -> one approval -> create the brief
--> author-writer produces bounded approved chapter drafts (and writes the approved
-   files itself in scoped-write mode; returns prose or patches in read-only
-   fallback) -> consultant reviews and verifies -> bounded author-writer fixes -> publish
--> proportionate verification -> cross-file check -> final AuthorBrief -> memory summary
+路由 -> 接单（受众/交付/范围）-> 勘察承重断言
+-> author-writer 蓝图 -> 大纲 + 文件清单 -> 一次批准 -> 创建简报
+-> author-writer 产出有界的已批准章节草稿（限定写入模式下亲自写已批准的文件；
+   只读回退时返回正文或补丁）-> 审查与验证 -> 有界修正 -> 发布
+-> 相称的验证 -> 跨文件检查 -> 最终 AuthorBrief -> 记忆摘要
 ```
 
-The brief is the document's external state file at `<authorStateDir>/<projectId>/<docId>/brief.md` (fixed author state dir, stable project id): `author` creates it at the outline gate, updates it at structural changes, and appends a change log; `author-writer` reads it and never writes it. The brief also records `writer_session_id` — the reusable author-writer session for this document, captured from the first author-writer dispatch's `return_handle` completed envelope (or the pending envelope's `session_id`) and absent until then. That first dispatch may be the pre-approval blueprint, before the brief exists: `author` retains the id in working context and writes it into the brief when the brief is created at the outline gate. Document-scoped session reuse is a policy on top of the generic continuation mechanism: `author` continues the same author-writer session for that document's later bounded tasks (`janus_dispatch_continue` with only the change request, affected section, and new evidence — not the whole brief), one session per document with no cross-document reuse, continue only after the previous job is terminal, and a lost/foreign/busy session falls back to a fresh dispatch with the full brief and an updated id. In this mode adversarial roles are proportionate, never a fixed roster: `consultant-critic` runs for `strict` verification, conflicting evidence, high-risk material, failed execution, or material uncertainty it could resolve, and `consultant-auditor` audits user-generated, promotional, or purportedly independent evidence when influence or provenance is relevant or uncertain; a source-independence audit is routed through `consultant`. After outline approval `author-writer` may produce complete section/chapter prose from a bounded evidence packet and do targeted web lookups within a search budget, logging a source ledger; broad or contested research stays with `author`, which routes it to `common-explorer` (the author-writer never dispatches). `author` verifies load-bearing claims against the author-writer's source ledger, checks cross-file consistency, and requests bounded author-writer fixes — in scoped-write mode (`writer_docs_roots` non-empty, default `["userdoc"]`) it does not edit files under the author-writer roots; in read-only fallback (`writer_docs_roots: []`) it applies and publishes the author-writer's returned text and discloses the mode. A delegated author-writer's host permissions are separate and are not enforced by this plugin.
+简报是文档的外部状态文件，位于 `<authorStateDir>/<projectId>/<docId>/brief.md`（固定的 author 状态目录、稳定的项目 ID）：`author` 在大纲审批门创建它，在结构性变更时更新它，并追加变更日志；`author-writer` 只读、绝不写。简报还记录 `writer_session_id`——本文档可复用的 author-writer 会话，取自第一次 author-writer 派发的 `return_handle` 完成信封（或 pending 信封的 `session_id`），在那之前不存在。第一次派发可能发生在批准前的蓝图阶段、简报尚不存在时：`author` 先在工作上下文中保留该 ID，待大纲审批门创建简报时写入。文档级的会话复用是叠加在通用续接机制上的策略：`author` 对该文档后续的有界任务续接同一个 author-writer 会话（`janus_dispatch_continue` 只带修改请求、受影响章节与新证据——不带整份简报），一篇文档一个会话、不跨文档复用、只在上一个 job 终态后续接；会话丢失、属他或忙时回退为携带完整简报的全新派发并更新 ID。该模式下对抗性角色按需出现，绝不是固定名册：`consultant-critic` 用于 `strict` 验证、相互冲突的证据、高风险材料、执行失败或它能够解决的实质性不确定；`consultant-auditor` 在影响或溯源相关或不明时审计用户生成、推广或自称独立的证据；来源独立性审计经 `consultant` 路由。大纲批准后，`author-writer` 可以从有界证据包产出完整的章节正文，并在检索预算内做定向网络检索、记录来源台账；宽泛或有争议的研究留在 `author`，由它路由给 `common-explorer`（author-writer 绝不派发）。`author` 对照 author-writer 的来源台账验证承重断言、检查跨文件一致性并请求有界修正——限定写入模式（`writer_docs_roots` 非空，默认 `["userdoc"]`）下它不编辑写手根目录下的文件；只读回退（`writer_docs_roots: []`）下它应用并发布 author-writer 返回的正文并披露该模式。代理 author-writer 的宿主权限是另一套，不在本插件的强制范围内。
 
-### 6.1 Consultation Tiers
+### 6.1 咨询档位
 
 #### Fast
 
-Use when the question is low-risk, directly verifiable, and minimally personalized.
+问题低风险、可直接验证、几乎不涉及个人化时使用。
 
-- Prefer a primary authoritative source.
-- Perform an exact or very small memory lookup.
-- Do not invoke a subagent by default.
-- Answer in one to several sentences when possible.
+- 优先单一权威来源。
+- 做精确或极小的记忆查询。
+- 默认不调用子 agent。
+- 能一句话到几句话说清就一句话到几句话。
 
 #### Standard
 
-Use for comparisons, recommendations, personalization, or moderate inference.
+比较、推荐、个性化或中等推理时使用。
 
-- Check source independence and provenance.
-- Search for counter-evidence.
-- Retrieve relevant experience and preferences progressively.
-- Dispatch a specialist when its check could materially affect the answer and you can name the decision it could change and the specific failure it would catch. Skip only with that reason; standard tier does not prescribe a roster.
-- Return a mode-specific deliverable with the conclusion and next action in the first screen.
+- 检查来源独立性与溯源。
+- 搜索反证。
+- 渐进式召回相关经验与偏好。
+- 当某个专家的检查可能实质改变答案、且你能说出它可能改变哪个决策、能抓住哪种具体失败时派发它；跳过必须给出该理由——standard 档不规定名册。
+- 返回模式专属交付物，结论与下一步动作在首屏。
 
 #### Deep
 
-Use for high risk, strong source conflicts, missing primary evidence, inference-dominated conclusions, broad comparisons, or any research-mode question.
+高风险、来源强烈冲突、权威一手证据缺失、推断占主导、大范围比较或任何 research 模式问题时使用。
 
-- Ask the user before escalating.
-- Decompose consequential work and route to the specialists whose evidence, interpretation, independent challenge, influence audit, or authoring is relevant or uncertain. Deep tier does not require calling every role.
-- Seek supporting and opposing evidence; audit source intent when influence or independence is relevant or uncertain.
-- Keep final synthesis and output with the consultant agent.
+- 升级前先问用户。
+- 把重大工作分解并路由到证据、解读、独立挑战、影响审计或执笔相关或不确定的专家。deep 档不要求调用每个角色。
+- 同时寻找支持与反对证据；当影响或独立性相关或不明时审计来源意图。
+- 最终综合与输出保留在 consultant 手中。
 
-Deep work is done by the consultant's own team. There is no separate deep-research provider; the `research` mode (§8) is the deep, understanding-oriented path.
+Deep 工作由 consultant 自己的团队完成。没有独立的深度研究提供商；`research` 模式（§8）就是面向理解的深度路径。
 
-### 6.2 Tier Decision Dimensions
+### 6.2 档位决策维度
 
-The router evaluates:
+路由器评估：
 
-1. potential harm from a wrong answer;
-2. availability of authoritative primary sources;
-3. conflict among reliable sources;
-4. dependence on personal context;
-5. proportion of synthesis versus direct evidence.
+1. 错误答案的潜在危害；
+2. 权威一手来源的可得性；
+3. 可靠来源之间的冲突度；
+4. 对个人上下文的依赖度；
+5. 综合与直接证据的占比。
 
-### 6.3 Team Roles and Tier Caps
+### 6.3 团队角色与档位上限
 
-The consultant leads four consultation subagent roles through `janus_dispatch`: `common-explorer`, `consultant-analyst`, `consultant-critic`, and `consultant-auditor`. Its skills are the authoritative task-fit policy: assign bounded work when a role could materially change the result and the consultant can name the decision it could change and the specific failure it would catch; skip only with that reason. Independent gathering may fan out; analysis follows evidence and critique follows a draft conclusion. Design review, code review, and documentation prose belong to their own teams.
+consultant 通过 `janus_dispatch` 领导四个咨询子 agent：`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`。其 skill 是权威的任务匹配策略：当某角色可能实质改变结果、且 consultant 能说出它可能改变哪个决策、能抓住哪种具体失败时，分派有界工作；跳过必须给出该理由。独立收集可以扇出；分析跟随证据，批评跟随草稿结论。设计审查、代码审查与文档正文属于各自的团队。
 
-Entries are separate from this research roster: `janus` (front desk), `simple` (economical leaf), `consultant` (consultation team), `architect` (design), `coder` (implementation), and `author` (documentation) are user-selectable. `coder` owns the `coder-lite` mechanical lane; `architect` and `coder` share `coder-reviewer`; `author` owns `author-writer`. The tier caps below span the family and are advisory maximums.
+主入口独立于这个检索名册：`janus`（前台）、`simple`（经济叶节点）、`consultant`（咨询团队）、`architect`（设计）、`coder`（实现）、`author`（文档）是用户可选的。`coder` 拥有 `coder-lite` 机械车道；`architect` 与 `coder` 共享 `coder-reviewer`；`author` 拥有 `author-writer`。下表的上限覆盖整个家族，均为建议性最大值。
 
-| Role | Purpose |
+| 角色 | 用途 |
 |---|---|
-| `common-explorer` | gather and grade evidence (fan-out up to 5 instances) |
-| `consultant-analyst` | independent reasoning pass over evidence (model diversity is a runtime property) |
-| `consultant-critic` | adversarial counter-evidence pass and plan-robustness review; protocol cards for counter-evidence, hypothesis matrix, and plan robustness |
-| `coder-reviewer` | one-way-door design pre-mortem and independent review of the coder's `plan.md`/diff against `design.md`; applies the shared engineering principles |
-| `consultant-auditor` | bounded audit of manipulation or opaque independence in user/third-party/promotional evidence; missing observations produce `unknown` |
-| `author-writer` | sole author of reader-facing prose for `doc` — blueprint before approval, section/chapter prose and maintenance after approval, coherence passes; targeted web lookups with a source ledger. Plugin-owned: shell and dispatch denied; edit allowed only under `writer_docs_roots` (read-only fallback when empty) |
+| `common-explorer` | 收集并分级证据（最多扇出 5 个实例） |
+| `consultant-analyst` | 对证据的独立解读环节（模型多样性是运行时属性） |
+| `consultant-critic` | 对抗式反证环节与计划稳健性审查；反证、假设矩阵、计划稳健性三张协议卡 |
+| `coder-reviewer` | 单向门设计事前验尸；对照 `design.md` 独立审查 coder 的 `plan.md`/diff；适用共享工程原则 |
+| `consultant-auditor` | 对用户/第三方/推广证据中操纵或不透明独立性的有界审计；观察缺失产出 `unknown` |
+| `author-writer` | `doc` 的读者可见正文唯一执笔者——批准前蓝图、批准后章节正文与维护、一致性检查；带来源台账的定向网络检索。插件自有：禁 shell 与派发；仅允许编辑 `writer_docs_roots` 之下（空时只读回退） |
 
-Per-tier **maximum** instance counts (`TIER_ROLE_CAPS`, mirrored by the adapter's validated `tier_role_caps` config), never minimums or a required team roster:
+每档位的实例**上限**（`TIER_ROLE_CAPS`，由适配器校验过的 `tier_role_caps` 配置镜像），绝不是下限、更不是必须凑齐的名册：
 
-| Tier | common-explorer | consultant-analyst | consultant-critic | coder-reviewer | consultant-auditor | author-writer |
-|---|---|---|---|---|---|---|---|
+| 档位 | common-explorer | consultant-analyst | consultant-critic | coder-reviewer | consultant-auditor | author-writer |
+|---|---|---|---|---|---|---|
 | fast | 5 | 0 | 0 | 0 | 0 | 0 |
 | standard | 5 | 1 | 1 | 1 | 1 | 1 |
 | deep | 5 | 3 | 2 | 2 | 2 | 2 |
 
-`doc` never runs at fast tier. `author-writer` is optional (`author_writer_enabled`, default true); when it is disabled or unavailable, doc mode is unavailable — `author` discloses which author-writer work is missing and offers to enable the author-writer, configure a delegate, or an explicit author-prose fallback the user accepts; it does not silently write reader-facing prose. The caps are passed to the consultant as configuration, not enforced by a per-turn runtime scheduler; zero means the role is unavailable at that tier and the consultant must disclose a material gap.
+`doc` 从不在 fast 档运行。`author-writer` 是可选的（`author_writer_enabled`，默认 true）；当它被禁用或不可用时文档模式不可用——`author` 披露缺失了哪些 author-writer 工作，并提供启用 author-writer、配置代理、或用户明确接受的作者正写回退三个选项；它绝不静默亲写读者可见正文。上限作为配置传给 consultant，没有按轮次强制调度的运行时调度器；零表示该角色在该档位不可用，consultant 必须披露由此产生的实质缺口。
 
-### 6.4 Recoverable Dispatch API
+### 6.4 可恢复派发 API
 
-All roles share the same recoverable dispatch lifecycle; every agent resolves to a single configured model with no plugin fallback chain.
+所有角色共享同一套可恢复派发生命周期；每个 agent 解析到单一已配置模型，插件没有回退链。
 
-| Tool | Arguments | Contract |
+| 工具 | 参数 | 契约 |
 |---|---|---|
-| `janus_dispatch` | `{role, prompt, return_handle?, mode?, tier?, protocol?}`; role is one of the ten dispatch roles (`common-explorer`, `consultant-analyst`, `consultant-critic`, `coder-reviewer`, `consultant-auditor`, `author-writer`, `simple`, `coder-lite`, `coder`, `consultant`); `mode`/`tier` select the model and `protocol` prepends one of the five methodology cards | Launch a durable host-session job and observe within a soft wait window; with `return_handle: true` a success returns a completed JSON envelope (`job_id`, `role`, `attempt`, `session_id`, `waited_ms`, `text`) instead of plain text, pending/failed unchanged |
-| `janus_dispatch_wait` | `{job_id, wait_ms?}` | Recover/observe the same job; optional integer `wait_ms` is 0..300000, default 300000; zero performs a snapshot |
-| `janus_dispatch_cancel` | `{job_id}` | Request explicit cancellation and reconcile durable completion/abort evidence |
-| `janus_dispatch_continue` | `{session_id, prompt, role?}` | Send a new prompt to an existing dispatch session (`session_id` from a `return_handle` completed envelope or a pending envelope); role is inferred from the target's job spec and validated when supplied. The continuation inherits the spec's `agent_name` and `model_chain`, so it never switches model. Returns the response text or a recoverable pending envelope keyed by the continuation job id |
+| `janus_dispatch` | `{role, prompt, return_handle?, mode?, tier?, protocol?}`；role 取十个派发角色之一（`common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`author-writer`、`simple`、`coder-lite`、`coder`、`consultant`）；`mode`/`tier` 选择模型，`protocol` 在首轮前prepend五张方法论卡片之一 | 发起一个持久宿主会话 job 并在软等待窗口内观察；`return_handle: true` 时成功不再返回纯文本，而是返回已完成的 JSON 信封（`job_id`、`role`、`attempt`、`session_id`、`waited_ms`、`text`）；pending/失败形态不变 |
+| `janus_dispatch_wait` | `{job_id, wait_ms?}` | 恢复/观察同一个 job；可选整数 `wait_ms` 为 0..300000，默认 300000；零做快照 |
+| `janus_dispatch_cancel` | `{job_id}` | 请求显式取消，并对持久完成/中止证据做对账 |
+| `janus_dispatch_continue` | `{session_id, prompt, role?}` | 向既有派发会话发送新提示（`session_id` 取自 `return_handle` 完成信封或 pending 信封）；role 从目标 job spec 推断、显式给出时校验。续接继承 spec 的 `agent_name` 与 `model_chain`，绝不切换模型。返回响应文本或以续接 job id 为键的可恢复 pending 信封 |
 
-Model selection follows `mode_models[mode][role] > tier_models[tier][role] > <role>_model > TIER_MODEL_DEFAULTS[tier][role] > MODEL_DEFAULTS[role]`; the one shipped tier default is `deep.coder`. The per-model adaptation block is injected per request by the `experimental.chat.system.transform` hook using the model actually serving the turn, so a mode/tier override or a continuation keeps the matching block. A continuation inherits the original job spec's `agent_name` and `model_chain`; it never re-resolves them from current config. A `protocol` argument prepends one of the five methodology cards (`counter_evidence`, `hypothesis_matrix`, `plan_robustness`, `design_premortem`, `code_plan_review`) as the first bytes of the turn-1 task message.
+模型选择遵循 `mode_models[mode][role] > tier_models[tier][role] > <role>_model > TIER_MODEL_DEFAULTS[tier][role] > MODEL_DEFAULTS[role]`；出厂仅带一个档位默认 `deep.coder`。按模型的适配块由 `experimental.chat.system.transform` 钩子按实际服务当轮的模型逐请求注入，因此模式/档位覆盖或续接都能保住匹配的块。续接继承原 job spec 的 `agent_name` 与 `model_chain`，绝不从当前配置重新解析。`protocol` 参数把五张方法论卡片（`counter_evidence`、`hypothesis_matrix`、`plan_robustness`、`design_premortem`、`code_plan_review`）之一prepend为第一轮任务消息的开头字节。
 
-Launch uses a 300000 ms soft observation window, not a specialist execution deadline. Completed usable reports remain plain text and confirmed failures use `Error:` text. Nonterminal JSON envelopes identify `job_id`, `session_id`, `role`, `attempt`, `status` (`pending`, `unknown`, or `cancelling`) and `next: "janus_dispatch_wait"`. A `cancelled` envelope requires confirmed abort evidence; normal completion racing cancellation wins and preserves the original report. The `return_handle` completed envelope adds a `text` field and drops `reason`/`next` — the job is terminal — and is the only shape change `janus_dispatch` can produce.
+发起派发使用 300000 毫秒的软观察窗口，而不是专家执行时限。完成且可用的报告保持纯文本，确认的失败用 `Error:` 文本。非终态 JSON 信封标识 `job_id`、`session_id`、`role`、`attempt`、`status`（`pending`、`unknown` 或 `cancelling`）与 `next: "janus_dispatch_wait"`。`cancelled` 信封要求确认的中止证据；正常完成与取消竞速时完成方胜出并保留原报告。`return_handle` 完成信封额外带 `text` 字段并去掉 `reason`/`next`——job 已终态——这是 `janus_dispatch` 可能产生的唯一形态变化。
 
-Session continuation is a generic, role-agnostic dispatch mechanism, not an author-writer feature: any dispatcher (consultant, janus, coder) may continue any dispatch role's session. Reuse is deliberately bounded: the same caller (the target job root's parent must be the current tool context's session), the same normalized workspace directory, a dispatch-marked target session (job root or attempt child of a normal job root — never a continuation job root, whose journal carries `session_id`), and an idle target (a `busy`/`retry` target is rejected with a wait-first error). A continuation creates a new job root whose durable spec records `session_id` (the reused target) and `continued_from` (the original job root); its attempt 0 prompts the reused target session, while a retry creates a fresh attempt child as usual. Wait and cancel work on a continuation job through the same receipt-driven machinery, because the journal binding accepts a receipt whose session is the spec's `session_id` target. Only a terminal job may be continued; a pending job is waited on. Transient read failures while resolving the target session, its dispatch journal, or its status return a retryable error instead of a not-found/not-owned/idle result, so a transport blip never silently triggers a fresh session. There is no cross-session reuse and no registry — the caller holds the session id (the author brief stores it as `writer_session_id`).
+会话续接是通用、与角色无关的派发机制，不是 author-writer 专属：任何派发方（consultant、janus、coder）都可续接任何派发角色的会话。复用有刻意收紧的边界：同一调用方（目标 job 根的父必须是当前工具上下文的会话）、同一规范化工作区目录、带派发标记的目标会话（普通 job 根或其尝试子节点——绝不是续接 job 根，其 journal 记录着 `session_id`）、且目标空闲（`busy`/`retry` 目标以「先等待」错误拒绝）。续接创建一个新的 job 根，其持久 spec 记录 `session_id`（被复用目标）与 `continued_from`（原 job 根）；其第 0 次尝试提示被复用的目标会话，重试则照常创建新的尝试子节点。等待与取消通过同一套回执驱动机制作用于续接 job，因为 journal 绑定接受其会话等于 spec `session_id` 目标的回执。只有终态 job 可被续接；pending 的 job 先等待。解析目标会话、其派发 journal 或其状态时的瞬时读取失败返回可重试错误而非「不存在/不归属/非空闲」，因此一次传输抖动绝不会静默触发新会话。没有跨会话复用、没有注册表——会话 ID 由调用方持有（作者简报把它存为 `writer_session_id`）。
 
-Expiry or an observation-context abort stops waiting, not the child job. Pending means work remains active; unknown means available host evidence does not establish the outcome, not confirmed failure. Keep the same job ID for later waits, including through a fresh coordinator after restart, without a duplicate generating request. Wait/cancel enforce the caller's parent session and workspace ownership. Only explicit cancellation requests may abort work; cancellation remains `cancelling` until reconciled.
+超时或观察上下文中止只停止等待，不停止子 job。pending 表示工作仍在进行；unknown 表示既有宿主证据无法判定结果，而不是确认失败。保留同一个 job ID 供后续等待——包括协调者重启后——且不重复发起生成请求。等待/取消强制调用方的父会话与工作区归属。只有显式取消请求可以中止工作；取消在完成对账前保持 `cancelling`。
 
-Each job is a durable host session rooted under the caller's session (`[consultation-dispatch:v1] <role>`). The first attempt's generation runs directly in that job session, so the dispatched prompt and the specialist's live messages are visible there; journal records are written as ignored/synthetic user messages and stay out of the conversation. Every job is a single attempt.
+每个 job 是一个挂在其调用方会话之下的持久宿主会话（`[consultation-dispatch:v1] <role>`）。第一次尝试的生成直接运行在该 job 会话中，因此派发的提示与专家的实时消息在其中可见；journal 记录以 ignored/synthetic 用户消息写入，不进入对话。每个 job 单次尝试。
 
-The consultant may do independent preparation within existing permissions and caps while waiting, but must integrate the eventual specialist report before dependent synthesis and cannot silently substitute inline work or claim an independent check that did not return. Execution status comes from host session/message evidence, not from specialist liveness assertions. A consultant-auditor's evidence-quality `unknown` is distinct from a dispatch execution `unknown`.
+等待期间 consultant 可以在既有权限与上限内做独立准备，但必须在依赖它的综合之前整合最终的专家报告，不得静默用内联工作替代、也不得声称一项未返回的独立检查已经完成。执行状态来自宿主会话/消息证据，不来自专家的存活断言。consultant-auditor 的证据质量 `unknown` 与派发执行的 `unknown` 是两回事。
 
-Every role has one configured attempt and every agent resolves to a single model; no failure kind — pending, unknown, non-retryable, or confirmed retryable — triggers a plugin fallback advance. A delegated author-writer also has one configured attempt, with either a pinned model or host model selection (`null` in the durable spec), and retains host-defined permissions. This describes plugin model resolution, not the external host's internal retry policy. See [the per-role audit matrix and verification levels](../evals/README.md#per-role-audit-matrix).
+每个角色一次已配置尝试，每个 agent 解析到单一模型；任何失败类别——pending、unknown、不可重试或确认可重试——都不触发插件回退推进。代理的 author-writer 同样一次已配置尝试，带固定模型或宿主模型选择（持久 spec 中为 `null`），并保留宿主定义的权限。以上描述的是插件的模型解析，不是外部宿主的内部重试策略。参见[逐角色审计矩阵与验证级别](../evals/README.md#per-role-audit-matrix)。
 
-### 6.5 Design Mode and the Handoff to Coding
+### 6.5 设计模式与向编码的移交
 
-`design` decides the future structure of a system — architecture, patterns, module boundaries, external interfaces — at standard or deep tier, never fast. It admits only decisions that change future structure and are not one obvious reversible edit; everything else goes to the coder as L1/L2. The architect reads the repository and `AGENTS.md` first (at most five questions per round), frames L0 with goal, non-goals, and prioritised six-part quality scenarios, and decides layer by layer (C4 as zoom): L1 system, L2 module, L3 interface.
+`design` 决定系统的未来结构——架构、模式、模块边界、外部接口——运行于 standard 或 deep 档，绝不用 fast。它只准入会改变未来结构、且不是一个明显可逆小改的决策；其余一切交给 coder 做 L1/L2。architect 先读仓库与 `AGENTS.md`（每轮至多五个问题），用目标、非目标与带优先级的六段式质量场景框定 L0，然后逐层决策（C4 作为缩放镜头）：L1 系统、L2 模块、L3 接口。
 
-Every decision carries at least two genuinely different options, a recommendation, what would change it, a one-way/two-way reversibility label, and a deferral trigger where relevant. One-way doors are approved individually and get a coder-reviewer pre-mortem (the coder-reviewer's `designReview`: pre-mortem failures, unmet quality scenarios, reversibility problems, missing options); two-way doors get a default value and one batch approval per layer. A read-only cross-layer consistency check runs before each approval and before handoff, and the accepted result is written to `design.md`.
+每个决策至少带两个真正不同的选项、一个建议、什么会改变它、单向/双向可逆性标签，以及相关的推迟触发条件。单向门逐个批准并获得 coder-reviewer 事前验尸（coder-reviewer 的 `designReview`：事前验尸失败、未满足的质量场景、可逆性问题、缺失选项）；双向门获得默认值并每层一次批量批准。每次批准前与移交前各跑一次只读的跨层一致性检查，接受的结果写入 `design.md`。
 
-The record lives at `<designStateDir>/<projectId>/<designId>/design.md` (`$XDG_DATA_HOME/janus-agent/design` by default) and is self-contained: MADR-shaped decisions with only proposed/accepted states, one line per rejected option, fitness functions for load-bearing quality attributes, and open questions with triggers. It is a current-state document, rewritten in place at roughly 200–300 lines. The architect writes it; the coder only reads it.
+记录位于 `<designStateDir>/<projectId>/<designId>/design.md`（默认 `$XDG_DATA_HOME/janus-agent/design`）且自包含：MADR 形态的决策只有 proposed/accepted 两态、每个被拒选项一行、承重质量属性配适应度函数、开放问题带触发条件。它是现态文档，原地重写并维持在约 200-300 行。architect 写它；coder 只读。
 
-The handoff to coding is explicit. An accepted `design.md` is the approved spec: the coder skips brainstorming's spec conversation, shrinks the L2 design gate to the implementation details the record does not cover plus the exact file list, and plans a lean ExecPlan (milestones, verification/rollback, decision log, unexpected and findings) at `design/<projectId>/<designId>/plan.md`. Approving the plan confirms its listed files; at L2 the coder self-checks every accepted decision has a task, every interface has a test, and the order is revertible (L3 adds an independent plan review), and after implementation `coder-reviewer` compares the diff with `design.md`. A deviation touching a one-way-door decision returns to `architect`. In a bounded design turn the architect returns only the current layer's decision requests.
+向编码的移交是显式的。被接受的 `design.md` 就是已批准的规格：coder 跳过头脑风暴的规格对话，把 L2 设计门收缩为记录未覆盖的实现细节加精确文件清单，并在 `design/<projectId>/<designId>/plan.md` 规划精简 ExecPlan（里程碑、验证/回滚、决策日志、意外与发现）。批准计划即确认其列出的文件；L2 时 coder 自检每个已接受决策都有任务、每个接口都有测试、顺序可回退（L3 追加独立计划评审），实现完成后 `coder-reviewer` 把 diff 与 `design.md` 对照。触及单向门决策的偏差退回 `architect`。有界设计轮次中，architect 只返回当前层的决策请求。
 
-## 7. Epistemic Model
+## 7. 认识论模型
 
-### 7.1 Claim Types
+### 7.1 断言类型
 
-Every consultation is decomposed at claim level, not only by domain:
+每次咨询都在断言层面分解，而不只按领域：
 
-- verifiable fact;
-- causal or efficacy claim;
-- experiential judgment;
-- future prediction;
-- value preference and decision.
+- 可验证事实；
+- 因果或功效断言；
+- 经验判断；
+- 对未来的预测；
+- 价值偏好与决策。
 
-The domain determines relevant sources. The claim type determines verification method.
+领域决定相关来源；断言类型决定验证方法。
 
-### 7.2 Source Evaluation
+### 7.2 来源评估
 
-Sources are graded relative to the claim using:
+来源相对断言按以下维度分级：
 
-- primary versus secondary status;
-- expertise or legal accountability for the claim;
-- transparent and reproducible method;
-- independence and original provenance;
-- commercial or ideological conflicts;
-- recency, region, and applicability;
-- independent support or contradiction.
+- 一手还是二手；
+- 对该断言的专业能力或法律责任；
+- 方法透明且可复现；
+- 独立性与原始溯源；
+- 商业或意识形态冲突；
+- 时效、地域与适用性；
+- 独立支持或反驳。
 
-Grades are `high`, `medium`, `low`, and `lead_only`. Numerical trust percentages are prohibited unless backed by real calibrated data.
+等级为 `high`、`medium`、`low`、`lead_only`。禁止输出虚构的数值信任度，除非有真实校准数据支撑。
 
-Niche sources, forums, and social platforms are normally leads, counterexamples, or experience reports. Obscurity is never a credibility bonus.
+小众来源、论坛与社交平台通常只作线索、反例或经验报告。冷门绝不是可信度加分项。
 
-Reliability grading assumes honest-but-flawed sources. Deliberate deception and opaque independence (water armies, coordinated smearing, undisclosed sponsorship, astroturfing, and purportedly independent promotional evidence) receive a bounded `consultant-auditor` audit when potentially relevant, not only after manipulation is proved: each source is annotated `clean`, `suspect_shill`, `suspect_smear`, or `unknown` from observable signals (temporal bursts, cross-account phrase repetition, account history, disclosure, reviewer target concentration, publisher affiliation, and others). Missing account, sponsorship, or comparison data require `unknown`, not an unsupported `clean`. Suspicion is graded with a stated basis, never ground truth. Common-explorer and consultant still verify the underlying factual claim.
+可靠性分级假设来源诚实而有缺陷。刻意欺骗与不透明的独立性（水军、协同抹黑、未披露的赞助、水军造势、自称独立的推广证据）在潜在相关时就接受有界的 `consultant-auditor` 审计，而不是等到操纵被证实后：每个来源依据可观察信号（时间突发、跨账号短语重复、账号历史、披露情况、评论对象集中度、出版方关联等）标注 `clean`、`suspect_shill`、`suspect_smear` 或 `unknown`。账号、赞助或对比数据缺失时必须给 `unknown`，而不是无依据的 `clean`。怀疑的分级附带说明依据，绝不当作事实。common-explorer 与 consultant 仍会验证其下的事实断言。
 
-### 7.3 Facts and Inference
+### 7.3 事实与推断
 
-The selected reasoning policy is balanced:
+选定的推理策略是平衡的：
 
-- verified facts and synthesized inferences must be presented separately;
-- every atom (claim, candidate, step) carries an epistemic status: `verified`, `refuted`, `inferred`, or `unverifiable`;
-- `inferred` and `unverifiable` must carry a `basis` recording the reasoning chain ("inferred Y from X") — a bare conclusion is forbidden;
-- multiple independent reports and a plausible mechanism may justify a provisional inference;
-- synthesis cannot create missing facts;
-- correlated reposts count as one source chain;
-- important conclusions require a counter-evidence pass;
-- insufficient evidence is an acceptable result.
+- 已验证事实与综合推断必须分开呈现；
+- 每个原子（断言、候选、步骤）携带认识论状态：`verified`、`refuted`、`inferred` 或 `unverifiable`；
+- `inferred` 与 `unverifiable` 必须携带记录推理链的 `basis`（"由 X 推出 Y"）——禁止光秃秃的结论；
+- 多份独立报告加一个可信机制可以支撑临时推断；
+- 综合不能凭空造出缺失的事实；
+- 相互转载算一条来源链；
+- 重要结论需要一次反证环节；
+- 证据不足是一个可接受的结果。
 
-### 7.4 Risk Policy
+### 7.4 风险策略
 
-#### Low Risk
+#### 低风险
 
-Low cost, reversible, and unlikely to cause persistent harm. Weak evidence may support a cautious trial with clear stopping conditions.
+代价低、可逆、不太可能造成持久伤害。弱证据可以支撑一次带明确停止条件的谨慎尝试。
 
-#### Medium Risk
+#### 中风险
 
-Meaningful cost or side effects. Ask for relevant context, require stronger evidence, and provide an exit strategy.
+有实质代价或副作用。询问相关背景，要求更强证据，并提供退出策略。
 
-#### High Risk
+#### 高风险
 
-Medical treatment, medication, vehicle safety, law, major financial consequences, or irreversible effects. Weak evidence cannot support a recommendation. The agent provides evidence and options but does not replace a qualified professional or make the decision for the user.
+医疗处置、用药、车辆安全、法律、重大财务后果或不可逆影响。弱证据不能支撑建议。agent 提供证据与选项，但不替代有资质的专业人士，也不替用户做决定。
 
-Health threshold: recommend consulting a professional only on a hard trigger (medical intervention, prescription/OTC dosage, chronic-condition management, pregnancy or nursing, minors, interaction with an existing condition or medication, irreversible or high-risk body procedure). On a soft trigger — a health or body side effect with low evidence confidence — add one line suggesting a professional consult or starting low. Otherwise give the advice plainly; do not reflexively disclaim.
+健康阈值：只在硬触发上建议就医（医疗干预、处方/OTC 剂量、慢病管理、孕期或哺乳、未成年人、与既有疾病或药物的相互作用、不可逆或高风险的身体操作）。软触发——证据把握度低的健康或身体副作用——加一行建议咨询专业人士或从低剂量开始。其余情况正常给建议；不要条件反射式免责。
 
-### 7.5 Decision Model
+### 7.5 决策模型
 
-Evidence and preference are separate layers:
+证据与偏好是两层：
 
-- evidence establishes attributes and uncertainty;
-- user preferences assign decision weight;
-- missing preferences use explicit defaults;
-- outputs state what condition would change the recommendation;
-- the agent may conclude that there is no reliable unique winner.
+- 证据确定属性与不确定性；
+- 用户偏好决定权重；
+- 缺失的偏好用显式默认值；
+- 输出说明什么条件会改变建议；
+- agent 可以得出「没有可靠且唯一的赢家」。
 
-### 7.6 Confidence Model
+### 7.6 把握度模型
 
-Use two qualitative dimensions:
+使用两个定性维度：
 
-- **Evidence confidence:** high, medium, or low
-- **Recommendation stability:** stable, conditional, or provisional
+- **证据把握度**：高、中、低
+- **建议稳定性**：稳定、有条件、临时
 
-Do not output invented numerical confidence.
+不输出虚构的数值置信度。
 
-## 8. Research Mode
+## 8. 研究模式
 
-Deep, understanding-oriented investigation is a `research` mode of the consultant, not a separate agent or external provider. The consultant detects understanding-seeking intent (open-ended questions, "深度研究", topic surveys) and runs the mode with its own team:
+面向理解的深度调查是 consultant 的 `research` 模式，不是独立 agent 也不是外部提供商。consultant 识别理解型意图（开放性问题、「深度研究」、课题综述）并用自己的团队运行该模式：
 
-- decompose the question into sub-directions;
-- gather missing or uncertain evidence with independent common-explorer instances, parallelizing only independent searches;
-- compare consensus, disagreements, and gaps;
-- form multiple hypotheses with confidence, actively seeking counterexamples;
-- challenge consequential hypotheses with a consultant-critic pass when you can name a counterexample or alternative that would change the report;
-- synthesize a readable report (bottom line up front, plain language, evidence and disagreements under `证据与来源（可跳过）`).
+- 把问题分解为子方向；
+- 用独立的 common-explorer 实例收集缺失或不确定的证据，只并行化相互独立的搜索；
+- 比较共识、分歧与空白；
+- 带把握度地形成多个假设，并主动寻找反例；
+- 当你能说出一个会改变报告结论的反例或替代解释时，用 consultant-critic 环节挑战重大假设；
+- 综合成可读报告（结论先行、平实语言、证据与分歧收在 `证据与来源（可跳过）` 之下）。
 
-The research report is a validated contract (`ResearchBriefSchema`): a one-line bottom line, plain-language key points, an implications line, and confidence, with hypotheses, disagreements, residual uncertainty, and sources under `证据与来源（可跳过）`. There is no separate deep-research provider or `research-director` agent.
+研究报告是经过校验的契约（`ResearchBriefSchema`）：一行结论、平实语言要点、一行对用户的意义与把握度；假设、分歧、残留不确定性与来源收在 `证据与来源（可跳过）` 之下。没有独立的深度研究提供商，也没有 `research-director` agent。
 
-## 9. Canonical Memory Model
+## 9. 权威记忆模型
 
-### 9.1 Stored Entities
+### 9.1 存储实体
 
-| Entity | Purpose |
+| 实体 | 用途 |
 |---|---|
-| `SessionExperience` | One user-approved experience package per host session |
-| `ExperienceItem` | A distinct topic inside a session package |
-| `Claim` | A proposition with time, region, and applicability |
-| `Evidence` | Source metadata and a necessary lawful excerpt |
-| `EvidenceLink` | Supports, refutes, qualifies, or supersedes a claim |
-| `Decision` | The conclusion, assumptions, preferences, and confidence at that time |
-| `Revision` | Why a later conclusion changed the previous state |
-| `UserPreference` | A user-confirmed stable preference or constraint |
-| `TaxonomyNode` | A versioned category node |
-| `TagMembership` | A many-to-many classification link |
-| `DerivedSummary` | A rebuildable summary with model and prompt version |
+| `SessionExperience` | 每个宿主会话一个用户批准的经验包 |
+| `ExperienceItem` | 会话包内的一个独立课题 |
+| `Claim` | 带时间、地域与适用性的命题 |
+| `Evidence` | 来源元数据与必要的合法摘录 |
+| `EvidenceLink` | 支持、反驳、限定或取代某断言 |
+| `Decision` | 当时的结论、假设、偏好与把握度 |
+| `Revision` | 后来的结论为何改变了先前状态 |
+| `UserPreference` | 用户确认的稳定偏好或约束 |
+| `TaxonomyNode` | 带版本的分类节点 |
+| `TagMembership` | 多对多分类链接 |
+| `DerivedSummary` | 带模型与提示词版本的可重建摘要 |
 
-### 9.2 Canonical Versus Derived Data
+### 9.2 权威数据与派生数据
 
-Canonical data includes user-approved experience records, source metadata, necessary excerpts, decisions, preferences, and revision events.
+权威数据包括用户批准的经验记录、来源元数据、必要摘录、决策、偏好与修订事件。
 
-Derived data includes:
+派生数据包括：
 
-- classifications;
-- tags;
-- summaries;
-- embeddings;
-- graph projections;
-- ranking caches.
+- 分类；
+- 标签；
+- 摘要；
+- embedding；
+- 图投影；
+- 排序缓存。
 
-Derived data must record schema, model, prompt, and generation time. It must be safe to delete and rebuild without losing accepted experience.
+派生数据必须记录 schema、模型、提示词与生成时间。它必须可以安全删除并重建，而不丢失已接受的经验。
 
-### 9.3 Revision States
+### 9.3 修订状态
 
-- `active`: eligible for normal retrieval and recommendation
-- `superseded`: retained for historical explanation
-- `refuted`: used only for contradiction and misinformation checks
-- `retired`: excluded from default retrieval
-- `forgotten`: canonical and derived content has been erased
+- `active`：可进入正常检索与推荐
+- `superseded`：保留用于历史解释
+- `refuted`：只用于矛盾与错误信息检查
+- `retired`：排除在默认检索之外
+- `forgotten`：权威与派生内容已被抹除
 
-An old recommendation is a counter-hypothesis, not counter-evidence. Only its underlying source or recorded outcome can act as evidence.
+旧建议是反假设，不是反证据。只有其底下的来源或登记的结果可以作为证据。
 
-## 10. Memory Capture Protocol
+## 10. 记忆捕获协议
 
-### 10.1 Natural-Language Intents
+### 10.1 自然语言意图
 
-The agent recognizes intent rather than fixed commands.
+agent 识别意图而非固定命令。
 
-Examples:
+示例：
 
-- “Summarize what we learned” means preview only.
-- “Remember this experience” means preview, sensitive-field review, then commit.
-- “Forget that preference” means identify the target, confirm destructive scope, then erase.
+- 「总结一下我们学到了什么」表示只预览。
+- 「记住这条经验」表示预览、敏感字段审查、然后提交。
+- 「忘掉那个偏好」表示定位目标、确认破坏性范围、然后抹除。
 
-### 10.2 One Package Per Session
+### 10.2 每会话一个包
 
-A session has one `SessionExperience`, but that package may contain several topic-specific `ExperienceItem` records.
+一个会话有一个 `SessionExperience`，但该包可以包含多个课题级的 `ExperienceItem`。
 
-Repeated saves:
+重复保存：
 
-- update the same session package;
-- add a new item for a new topic;
-- create a revision for a changed conclusion;
-- remain idempotent under retries;
-- do not create duplicate ranking candidates.
+- 更新同一个会话包；
+- 新课题加新条目；
+- 结论变化创建修订；
+- 在重试下保持幂等；
+- 不产生重复的排序候选。
 
-### 10.3 Save Preview
+### 10.3 保存预览
 
-The preview shows:
+预览展示：
 
-- what conclusions and evidence will be saved;
-- applicable time, region, and conditions;
-- proposed categories and tags;
-- user preferences;
-- sensitive fields requiring explicit confirmation.
+- 将保存哪些结论与证据；
+- 适用的时间、地域与条件；
+- 拟议的分类与标签；
+- 用户偏好；
+- 需要显式确认的敏感字段。
 
-The complete transcript is not saved by default.
+默认不保存完整对话记录。
 
-### 10.4 Auto-Save
+### 10.4 自动保存
 
-At the end of every consultation the consultant automatically saves the consultation record(s) — no user instruction required. The saved unit is one consultation: a question summary plus a conclusion summary, with the supporting claims, evidence (provenance and grade), and preferences. If a conversation held several distinct questions, each becomes its own record; if it was one question explored in depth, it is one record with a refined conclusion. Before saving, prior consultations are recalled; a very similar new consultation updates the prior record (conclusion changes go through a revision) instead of duplicating.
+每次咨询结束时 consultant 自动保存咨询记录——无需用户指示。保存单位是一次咨询：问题摘要加结论摘要，附支撑断言、证据（溯源与等级）与偏好。一次对话含多个独立问题时各自成条；一个问题深挖到底则是一条结论被精炼的记录。保存前先召回既往咨询；与既有记录高度相似的新咨询更新原记录（结论变化走修订）而不是复制一条。
 
-Never saved: the full transcript, unverified search fragments, hidden chain-of-thought, duplicate sources, ordinary conversation, or credentials. Sensitive fields are excluded from auto-save and persist only after itemized confirmation.
+绝不保存：完整对话、未验证的搜索碎片、隐藏思维链、重复来源、寻常闲聊或凭据。敏感字段排除在自动保存之外，只在逐项确认后持久化。
 
-## 11. Memory Organization and Retrieval
+## 11. 记忆组织与检索
 
-### 11.1 Hybrid Organization
+### 11.1 混合组织
 
-Use three overlapping structures:
+使用三个相互重叠的结构：
 
-1. a small versioned top-level taxonomy with dynamic descendants;
-2. many-to-many tags and evidence relationships;
-3. global lexical and semantic indexes as a recall safety net.
+1. 一个小的、带版本的顶层分类树，子节点动态生长；
+2. 多对多标签与证据关系；
+3. 全局词法与语义索引，作为召回的兜底。
 
-Cross-category experience is linked to multiple categories without copying canonical content.
+跨类别经验挂到多个类别上，不复制权威内容。
 
-### 11.2 Progressive Disclosure
+### 11.2 渐进式披露
 
-Retrieval levels are:
+检索层级：
 
-1. index title, time, status, and one-line summary;
-2. claim, applicability, and current decision;
-3. supporting and opposing evidence plus revision history;
-4. lawful source excerpt and full stored reasoning summary.
+1. 索引标题、时间、状态与一行摘要；
+2. 断言、适用性与当前决策；
+3. 支持与反对证据及修订历史；
+4. 合法来源摘录与完整存储的推理摘要。
 
-The default query retrieves level 1 and only the necessary level 2 records. Levels 3 and 4 require explicit expansion by the agent or user.
+默认查询取层级 1 及必要的层级 2 记录。层级 3 与 4 需要 agent 或用户显式展开。
 
-### 11.3 Hybrid Recall
+### 11.3 混合召回
 
-Candidate generation combines:
+候选生成组合：
 
-- taxonomy branch selection;
-- SQLite FTS;
-- configurable embedding similarity;
-- support, refute, and revision relationships;
-- time, region, and applicability filters;
-- user preference relevance.
+- 分类分支选择；
+- SQLite FTS；
+- 可配置的 embedding 相似度；
+- 支持、反驳与修订关系；
+- 时间、地域与适用性过滤；
+- 用户偏好相关性。
 
-Results are deduplicated by canonical identity and source provenance.
+结果按权威身份与来源溯源去重。
 
-Initial benchmark defaults:
+初始基准默认值：
 
-- return at most eight level-1 candidates;
-- expand at most three candidates without another decision;
-- cap injected memory at approximately 1,200 tokens for standard consultation;
-- broaden retrieval only when confidence is low, candidates conflict, or recall is insufficient.
+- 至多返回八个层级 1 候选；
+- 无需再决策时至多展开三个候选；
+- standard 咨询注入的记忆控制在约 1200 token 内；
+- 仅在把握度低、候选冲突或召回不足时放宽检索。
 
-These are tuning defaults, not persistence or API contracts.
+这些是调优默认值，不是持久化或 API 契约。
 
-### 11.4 Retrieval by Consultation Tier
+### 11.4 按咨询档位检索
 
-- Fast: exact or minimal lookup only
-- Standard: automatic taxonomy and hybrid recall
-- Deep: include prior disputes, refuted claims, and historical revisions as research leads
+- Fast：只做精确或最小查询
+- Standard：自动分类与混合召回
+- Deep：把既往争议、被反驳断言与历史修订作为研究线索纳入
 
-The user can disable memory for a single consultation.
+用户可以针对单次咨询禁用记忆。
 
-If stored memory materially changes the recommendation, the answer must disclose which preferences or experience were used. Sensitive memory usage must always be disclosed.
+若存储的记忆实质改变了建议，答案必须披露用了哪些偏好或经验。敏感记忆的使用必须始终披露。
 
-## 12. MCP Surface
+## 12. MCP 面
 
-Keep the agent-facing surface small:
+保持 agent 侧表面小巧：
 
 1. `memory_recall`
 2. `memory_expand`
@@ -575,17 +571,17 @@ Keep the agent-facing surface small:
 4. `memory_commit`
 5. `memory_manage`
 
-Maintenance operations (export, import, migration, integrity checks, reindexing) and offline browsing of the consultation record (list, show, search, delete, forget) belong in the CLI rather than permanent agent tool definitions. The database is opened in WAL mode with a busy timeout and every write runs in a short transaction, so the CLI and any number of live memory MCP servers (one per OpenCode window) can use the store concurrently.
+维护操作（导出、导入、迁移、完整性检查、重建索引）与咨询记录的离线浏览（列表、查看、搜索、删除、遗忘）属于 CLI，而不是常驻的 agent 工具定义。数据库以 WAL 模式加 busy timeout 打开，每次写入走短事务，因此 CLI 与任意数量的在运行记忆 MCP 服务器（每个 OpenCode 窗口一个）可以并发使用存储。
 
-The MCP transport is local stdio. The server contains no consultation policy and no model-specific reasoning.
+MCP 传输是本地 stdio。服务器不含咨询策略、不含模型特有的推理。
 
-The memory server is registered globally on the host config (`config.mcp`), so it is agent-agnostic — any agent in the session can call the memory tools, not only the `consultant`. Memory is a shared service, not bound to one agent.
+记忆服务器注册在宿主全局配置（`config.mcp`）上，因此与 agent 无关——会话中的任何 agent 都能调用记忆工具，不只 `consultant`。记忆是共享服务，不绑定单个 agent。
 
-## 13. Storage Architecture
+## 13. 存储架构
 
-### 13.1 Default Paths
+### 13.1 默认路径
 
-Use XDG paths with configurable overrides:
+使用 XDG 路径，支持配置覆盖：
 
 ```text
 $XDG_DATA_HOME/janus-agent/memory.sqlite3
@@ -593,215 +589,203 @@ $XDG_STATE_HOME/janus-agent/
 $XDG_CACHE_HOME/janus-agent/
 ```
 
-The database and user-controlled exports belong in data. Locks, pending enrichment state, and operational records belong in state. Rebuildable query caches belong in cache.
+数据库与用户掌控的导出属于数据；锁、待完成 enrichment 状态与运维记录属于状态；可重建的查询缓存属于缓存。config/data/state 的三分是固定的。
 
-The final product slug can change when the independent repository is named, but the config/data/state separation is fixed.
+### 13.2 SQLite 策略
 
-### 13.2 SQLite Policy
+第一版使用 SQLite，因为它在无需独立服务的情况下提供本地事务、原子提交、schema 约束、FTS 与崩溃恢复。
 
-The first version uses SQLite because it provides local transactions, atomic commits, schema constraints, FTS, and crash recovery without a separate service.
+必要规则：
 
-Required rules:
+- 用锁保证同一时刻只有一个活跃写入者；
+- 允许多读者；
+- 每次保存都是事务且幂等；
+- 启用外键与完整性约束；
+- 权威写入先于延迟 enrichment 完成；
+- 不支持在网络文件系统上使用该数据库；
+- 迁移先做备份并支持恢复；
+- 被中断的派生工作保持可重试。
 
-- one active author-writer enforced by a lock;
-- multiple readers may be allowed by SQLite;
-- every save is transactional and idempotent;
-- foreign keys and integrity constraints are enabled;
-- canonical writes complete before deferred enrichment;
-- the database is not supported on network filesystems;
-- migrations create a backup and support recovery;
-- interrupted derived work remains retryable.
+### 13.3 模型独立性
 
-### 13.3 Model Independence
+摘要模型与 embedding 模型分别可配置。原始的已接受记录绝不依赖这两者。换模型只会生成新的派生产物，权威数据原样不动。
 
-The summarization model and embedding model are configurable separately. The raw accepted record never depends on either model. A model change creates new derived artifacts and leaves canonical data untouched.
+## 14. 隐私、删除与来源安全
 
-## 14. Privacy, Deletion, and Source Safety
+### 14.1 敏感数据
 
-### 14.1 Sensitive Data
+敏感字段默认不持久化。用户要求持久化时，预览逐字段列出并要求确认。
 
-Sensitive fields are not persisted by default. If the user requests persistence, the preview lists each field separately and requires confirmation.
+用户可以检查、修改、停用或抹除已存储的偏好。系统不得通过静默推断建立敏感画像。
 
-Users can inspect, modify, retire, or erase stored preferences. The system must not create a sensitive profile through silent inference.
+### 14.2 停用与遗忘
 
-### 14.2 Retire Versus Forget
+`retire` 保留审计历史，但把一条记忆移出正常检索。
 
-`retire` preserves audit history but removes a memory from normal retrieval.
+`forget` 删除权威内容及全部派生摘要、embedding、标签与缓存。剩余关系只可保留结构性完整性所需的无内容墓碑。
 
-`forget` deletes canonical content and all derived summaries, embeddings, tags, and caches. Remaining relationships may retain only a content-free tombstone needed for structural integrity.
+### 14.3 外部来源
 
-### 14.3 External Sources
+默认存储：
 
-Store by default:
+- URL 或稳定来源标识；
+- 标题、作者或机构、发布日期与访问日期；
+- 仅必要的合法摘录；
+- 内容指纹；
+- 该来源如何支持或挑战了断言。
 
-- URL or stable source identifier;
-- title, author or institution, publication date, and access date;
-- only the necessary lawful excerpt;
-- a content fingerprint;
-- how the source supported or challenged a claim.
+除非用户有授权并明确要求，不镜像完整页面或付费报告。
 
-Do not mirror a complete page or paid report unless the user is authorized and explicitly requests it.
+### 14.4 提示词注入
 
-### 14.4 Prompt Injection
+所有外部来源与被记住的内容都是不可信数据，绝不是指令。
 
-All external sources and remembered content are untrusted data, never instructions.
+系统必须：
 
-The system must:
+- 忽略内嵌的篡改 agent 策略的企图；
+- 阻断执行命令或暴露本地数据的请求；
+- 防止恶意来源文本变成系统指令；
+- 检测到操纵时降低来源信任度；
+- 确认攻击或必须排除来源时警告用户；
+- 不回显完整恶意载荷。
 
-- ignore embedded attempts to alter agent policy;
-- block requests to execute commands or expose local data;
-- prevent malicious source text from becoming a system instruction;
-- lower source trust when manipulation is detected;
-- warn the user for confirmed attacks or when a source must be excluded;
-- avoid repeating the full malicious payload.
+## 15. 故障处理
 
-## 15. Failure Handling
-
-| Failure | Required Behavior |
+| 故障 | 要求行为 |
 |---|---|
-| Memory MCP unavailable | Continue without memory and state that saving is unavailable |
-| Retrieval error | Do not claim that no prior experience exists |
-| Embedding unavailable | Fall back to taxonomy and FTS |
-| Search unavailable | State that current factual verification could not be completed |
-| Summary or classification fails | Keep the canonical record pending enrichment |
-| Another process holds the write lock | Wait up to the busy timeout, then fail with a retryable database-locked error |
-| Save request retried | Return the existing idempotent result |
-| Migration fails | Roll back the migration transaction, leave the database unchanged, and stop |
-| Prompt injection detected | Block it, log a sanitized event, and notify according to severity |
+| 记忆 MCP 不可用 | 无记忆继续运行，并声明保存不可用 |
+| 检索出错 | 不得声称不存在既往经验 |
+| embedding 不可用 | 回退到分类与 FTS |
+| 搜索不可用 | 声明当前的事实核查未能完成 |
+| 摘要或分类失败 | 权威记录保持待 enrichment 状态 |
+| 其他进程持有写锁 | 等待至 busy timeout，然后以可重试的 database-locked 错误失败 |
+| 保存请求重试 | 返回既有的幂等结果 |
+| 迁移失败 | 回滚迁移事务、保持数据库不变并停止 |
+| 检测到提示词注入 | 阻断、记录净化事件、并按严重度通知 |
 
-## 16. User-Facing Output Contract
+## 16. 面向用户的输出契约
 
-The output is terminal-first and length adapts to decision complexity, not tier alone.
+输出结论先行，长度随决策复杂度调整，而不只随档位。
 
-### Double anchor
+### 双锚点
 
-Full answers start with `结论 / 理由 / 下一步` and end with `一句话 / 下一步` as the last two lines. The mode body sits between them. Evidence, grades, disagreements, and confidence rationale go under `证据与来源（可跳过）` before the bottom anchor, so a reader who jumps to the end still lands on the conclusion. Short answers use the top anchor only.
+完整回答以 `结论 / 理由 / 下一步` 开头，以 `一句话 / 下一步` 作为最后两行结尾。模式正文位于两锚之间。证据、等级、分歧与把握度依据收在底部锚点之前的 `证据与来源（可跳过）` 之下，直接跳到结尾的读者仍落在结论上。短回答只用顶部锚点。
 
-### Confidence and alternatives
+### 把握度与替代选项
 
-Use `把握：高 / 中 / 低 — why` when confidence is not high or the top alternatives are close. Never present medium/low confidence as certain. `select` and `guide` may say "没有明显赢家" and give a tie-break instead of forcing a winner. `roadmap` starts with `可行 / 有条件可行 / 不建议` and names the condition and failure mode. `verify` may conclude `无法核实` and name the missing evidence.
+把握度不高或头部选项接近时使用 `把握：高 / 中 / 低 — 原因`。绝不把中/低把握说成确定。`select` 与 `guide` 可以说「没有明显赢家」并给决胜依据，而不是硬选一个。`roadmap` 以 `可行 / 有条件可行 / 不建议` 开头并点明条件与失败模式。`verify` 可以以 `无法核实` 收尾并指出缺失的证据。
 
-### Mode bodies
+### 模式正文
 
-- **select** — selection criteria → candidate short reviews → trial/switch. Short: conclusion + 2–3 reasons + one trial.
-- **verify** — key reasons → what would change the verdict → contested-claim details. Short: verdict + 2 reasons + what would settle it.
-- **plan** — feasibility → constraints/risks → steps → stop/rollback → alternative. Short: feasibility + 3–5 steps + stop condition.
-- **research** — bottom line → 3–5 key points → what it means → disagreements/uncertainty. No forced recommendation.
-- **guide** — shortest path → suitability/prerequisites → recommendation (when real choices) → steps → pitfalls → completion check. Carries at least a recommendation or a procedure.
-- **author** — status/location → scope → document map → verification → next action. The chat output is a delivery brief, not the document body.
-- **design** — conclusion/reasons/next step → layer, goal and constraints, options and trade-offs, recommendation, risks and reversibility, open questions, relation to the layer above → evidence (skippable) → bottom anchor. The record's own home is `design.md`.
+- **select** —— 选择标准 → 候选短评 → 尝试/更换。短版：结论 + 2-3 个理由 + 一次尝试。
+- **verify** —— 关键理由 → 什么会改变结论 → 争议断言细节。短版：结论 + 2 个理由 + 什么能定案。
+- **roadmap** —— 可行性 → 约束/风险 → 步骤 → 停止/回退 → 替代。短版：可行性 + 3-5 步 + 停止条件。
+- **research** —— 结论 → 3-5 个要点 → 对你的意义 → 分歧/不确定。不强行建议。
+- **guide** —— 最短路径 → 适合度/前提 → 建议（确有选择时）→ 步骤 → 坑 → 完成自检。至少带一个建议或一套流程。
+- **doc** —— 状态/位置 → 范围 → 文档地图 → 验证 → 下一步动作。聊天输出是交付简报，不是文档正文。
+- **design** —— 结论/理由/下一步 → 层级、目标与约束、选项与取舍、建议、风险与可逆性、开放问题、与上一层的关系 → 证据（可跳过）→ 底部锚点。记录本体落在 `design.md`。
 
-### Terminal conventions
+### 终端惯例
 
-Paragraphs are 1–3 sentences; bullet depth is at most 2; headings are at most 3. Tables are at most 3–4 columns with short cells; wider or sentence-heavy tables become `label: value` lines. 100–120 characters is a comfort zone, not a hard limit. No academic filler or method narration before the answer. Every answer ends with an action, even when abstaining.
+段落 1-3 句；列表深度至多 2 层；标题至多 3 级。表格至多 3-4 列且单元格短小；更宽或句子化的表格改为 `标签: 内容` 行。100-120 字符是舒适区而非硬限制。答案之前不写学术填充或方法旁白。每个回答以一个动作收尾——弃权时也一样。
 
-The exact templates live in the `consultation` skill. `AuthorBrief` remains the validation/memory unit; authored files are caller-approved side products referenced by the brief, not stored in memory.
+精确模板位于 `consultation` skill。`AuthorBrief` 仍是校验/记忆单位；成文文件是调用方批准的副产物，由简报引用、不存入记忆。
 
-## 17. Verification Strategy
+## 17. 验证策略
 
-### 17.1 Consultation Evaluation Cases
+### 17.1 咨询评估用例
 
-- a simple authoritative fact routes to fast consultation;
-- multiple articles with one original source count as one chain;
-- official and independent measurements are reconciled by conditions;
-- a popular unsupported claim is not repeated as fact;
-- weak evidence can support only a low-risk, reversible trial;
-- high-risk advice does not replace a professional decision;
-- changing a user preference changes the ranking when expected;
-- insufficient evidence leads to honest abstention;
-- prompt injection is blocked and reported;
-- deep consultation asks before consuming the larger budget;
-- a composite end-to-end request routes to the guide mode and carries at least a recommendation or a procedure;
-- a durable tutorial or course request routes to the doc mode with the correct profile instead of research or guide;
-- a large author request presents an outline and file manifest and waits for exactly one approval before drafting chapters;
-- targeted author verification checks representative code without invoking the consultant-critic or consultant-auditor by default;
-- a structural design question routes to `design` (not `select`, a doc architecture write-up, or `roadmap`) and returns per-layer decision requests with reversibility labels;
-- a coder with an accepted `design.md` shrinks the L2 gate to uncovered details plus the file list and checks its plan against the record;
-- a one-way-door decision gets an coder-reviewer pre-mortem (`designReview`) before approval;
-- the design record is rewritten in place, not appended, and old designs get a cleanup proposal.
+- 简单的权威事实路由到 fast 咨询；
+- 多篇文章同引一个原始来源算一条链；
+- 官方与独立测量按条件调和；
+- 流行但无依据的说法不作为事实复述；
+- 弱证据只能支撑低风险、可逆的尝试；
+- 高风险建议不替代专业决定；
+- 用户偏好变化时排序按预期改变；
+- 证据不足时诚实弃权；
+- 提示词注入被阻断并上报；
+- 深度咨询在消耗更大预算前先询问；
+- 复合端到端请求路由到 guide 模式并至少带一个建议或一套流程；
+- 持久教程/课程请求以正确 profile 路由到 doc 模式，而不是 research 或 guide；
+- 大型文档请求给出大纲与文件清单，并在起草章节前等待恰好一次批准；
+- 定向的文档验证检查代表性代码，默认不调用 consultant-critic 或 consultant-auditor；
+- 结构性设计问题路由到 `design`（不是 `select`、不是 doc 架构文章、也不是 `roadmap`）并返回带可逆性标签的逐层决策请求；
+- 持有已接受 `design.md` 的 coder 把 L2 门收缩为未覆盖细节加文件清单，并把计划对照记录检查；
+- 单向门决策在批准前获得 coder-reviewer 事前验尸（`designReview`）；
+- 设计记录原地重写而非追加，旧设计得到清理建议。
 
-The fixtures carry an explicit `modes` array per case; `script/skill-consistency.test.ts` asserts every schema mode is exercised by at least one case.
+用例逐条带显式 `modes` 数组；`script/skill-consistency.test.ts` 断言每个 schema 模式至少被一个用例覆盖。
 
-### 17.2 Memory Evaluation Cases
+### 17.2 记忆评估用例
 
-- cross-category experience is recalled;
-- a misclassified record remains discoverable through FTS or semantics;
-- semantically equivalent wording retrieves the same experience;
-- refuted memory never enters positive recommendation ranking;
-- material preference use is disclosed;
-- progressive disclosure stays within its token budget;
-- repeated session saves do not duplicate experience;
-- sensitive fields remain absent without confirmation;
-- forget removes canonical and derived content;
-- indexes rebuild after model changes;
-- interrupted enrichment does not damage canonical records;
-- a second author-writer cannot corrupt the database.
+- 跨类别经验被召回；
+- 被误分类的记录仍能经 FTS 或语义找到；
+- 语义等价的不同措辞召回同一条经验；
+- 被反驳的记忆绝不进入正向推荐排序；
+- 偏好的实质使用被披露；
+- 渐进式披露保持在 token 预算内；
+- 同会话重复保存不复制经验；
+- 未确认时敏感字段始终缺席；
+- 遗忘移除权威与派生内容；
+- 换模型后索引可重建；
+- enrichment 被中断不损伤权威记录；
+- 第二个写入者不能损坏数据库。
 
-### 17.3 Integration Verification
+### 17.3 集成验证
 
-Run a real isolated OpenCode instance and prove:
+运行一个真实隔离的 OpenCode 实例并证明：
 
-- the plugin loads;
-- the consultant agent is selectable;
-- the skill instructions are active;
-- the local memory MCP starts;
-- preview does not persist;
-- commit persists and survives restart;
-- repeated commit updates one session package;
-- recall uses progressive disclosure;
-- no data is written into the plugin installation directory;
-- the consultant and coder permission maps carry the design state dir, and both prompts name the project design dir.
+- 插件加载；
+- consultant agent 可选；
+- skill 指令生效；
+- 本地记忆 MCP 启动；
+- 预览不持久化；
+- 提交持久化并在重启后存活；
+- 重复提交更新同一个会话包；
+- 召回使用渐进式披露；
+- 没有任何数据写入插件安装目录；
+- architect/author/coder 的权限映射携带设计状态目录、author 携带作者状态目录、五个主入口携带 handoff 状态目录，且各自主提示词标注对应的项目目录。
 
-## 18. First-Version Scope
+## 18. 当前版本范围
 
-The first version includes:
+当前版本包含：
 
-- independent plugin packaging, including the seven-mode consultation skill set;
-- the `janus` default entry, `consultant` evidence entry, `coder` coding entry, and `simple` economical leaf;
-- the four read-only research subagents, the scoped-write author-writer, and the `coder-lite` mechanical lane;
-- the reusable core consultation skill and its design/doc sub-skills;
-- consultation and memory core packages;
-- SQLite persistence with FTS;
-- configurable semantic retrieval;
-- five memory MCP operations;
-- one session experience package with topic items;
-- preview, commit, revise, retire, and forget;
-- evaluation fixtures and isolated OpenCode integration tests.
+- 独立插件打包，含七模式咨询 skill 集；
+- `janus` 默认入口、`consultant` 证据入口、`coder` 编码入口、`simple` 经济叶节点、`architect` 设计主入口、`author` 文档主入口；
+- 四个只读检索子 agent、限定写入的 author-writer、`coder-lite` 机械车道；
+- 可复用的核心咨询 skill 及其设计/文档子 skill；
+- 咨询与记忆核心包；
+- 带 FTS 的 SQLite 持久化；
+- 可配置的语义检索；
+- 五个记忆 MCP 操作；
+- 每会话一个经验包带课题条目；
+- 预览、提交、修订、停用与遗忘；
+- 跨团队 handoff 状态目录、纯函数契约库与 `/janus-handoff` 命令；
+- 评估用例与隔离的 OpenCode 集成测试。
 
-Future versions may add:
+未来版本可能增加：
 
-- Codex and Senpi adapters;
-- safe concurrent writers;
-- cross-device synchronization;
-- optional graph database projections;
-- scheduled outcome follow-up;
-- remote shared memory services.
+- Codex 与 Senpi 适配器；
+- 安全的并发写入者；
+- 跨设备同步；
+- 可选的图数据库投影；
+- 定时的结果回访；
+- 远程共享记忆服务。
 
-## 19. Industry and Platform Rationale
+## 19. 行业与平台依据
 
-The design follows these documented patterns:
+设计遵循这些有据可查的模式：
 
-- OpenCode plugins can register tools, mutate configuration, and ship as npm packages or local plugin modules: <https://opencode.ai/docs/plugins>
-- OpenCode custom agents support primary and subagent modes with permission rules: <https://github.com/anomalyco/opencode/blob/dev/packages/web/src/content/docs/agents.mdx>
-- The MCP TypeScript SDK recommends stdio for local client-spawned servers and separates transports from server capabilities: <https://github.com/modelcontextprotocol/typescript-sdk/blob/v1.29.0/docs/server.md>
-- The XDG Base Directory specification separates configuration, durable data, state, cache, and runtime files: <https://specifications.freedesktop.org/basedir/latest/>
-- SQLite documents atomic commit behavior and crash recovery: <https://sqlite.org/atomiccommit.html>
-- SQLite WAL supports concurrent readers with a single author-writer, while retaining one-author-writer semantics: <https://www.sqlite.org/wal.html>
-- Letta documents tiered context and progressive loading rather than injecting all memory: <https://docs.letta.com/guides/core-concepts/memory/context-hierarchy/>
-- Graphiti preserves episode provenance and temporal validity for derived facts: <https://github.com/getzep/graphiti/blob/main/README.md>
-- LangMem distinguishes immediate and deferred memory formation: <https://langchain-ai.github.io/langmem/guides/delayed_processing/>
-- LangGraph stores use namespaces, metadata filters, and semantic search for long-term memory: <https://docs.langchain.com/oss/python/langgraph/stores>
-- Mem0 documents extracted, scoped memory and explicit memory operations: <https://docs.mem0.ai/core-concepts/how-it-works>
+- OpenCode 插件可以注册工具、修改配置，并以 npm 包或本地插件模块发布：<https://opencode.ai/docs/plugins>
+- OpenCode 自定义 agent 支持 primary 与 subagent 模式及权限规则：<https://github.com/anomalyco/opencode/blob/dev/packages/web/src/content/docs/agents.mdx>
+- MCP TypeScript SDK 建议本地客户端拉起的服务器使用 stdio，并把传输与服务器能力分离：<https://github.com/modelcontextprotocol/typescript-sdk/blob/v1.29.0/docs/server.md>
+- XDG Base Directory 规范区分配置、持久数据、状态、缓存与运行时文件：<https://specifications.freedesktop.org/basedir/latest/>
+- SQLite 文档记录原子提交行为与崩溃恢复：<https://sqlite.org/atomiccommit.html>
+- SQLite WAL 以单一写入者支持并发读者，同时保留单写者语义：<https://www.sqlite.org/wal.html>
+- Letta 记录分层上下文与渐进加载，而不是注入全部记忆：<https://docs.letta.com/guides/core-concepts/memory/context-hierarchy/>
+- Graphiti 为派生事实保留事件溯源与时间有效性：<https://github.com/getzep/graphiti/blob/main/README.md>
+- LangMem 区分即时与延迟的记忆形成：<https://langchain-ai.github.io/langmem/guides/delayed_processing/>
+- LangGraph store 用命名空间、元数据过滤与语义搜索承载长期记忆：<https://docs.langchain.com/oss/python/langgraph/stores>
+- Mem0 记录抽取式、带作用域的记忆与显式记忆操作：<https://docs.mem0.ai/core-concepts/how-it-works>
 
-The architecture borrows ideas, not runtime dependencies. The first version remains a small local TypeScript plugin rather than adopting Letta, LangGraph, Graphiti, or Mem0 as its application runtime.
-
-## 20. Pre-Implementation Input
-
-Before implementation begins, the user must provide:
-
-1. the independent repository URL or a local parent directory in which to create it;
-2. the final product and npm package name.
-
-The consultant's configured model is the default summarization model. An embedding model is optional; without one, retrieval remains functional through taxonomy, relationships, and FTS.
-
-No implementation should begin in the oh-my-openagent repository.
+架构借鉴的是思想，不是运行时依赖。当前版本仍是一个小型本地 TypeScript 插件，而不是把 Letta、LangGraph、Graphiti 或 Mem0 当作应用运行时。

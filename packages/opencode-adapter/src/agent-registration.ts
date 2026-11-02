@@ -82,7 +82,7 @@ const CODER_LITE_DESCRIPTION =
   "Cheap mechanical coding executor (GLM-5.3-Flash by default) for fully specified, decision-free, mechanically repeatable coding tasks: batch renames/moves, copy-adapt from existing in-repo patterns, formatting and lint fixes, boilerplate from explicit templates, simple tests following existing patterns, spec-complete CRUD glue. Stops and reports up on anything ambiguous, judgment-heavy, debugging, protocol-precision, cross-module, or security-sensitive — never attempts them."
 
 const ARCHITECT_DESCRIPTION =
-  "R&D team's solution and architecture entry, starting from a one-sentence requirement: runs brainstorming ⇄ convergence ⇄ system/module design with the user, dispatches common-explorer for research, and sends one-way decisions to coder-reviewer for a design pre-mortem. The only role that writes design.md."
+  "R&D team's solution and architecture entry, starting from a one-sentence requirement: runs brainstorming ⇄ convergence ⇄ system/module design with the user, dispatches common-explorer for research, and sends one-way decisions to coder-reviewer for a design pre-mortem. Sole author of the decisions in design.md; the coder flips only its lifecycle line."
 
 const AUTHOR_DESCRIPTION =
   "Documentation team's editor-in-chief entry: owns doc-mode profiles (tutorial / architecture / explanation), the outline approval gate, the author brief, verification of load-bearing claims, and publishing. Dispatches author-writer for prose and coder for executable verification; reviews the writer's diff and reuses writer sessions."
@@ -175,8 +175,8 @@ export function resolveAuthorStateDir(env: NodeJS.ProcessEnv = process.env): str
 /**
  * Resolve the fixed design state directory:
  * `$XDG_DATA_HOME/janus-agent/design` > `$HOME/.local/share/janus-agent/design`.
- * The architect writes design records there; the coder reads them and writes
- * plan.md beside them.
+ * The architect writes the records' decision content there; the coder reads
+ * them, writes plan.md beside them, and may flip a record's lifecycle line.
  */
 export function resolveDesignStateDir(env: NodeJS.ProcessEnv = process.env): string {
   const home = env.HOME !== undefined && env.HOME.length > 0 ? env.HOME : homedir()
@@ -378,7 +378,7 @@ export function buildCoderRuntimeBindings(
     ? `- Independent reviewer: \`${pluginConfig.coder_reviewer_agent}\` (\`${resolveRoleModel(pluginConfig, "coder-reviewer")}\`) with \`protocol: "code_plan_review"\` for the plan.md and the implemented git diff`
     : "- Independent reviewer: coder-reviewer DISABLED by configuration"
   const architectLine = `- Escalation path: if investigation or discussion shows the task needs new research or a cross-module architecture change, stop and hand it to the \`architect\` primary entry (user-facing handoff; architect is not dispatchable).`
-  const designLine = `- Design record: \`${design.designStateDir}/${design.projectId}\` — read \`design.md\` and write \`plan.md\` there; you never edit \`design.md\``
+  const designLine = `- Design record: \`${design.designStateDir}/${design.projectId}\` — read \`design.md\` and write \`plan.md\` there; you never edit its decision content — the one line you may write is its lifecycle line, flipped to \`implemented\` under the conditions in your prompt`
   const lines = [
     modelLine,
     coderLiteLine,
@@ -1154,7 +1154,7 @@ export function buildArchitectRuntimeBindings(
     ? `- Economical leaf: \`${pluginConfig.simple_agent}\` (\`${resolveRoleModel(pluginConfig, "simple")}\`) for bounded quick-answer tasks`
     : "- Economical leaf: simple DISABLED by configuration"
 
-  const designLine = `- Design state dir: \`${design.designStateDir}\`; project id: \`${design.projectId}\` — designs live at \`${design.designStateDir}/${design.projectId}/<designId>/design.md\`; you are the only role that writes the design record, and the coder reads it`
+  const designLine = `- Design state dir: \`${design.designStateDir}\`; project id: \`${design.projectId}\` — designs live at \`${design.designStateDir}/${design.projectId}/<designId>/design.md\`; you are the sole author of the record's decisions, and the coder may write only its lifecycle line`
 
   const caps = resolveTeamCaps(pluginConfig)
   const tiers = resolveTierRoleCaps(pluginConfig)

@@ -110,7 +110,7 @@ coder 选择能胜任的最轻流程，并在开工前用一行宣布。
 ## 7. 权限与派发
 
 - `janus` 是完整执行席位，拥有宿主默认权限，外加下述共享 handoff 目录。
-- `coder` 是完整执行席位，外加对设计状态目录（读 `design.md`、写 `plan.md`）与共享 handoff 目录的 `external_directory` 读写权限。
+- `coder` 是完整执行席位，外加对设计状态目录（读 `design.md`、写 `plan.md` 与其生命周期行）与共享 handoff 目录的 `external_directory` 读写权限。
 - `architect` 是设计主席位，拥有设计状态目录的 `external_directory` 权限；`author` 是文档主席位，拥有 author 与 design 两个状态目录的权限。`consultant` 唯一的业务态目录是共享 handoff 目录；它既不持有作者简报也不持有设计记录，不写正文、不写生产代码。
 - 五个主入口（`janus`、`consultant`、`architect`、`coder`、`author`）共享跨团队 handoff 状态目录的 `external_directory` 读写权限（见 7.3）；所有叶节点子 agent 一律拒绝。
 
@@ -124,7 +124,7 @@ coder 选择能胜任的最轻流程，并在开工前用一行宣布。
 
 ### 7.2 Design 状态与记录
 
-设计决策存放在项目树之外：`$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`（无设计记录的计划位于 `.../<planId>/plan.md`）。`architect` 写入并维护 `design.md`；coder 只读，并在同目录写自己的 `plan.md`。`architect` 与 `coder` 拥有 `<designStateDir>/**` 的预授权 `external_directory` 权限，运行时绑定用与作者简报相同的稳定项目 ID 标注设计基目录 `<designStateDir>/<projectId>`。`design.md` 是现态文档：`architect` 原地重写、维持在约 200-300 行，删除前需征得同意。`plan.md` 是临时文件：折回 `design.md` 之后删除它是唯一无需确认的持久文件删除。
+设计决策存放在项目树之外：`$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`（无设计记录的计划位于 `.../<planId>/plan.md`）。`architect` 写入并维护 `design.md` 的决策内容；coder 只读决策、在同目录写自己的 `plan.md`，并在整份记录的实现验证、无待决偏离、审查闭环、结果被接受后，把记录已存在的 `in progress` 生命周期值翻转为 `implemented`（附日期与证据指针；派发模式下回传证据、由派发方或用户执行）——这是它可写的唯一一行，architect 重写记录时保留该行。`architect` 与 `coder` 拥有 `<designStateDir>/**` 的预授权 `external_directory` 权限，运行时绑定用与作者简报相同的稳定项目 ID 标注设计基目录 `<designStateDir>/<projectId>`。`design.md` 是现态文档：`architect` 原地重写、维持在约 200-300 行，删除前需征得同意。`plan.md` 是临时文件：工作落地（有设计记录时生命周期行已翻转）之后删除它是唯一无需确认的持久文件删除。
 
 ### 7.3 Handoff 状态与跨团队交接文档
 

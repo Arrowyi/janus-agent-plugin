@@ -3,7 +3,7 @@ import { readFile, readdir } from "node:fs/promises"
 
 import { AuthorSectionSchema } from "./author-contracts.ts"
 import { SourceIntentAuditSchema } from "./research-contracts.ts"
-import { AnalysisDraftBaseSchema, CritiqueDraftSchema } from "./team.ts"
+import { AnalysisDraftBaseSchema, CodePlanReviewSchema, CritiqueDraftSchema } from "./team.ts"
 
 async function readAgentPrompt(file: string): Promise<string> {
   return readFile(new URL(`../../../assets/agents/${file}`, import.meta.url), "utf8")
@@ -78,8 +78,8 @@ describe("agent prompt contracts", () => {
     const prompt = await readAgentPrompt("consultant-critic.md")
 
     const fields = Object.keys(CritiqueDraftSchema.shape)
-    const designOnly = new Set(["designReview"])
-    expectFields(prompt, fields.filter((field) => !designOnly.has(field)))
+    const reviewerOnly = new Set(["designReview", "codePlanReview"])
+    expectFields(prompt, fields.filter((field) => !reviewerOnly.has(field)))
     expectFields(prompt, ["unresolvedGaps", "planReview", "residualUncertainty"])
   })
 
@@ -87,6 +87,7 @@ describe("agent prompt contracts", () => {
     const prompt = await readAgentPrompt("coder-reviewer.md")
 
     expectFields(prompt, ["designReview", "preMortem", "unmetQualityScenarios", "reversibilityProblems", "missingOptions"])
+    expectFields(prompt, Object.keys(CodePlanReviewSchema.shape))
     expect(prompt).toContain("codePlanReview")
     expect(prompt).not.toContain("Return `clean`")
   })
@@ -262,6 +263,110 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain('protocol: "code_plan_review"')
     expect(prompt).toContain("janus_dispatch_continue")
     expect(prompt).not.toContain("have a fresh-context subagent")
+  })
+
+  it("coder-reviewer and the code_plan_review card carry the dual-baseline contract", async () => {
+    const prompt = await readAgentPrompt("coder-reviewer.md")
+    const card = await readFile(
+      new URL("../../../assets/protocols/code_plan_review.md", import.meta.url),
+      "utf8",
+    )
+
+    expectFields(card, Object.keys(CodePlanReviewSchema.shape))
+    for (const text of ["Stage 1", "Stage 2", "verbatim", "Confirmed paths"]) {
+      expect(card).toContain(text)
+      expect(prompt).toContain(text)
+    }
+    expect(prompt).toContain("code-graph or structural index tools")
+    expect(prompt).toContain("stale index")
+  })
+
+  it("architect routes pre-mortems with mode, tier, and anti-anchoring sessions", async () => {
+    const prompt = await readAgentPrompt("architect.md")
+
+    expect(prompt).toContain('mode: "design"')
+    expect(prompt).toContain('protocol: "design_premortem"')
+    expect(prompt).toContain("return_handle: true")
+    expect(prompt).toContain("janus_dispatch_continue")
+    expect(prompt).toContain("code-graph or structural index tools")
+    expect(prompt).toContain("stale index")
+  })
+
+  it("coder states the routing thresholds, baseline-first dispatch, and the scope-expansion gate", async () => {
+    const prompt = await readAgentPrompt("coder.md")
+
+    expect(prompt).toContain("no more than two edit-tool calls")
+    expect(prompt).toContain("three or more edit operations")
+    expect(prompt).toContain("git status --porcelain --untracked-files=all")
+    expect(prompt).toContain("Baseline-first")
+    expect(prompt).toContain("Scope-Expansion Gate")
+    expect(prompt).toContain("deferred to coder")
+    expect(prompt).toContain("code-graph or structural index tools")
+    expect(prompt).toContain("stale index")
+    expect(prompt).toContain("verbatim")
+  })
+
+  it("coder-lite self-checks Confirmed paths with read-only git and defers verification", async () => {
+    const prompt = await readAgentPrompt("coder-lite.md")
+
+    expect(prompt).toContain("Confirmed paths")
+    expect(prompt).toContain("git status")
+    expect(prompt).toContain("git diff")
+    expect(prompt).toContain("deferred to coder")
+  })
+
+  it("common-explorer prefers host code-graph tools for codebase surveys with a stale-index guard", async () => {
+    const prompt = await readAgentPrompt("common-explorer.md")
+
+    expect(prompt).toContain("code-graph or structural index tools")
+    expect(prompt).toContain("stale index")
+    expect(prompt).toContain("shared Source Criteria")
+  })
+
+  it("the engineering principles lead with most-reasonable-first and carry implementation-level signals", async () => {
+    const principles = await readFile(
+      new URL("../../../assets/principles/engineering-principles.md", import.meta.url),
+      "utf8",
+    )
+
+    for (const text of [
+      "heuristic reference checks",
+      "most reasonable",
+      "equally sound",
+      "blast radius",
+      "deep modules",
+      "information hiding",
+      "feature envy",
+      "data clumps",
+      "guard clauses",
+      "boolean flag parameters",
+      "command-query separation",
+      "fail fast",
+    ]) {
+      expect(principles).toContain(text)
+    }
+  })
+
+  it("the design record lifecycle closes with the coder flipping only the lifecycle line", async () => {
+    const coder = await readAgentPrompt("coder.md")
+    const architect = await readAgentPrompt("architect.md")
+    const skill = await readSkill("consultation-design")
+
+    for (const text of ["lifecycle line", "evidence pointer"]) {
+      expect(coder).toContain(text)
+      expect(skill).toContain(text)
+    }
+    for (const text of [
+      "That line only",
+      "never rewrite the record to match the code",
+      "never create or reshape a lifecycle line",
+    ]) {
+      expect(coder).toContain(text)
+    }
+    expect(coder).not.toContain("fold the result back into `design.md`")
+    expect(architect).toContain("sole author of the decisions in `design.md`")
+    expect(architect).toContain("flipping its existing `in progress` lifecycle value")
+    expect(skill).toContain("Every other line of the record stays the architect's")
   })
 
   it("janus and writer route repository maintenance files to the coder", async () => {

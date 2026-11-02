@@ -58,7 +58,7 @@ The current family has 13 registered agents and 10 dispatch roles. Primary entri
 
 ## Design mode (architect → coder handoff)
 
-`architect` owns the `design` mode: it decides future structure layer by layer, records accepted decisions in a self-contained `design.md` under `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/`, and hands that record to `coder`, which implements with a reduced L2 gate and writes `plan.md` beside it. The architect writes the record; the coder only reads it. When changing design mode, update together:
+`architect` owns the `design` mode: it decides future structure layer by layer, records accepted decisions in a self-contained `design.md` under `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/`, and hands that record to `coder`, which implements with a reduced L2 gate and writes `plan.md` beside it. The architect writes the record's decision content; the coder reads it, writes `plan.md` beside it, and after verified, accepted implementation may flip only its lifecycle line to `implemented` (with the date and an evidence pointer). When changing design mode, update together:
 
 - `skill-src/consultation-design/core.md`, `skill-src/consultation/core.md`, `skill-src/consultation/policies/team-orchestration.md`, `skill-src/consultation-doc/policies/current-state-docs.md`;
 - `assets/agents/{consultant,architect,coder,author,janus,consultant-critic,coder-reviewer}.md`;
@@ -67,4 +67,4 @@ The current family has 13 registered agents and 10 dispatch roles. Primary entri
 - `script/skill-consistency.test.ts`, `script/prompt-lint.test.ts`, and the affected prompt goldens;
 - `evals/fixtures/consultation-cases.json` (design cases C56+ and each case's `modes` array).
 
-The design directory is created non-fatally at registration. Deleting `design.md` needs user confirmation; deleting a folded `plan.md` is the one persistent-file deletion exempt from the confirmation gate, and writes/updates to it are still listed for confirmation.
+The design directory is created non-fatally at registration. Deleting `design.md` needs user confirmation; deleting a landed `plan.md` (with the record's lifecycle line flipped, when a design record exists) is the one persistent-file deletion exempt from the confirmation gate, and writes/updates to it are still listed for confirmation.

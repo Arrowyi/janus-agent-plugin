@@ -137,6 +137,17 @@ export type AnalysisDraft = z.infer<typeof AnalysisDraftSchema>
 export const ConfidenceAdjustmentSchema = z.enum(["raise", "keep", "lower", "reject"])
 export type ConfidenceAdjustment = z.infer<typeof ConfidenceAdjustmentSchema>
 
+export const CodePlanReviewSchema = z.object({
+  verdict: z.enum(["pass", "revise", "block"]),
+  deviations: z.array(z.string()).default([]),
+  missingTasks: z.array(z.string()).default([]),
+  untestedInterfaces: z.array(z.string()).default([]),
+  correctnessRisks: z.array(z.string()).default([]),
+  scopeCreep: z.array(z.string()).default([]),
+  residualUncertainty: z.array(z.string()).default([]),
+})
+export type CodePlanReview = z.infer<typeof CodePlanReviewSchema>
+
 export const CritiqueDraftSchema = z.object({
   round: z.number().int(),
   counterEvidence: z.array(
@@ -203,6 +214,10 @@ export const CritiqueDraftSchema = z.object({
     })
     .nullable()
     .optional(),
+  // CodePlanReviewSchema serves independent structural validation and
+  // subfield alignment with the coder-reviewer prompt; CritiqueDraftSchema
+  // never parses the reviewer's raw text at runtime.
+  codePlanReview: CodePlanReviewSchema.nullable().optional(),
   residualUncertainty: z.string().nullable().optional(),
 })
 export type CritiqueDraft = z.infer<typeof CritiqueDraftSchema>

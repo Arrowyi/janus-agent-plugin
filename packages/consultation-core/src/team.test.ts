@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import {
   AnalysisDraftBaseSchema,
   AnalysisDraftSchema,
+  CodePlanReviewSchema,
   CritiqueDraftSchema,
   DEFAULT_TEAM_CAPS,
   ExplorerReportSchema,
@@ -158,6 +159,38 @@ describe("CritiqueDraftSchema design review", () => {
     expect(parsed.designReview?.preMortem).toEqual(["the migration locks the table"])
     expect(CritiqueDraftSchema.parse(crit(true, 1)).designReview).toBeUndefined()
     expect(CritiqueDraftSchema.parse({ ...crit(true, 1), designReview: null }).designReview).toBeNull()
+  })
+})
+
+describe("CodePlanReviewSchema", () => {
+  it("parses a full code plan review and rejects an unknown verdict", () => {
+    const parsed = CodePlanReviewSchema.parse({
+      verdict: "revise",
+      deviations: ["step 2 edits an unapproved file"],
+      missingTasks: ["the schema decision has no task"],
+      untestedInterfaces: ["the schema interface has no parse test"],
+      correctnessRisks: ["the snapshot refresh could be skipped"],
+      scopeCreep: ["a formatting-only edit rides along"],
+      residualUncertainty: ["eval coverage stays unverified"],
+    })
+    expect(parsed.verdict).toBe("revise")
+    expect(parsed.missingTasks).toHaveLength(1)
+    expect(parsed.residualUncertainty).toEqual(["eval coverage stays unverified"])
+    expect(() => CodePlanReviewSchema.parse({ verdict: "ship it" })).toThrow()
+  })
+
+  it("defaults every list to empty and stays optional and nullable on CritiqueDraftSchema", () => {
+    const parsed = CodePlanReviewSchema.parse({ verdict: "pass" })
+    expect(parsed.deviations).toEqual([])
+    expect(parsed.scopeCreep).toEqual([])
+
+    const draft = CritiqueDraftSchema.parse({
+      ...crit(true, 1),
+      codePlanReview: { verdict: "block", correctnessRisks: ["the migration path is untested"] },
+    })
+    expect(draft.codePlanReview?.verdict).toBe("block")
+    expect(CritiqueDraftSchema.parse(crit(true, 1)).codePlanReview).toBeUndefined()
+    expect(CritiqueDraftSchema.parse({ ...crit(true, 1), codePlanReview: null }).codePlanReview).toBeNull()
   })
 })
 

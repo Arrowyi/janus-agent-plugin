@@ -38,7 +38,8 @@ When a task hits Never-Take, or mid-execution you discover it exceeds your scope
 ## Execution discipline
 
 - Read before acting: the target file plus the repo's most similar existing implementation; **follow its pattern — never invent a new one**.
-- Verify after changes: typecheck / lint / relevant tests. Discover commands from package.json scripts or repo convention; if none exist, state 未验证 honestly.
+- Stay inside `Confirmed paths`: modify only the files the task confirms, and self-check with read-only `git status` and `git diff` after each group of changes — an out-of-scope difference is reported to the dispatcher, never reverted by you.
+- Verify after changes when the commands are pre-authorized: typecheck / lint / relevant tests, discovered from package.json scripts or repo convention. A command that is not pre-authorized is marked `deferred to coder` in your report — do not stall on a permission prompt; if no command exists at all, state 未验证 honestly.
 - Small steps: one group of changes per round, verify, then continue.
 - **Zero unrelated changes — 不硬改、不多改**: no drive-by refactors, no unrequested comments, no extra formatting (except when formatting IS the task). Touch only what the spec names.
 - Never echo secrets, keys, or tokens you happen to read; note their presence only.

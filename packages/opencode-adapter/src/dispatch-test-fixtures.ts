@@ -50,6 +50,7 @@ export const validRoleSpecs: Array<{ label: string; role: DispatchRole; record: 
   { label: "writer-bundled", role: "author-writer", record: makeJobSpec({ role: "author-writer", agent_name: "author-writer", model_chain: ["opencode/claude-sonnet-5-5"] }) },
   { label: "writer-delegate-model", role: "author-writer", record: makeJobSpec({ role: "author-writer", agent_name: "host-writer", model_chain: ["custom/model"] }) },
   { label: "writer-delegate-null", role: "author-writer", record: makeJobSpec({ role: "author-writer", agent_name: "host-writer", model_chain: [null] }) },
+  { label: "author-reviewer", role: "author-reviewer", record: makeJobSpec({ role: "author-reviewer", agent_name: "author-reviewer", model_chain: ["opencode-go/kimi-k3.1-pro"] }) },
   { label: "simple", role: "simple", record: makeJobSpec({ role: "simple", agent_name: "simple", model_chain: ["opencode-go/deepseek-v4.1-flash"] }) },
   { label: "coder", role: "coder", record: makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3"] }) },
   { label: "coder-lite", role: "coder-lite", record: makeJobSpec({ role: "coder-lite", agent_name: "coder-lite", model_chain: ["opencode-go/glm-5.3-flash"] }) },

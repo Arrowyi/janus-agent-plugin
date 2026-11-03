@@ -3,9 +3,11 @@ import {
   AuthorClaimSchema,
   AuthorDeliverySchema,
   AuthorProfileSchema,
+  AuthorReviewerReportSchema,
   AuthorSectionSchema,
   AuthorVerificationSchema,
 } from "./author-contracts.ts"
+import { AuthorReviewerReportSchema as ReExportedSchema } from "./index.ts"
 
 describe("author contracts", () => {
   test("accepts every author control value", () => {
@@ -47,5 +49,41 @@ describe("author contracts", () => {
       verificationMethod: "Source inspection",
     })
     expect(claim.status).toBe("inferred")
+  })
+})
+
+describe("author reviewer report", () => {
+  test("accepts every verdict value and fills defaulted arrays", () => {
+    expect(AuthorReviewerReportSchema.shape.verdict.options).toEqual(["pass", "revise", "block"])
+    const report = AuthorReviewerReportSchema.parse({ verdict: "revise", resolved: false })
+    expect(report.factualAndSourceIssues).toEqual([])
+    expect(report.briefAlignmentIssues).toEqual([])
+    expect(report.readabilityAndJargonIssues).toEqual([])
+    expect(report.flaws).toEqual([])
+    expect(report.unresolvedGaps).toEqual([])
+  })
+
+  test("accepts a complete critical report and keeps every issue list", () => {
+    const report = AuthorReviewerReportSchema.parse({
+      verdict: "block",
+      factualAndSourceIssues: ["Section 2 cites `dispatch-tool.ts:99` but the symbol lives at line 58."],
+      briefAlignmentIssues: ["Chapter order diverges from the approved brief outline."],
+      readabilityAndJargonIssues: ["`SSOT` first appears without a plain-language explanation."],
+      flaws: ["The causality chain from D2 to the fragment budget is asserted, not sourced."],
+      resolved: false,
+      unresolvedGaps: ["The brief file was not supplied with the dispatch."],
+    })
+    expect(report.verdict).toBe("block")
+    expect(report.resolved).toBe(false)
+    expect(report.readabilityAndJargonIssues).toHaveLength(1)
+  })
+
+  test("rejects an unknown verdict and a missing resolved flag", () => {
+    expect(() => AuthorReviewerReportSchema.parse({ verdict: "ship", resolved: true })).toThrow()
+    expect(() => AuthorReviewerReportSchema.parse({ verdict: "pass" })).toThrow()
+  })
+
+  test("the schema is re-exported from the package index", () => {
+    expect(ReExportedSchema).toBe(AuthorReviewerReportSchema)
   })
 })

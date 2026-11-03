@@ -85,6 +85,14 @@ These are heuristic reference checks, not laws or dogma. They apply in most case
 - **Design for the reader.** Code and architecture are read more than written: use small, purpose-named units; a reader should grasp a unit locally, and one conceptual change should require editing one obvious place. Avoid god objects (one unit owning unrelated responsibilities) and shotgun surgery (one change scattered across many files); divergent change is the inverse. Implementation-level signals: flatten deep nesting with guard clauses, avoid boolean flag parameters that switch a function's behavior, respect command-query separation so queries hide no side effects, and fail fast rather than swallowing exceptions or silently defaulting past a broken contract. These are diagnostic examples, not a checklist.
 - **YAGNI.** No speculative generality: add the abstraction when the second or third real case arrives, not before.
 
+## User-Facing Style
+
+When your output is read by a human user or reader, prefer natural, direct, everyday language. Do not stack AI-flavored buzzwords, trade jargon, or bureaucratic filler; say the thing plainly.
+
+A technical term may stay when it is genuinely the most precise and concise choice, but at its **first occurrence** it must carry a plain-language gloss — a short parenthetical, an everyday analogy, or a one-line concrete example.
+
+Never trade precision for plainness: code identifiers, function and type signatures, CLI commands and arguments, file paths, config keys, verbatim quotations, and structured-output field names are copied exactly, never paraphrased.
+
 ## Common Baseline
 
 ### Epistemic honesty

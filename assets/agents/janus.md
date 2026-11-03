@@ -19,7 +19,7 @@ You do not run deep evidence work, coding, architecture, or durable-document wor
 
 - Split a multi-ask turn by ask before routing: each independent ask goes to its team entry, dependent asks run in order, and you relay one combined answer that preserves the specialist's anchors.
 - `architect` and `author` are user-selectable primary entries, not dispatch targets. Hand off with a one-line instruction to switch, carrying the requirement and any known constraints.
-- Do not dispatch another team's subagents (`common-explorer`, `consultant-analyst`, `consultant-critic`, `consultant-auditor`, `coder-reviewer`, `coder-lite`, `author-writer`). Their owning entry decides when they run.
+- Do not dispatch another team's subagents (`common-explorer`, `consultant-analyst`, `consultant-critic`, `consultant-auditor`, `coder-reviewer`, `coder-lite`, `author-writer`, `author-reviewer`). Their owning entry decides when they run.
 - Dispatch when the task needs the specialist's method or context isolation, not merely to raise quality.
 - Spot-check returned work. Never claim an independent check you did not receive.
 - Route a design or document task to its entry even when it looks small; repository-maintenance files (`README`, `AGENTS.md`) are the exception and go to `coder`.

@@ -11,6 +11,7 @@ import {
   registerConsultantAnalyst,
   registerConsultantAuditor,
   registerAuthorWriter,
+  registerAuthorReviewer,
   registerCoder,
   registerSimple,
   registerCoderLite,
@@ -21,6 +22,7 @@ import {
   buildSimpleRuntimeBindings,
   buildArchitectRuntimeBindings,
   buildAuthorRuntimeBindings,
+  buildAuthorReviewerPermission,
   buildCoderRuntimeBindings,
   buildJanusRuntimeBindings,
   buildSimplePermission,
@@ -70,6 +72,8 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     coder_reviewer_enabled: true,
     author_writer_agent: "author-writer",
     author_writer_enabled: true,
+    author_reviewer_agent: "author-reviewer",
+    author_reviewer_enabled: true,
     writer_docs_roots: ["userdoc"],
     coder_lite_agent: "coder-lite",
     coder_lite_enabled: true,
@@ -351,7 +355,9 @@ describe("buildAuthorRuntimeBindings", () => {
     expect(block).toContain("common-explorer")
     expect(block).toContain("coder")
     expect(block).toContain("consultant-critic")
-    expect(block).toContain("coder-reviewer")
+    expect(block).toContain("author-reviewer")
+    expect(block).toContain("opencode-go/kimi-k3.1-pro")
+    expect(block).not.toContain("coder-reviewer")
     expect(block).toContain("Writer write mode: `scoped`")
     expect(block).toContain("Author state dir: `/xdg/data/janus-agent/author`")
     expect(block).toContain("/xdg/data/janus-agent/author/my-project-a1b2c3d4/<docId>/brief.md")
@@ -1277,6 +1283,143 @@ describe("registerAuthorWriter", () => {
   })
 })
 
+describe("buildAuthorReviewerPermission", () => {
+  it("denies every write/exec/search tool and allows only the two state dirs read-only", () => {
+    // given
+    const authorDir = "/xdg/data/janus-agent/author"
+    const designDir = "/xdg/data/janus-agent/design"
+
+    // when
+    const permission = buildAuthorReviewerPermission(authorDir, designDir)
+
+    // then
+    expect(permission.edit).toBe("deny")
+    expect(permission.bash).toBe("deny")
+    expect(permission.task).toBe("deny")
+    expect(permission.webfetch).toBe("deny")
+    expect(permission.websearch).toBe("deny")
+    expect(permission.janus_dispatch).toBe("deny")
+    expect(permission.janus_dispatch_wait).toBe("deny")
+    expect(permission.janus_dispatch_cancel).toBe("deny")
+    expect(permission.janus_dispatch_continue).toBe("deny")
+    const external = permission.external_directory as Record<string, string>
+    expect(external[`${authorDir}/**`]).toBe("allow")
+    expect(external[`${designDir}/**`]).toBe("allow")
+    expect(Object.keys(external)).toHaveLength(2)
+  })
+})
+
+describe("registerAuthorReviewer", () => {
+  // registerAuthorReviewer mkdirs the resolved author and design state dirs —
+  // every test in this describe points them at a temp HOME.
+  function tempReviewerEnv(): { env: NodeJS.ProcessEnv; authorDir: string; designDir: string; cleanup: () => void } {
+    const parent = mkdtempSync(join(tmpdir(), "reviewer-state-"))
+    return {
+      env: { HOME: parent } as NodeJS.ProcessEnv,
+      authorDir: join(parent, ".local", "share", "janus-agent", "author"),
+      designDir: join(parent, ".local", "share", "janus-agent", "design"),
+      cleanup: () => rmSync(parent, { recursive: true, force: true }),
+    }
+  }
+
+  it("registers the read-only reviewer with the shipped model and dual state-dir access", async () => {
+    // given
+    const { env, authorDir, designDir, cleanup } = tempReviewerEnv()
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+
+    try {
+      // when
+      await registerAuthorReviewer(config, pluginConfig, env)
+
+      // then
+      const reviewer = config.agent?.["author-reviewer"] as {
+        mode: string
+        description: string
+        prompt: string
+        model: string
+        permission: Record<string, unknown>
+      }
+      expect(reviewer.mode).toBe("subagent")
+      expect(reviewer.model).toBe("opencode-go/kimi-k3.1-pro")
+      expect(reviewer.description).toContain("independent read-only reviewer")
+      expect(reviewer.permission).toEqual(buildAuthorReviewerPermission(authorDir, designDir))
+      expect(reviewer.prompt).toContain("# Author-Reviewer")
+      expect(reviewer.prompt).toContain("## Common Baseline")
+      // read-only role: no common-write gate, no runtime bindings block
+      expect(reviewer.prompt).not.toContain("## Common Operating Principles")
+      expect(reviewer.prompt).not.toContain("<!-- RUNTIME-BINDINGS")
+      expect(existsSync(authorDir)).toBe(true)
+      expect(existsSync(designDir)).toBe(true)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("registers the reviewer even when the writer is delegated or disabled", async () => {
+    // given — a delegated writer must still get plugin-owned review
+    const { env, cleanup } = tempReviewerEnv()
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig({
+      writer_delegate_agent: "host-writer",
+      author_writer_enabled: false,
+    })
+
+    try {
+      // when
+      await registerAuthorReviewer(config, pluginConfig, env)
+
+      // then
+      expect(config.agent?.["author-reviewer"]).toBeDefined()
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("honors a custom agent name, model, and the enabled flag is the caller's gate", async () => {
+    // given
+    const { env, cleanup } = tempReviewerEnv()
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig({
+      author_reviewer_agent: "doc-reviewer",
+      author_reviewer_model: "opencode-go/glm-5.3",
+    })
+
+    try {
+      // when
+      await registerAuthorReviewer(config, pluginConfig, env)
+
+      // then
+      const reviewer = config.agent?.["doc-reviewer"] as { model: string }
+      expect(config.agent?.["author-reviewer"]).toBeUndefined()
+      expect(reviewer.model).toBe("opencode-go/glm-5.3")
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("does NOT clobber a pre-existing user-defined author-reviewer entry", async () => {
+    // given
+    const { env, cleanup } = tempReviewerEnv()
+    const userPrompt = "user-defined reviewer prompt"
+    const config: { agent?: Record<string, unknown> } = {
+      agent: { "author-reviewer": { mode: "subagent", prompt: userPrompt } },
+    }
+    const pluginConfig = makeConfig()
+
+    try {
+      // when
+      await registerAuthorReviewer(config, pluginConfig, env)
+
+      // then
+      const reviewer = config.agent?.["author-reviewer"] as { prompt: string }
+      expect(reviewer.prompt).toBe(userPrompt)
+    } finally {
+      cleanup()
+    }
+  })
+})
+
 describe("resolveSimpleWorkspaceDir", () => {
   it("defaults under XDG data home", () => {
     // given
@@ -1945,6 +2088,7 @@ const READ_ONLY_AGENT_KEYS = [
   "consultant-critic",
   "coder-reviewer",
   "consultant-auditor",
+  "author-reviewer",
 ] as const
 
 describe("common operating principles injection", () => {
@@ -1956,7 +2100,7 @@ describe("common operating principles injection", () => {
     const pluginConfig = makeConfig({ simple_workspace_dir: join(workspaceParent, "lite") })
 
     try {
-      // when — register the full thirteen-role family into one config
+      // when — register the full fourteen-role family into one config
       await registerJanus(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
       await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
       await registerArchitect(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
@@ -1969,6 +2113,7 @@ describe("common operating principles injection", () => {
       await registerConsultantCritic(config, pluginConfig)
       await registerCoderReviewer(config, pluginConfig)
       await registerConsultantAuditor(config, pluginConfig)
+      await registerAuthorReviewer(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
       // Temp HOME keeps the writer's author state dir off the real HOME.
       await registerAuthorWriter(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
 
@@ -1976,6 +2121,7 @@ describe("common operating principles injection", () => {
       expect(Object.keys(config.agent ?? {}).sort()).toEqual([
         "architect",
         "author",
+        "author-reviewer",
         "author-writer",
         "coder",
         "coder-lite",
@@ -1999,6 +2145,67 @@ describe("common operating principles injection", () => {
           expect(prompt).toContain("### File Change Confirmation")
         }
       }
+    } finally {
+      rmSync(workspaceParent, { recursive: true, force: true })
+    }
+  })
+
+  it("injects the user-facing-style fragment into the eight human-facing roles and none of the six structural leaves", async () => {
+    // given — the same full-family assembly as the test above
+    const workspaceParent = mkdtempSync(join(tmpdir(), "lite-ws-"))
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig({ simple_workspace_dir: join(workspaceParent, "lite") })
+    const humanFacing = [
+      "janus",
+      "simple",
+      "consultant",
+      "architect",
+      "coder",
+      "author",
+      "author-writer",
+      "author-reviewer",
+    ]
+    const structuralLeaves = [
+      "common-explorer",
+      "consultant-analyst",
+      "consultant-critic",
+      "consultant-auditor",
+      "coder-reviewer",
+      "coder-lite",
+    ]
+
+    try {
+      // when
+      await registerJanus(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+      await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+      await registerArchitect(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
+      await registerAuthor(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
+      await registerCoder(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+      await registerCoderLite(config, pluginConfig)
+      await registerSimple(config, pluginConfig, "oc-ns")
+      await registerCommonExplorer(config, pluginConfig)
+      await registerConsultantAnalyst(config, pluginConfig)
+      await registerConsultantCritic(config, pluginConfig)
+      await registerCoderReviewer(config, pluginConfig)
+      await registerConsultantAuditor(config, pluginConfig)
+      await registerAuthorReviewer(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
+      await registerAuthorWriter(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
+
+      // then — every human-facing role carries the fragment verbatim
+      for (const name of humanFacing) {
+        const prompt = (config.agent?.[name] as { prompt: string } | undefined)?.prompt
+        if (prompt === undefined) throw new Error(`agent ${name} was not registered`)
+        expect(prompt).toContain("## User-Facing Style")
+        expect(prompt).toContain("prefer natural, direct, everyday language")
+      }
+      // and no structural leaf does
+      for (const name of structuralLeaves) {
+        const prompt = (config.agent?.[name] as { prompt: string } | undefined)?.prompt
+        if (prompt === undefined) throw new Error(`agent ${name} was not registered`)
+        expect(prompt).not.toContain("## User-Facing Style")
+        expect(prompt).not.toContain("everyday language")
+      }
+      expect(humanFacing.length + structuralLeaves.length).toBe(14)
     } finally {
       rmSync(workspaceParent, { recursive: true, force: true })
     }
@@ -2125,6 +2332,7 @@ describe("existing agents carry the inert MODEL-PROMPT placeholder", () => {
       "agents/consultant-auditor.md",
       "agents/coder-reviewer.md",
       "agents/author-writer.md",
+      "agents/author-reviewer.md",
       "agents/coder-lite.md",
     ]
 
@@ -2347,6 +2555,7 @@ describe("model-prompt blocks are model-property only", () => {
       "agents/consultant-auditor.md",
       "agents/coder-reviewer.md",
       "agents/author-writer.md",
+      "agents/author-reviewer.md",
       "agents/coder-lite.md",
       "skills/consultation/SKILL.md",
     ]

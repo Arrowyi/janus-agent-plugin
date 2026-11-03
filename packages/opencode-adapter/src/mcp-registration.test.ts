@@ -37,6 +37,8 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     coder_reviewer_enabled: true,
     author_writer_agent: "author-writer",
     author_writer_enabled: true,
+    author_reviewer_agent: "author-reviewer",
+    author_reviewer_enabled: true,
     writer_docs_roots: ["userdoc"],
     coder_lite_agent: "coder-lite",
     coder_lite_enabled: true,

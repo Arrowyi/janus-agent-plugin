@@ -2,6 +2,7 @@ import { type Plugin, type Config } from "@opencode-ai/plugin"
 import { loadPluginConfig } from "./plugin-config.ts"
 import {
   registerAuthor,
+  registerAuthorReviewer,
   registerAuthorWriter,
   registerArchitect,
   registerCoder,
@@ -88,6 +89,10 @@ export function createJanusConfigHook(
 
     if (pluginConfig.author_writer_enabled) {
       await registerAuthorWriter(config, pluginConfig, env, directory)
+    }
+
+    if (pluginConfig.author_reviewer_enabled) {
+      await registerAuthorReviewer(config, pluginConfig, env)
     }
 
     if (pluginConfig.memory_enabled) {

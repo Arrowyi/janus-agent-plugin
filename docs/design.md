@@ -13,7 +13,7 @@
 - `consultant` —— 咨询团队主入口。负责五种证据模式（`select`、`verify`、`roadmap`、`research`、`guide`）与咨询子 agent；设计移交 `architect`，文档移交 `author`。
 - `architect` —— 研发团队设计主入口。负责系统设计与 `design.md` 记录；派发 `common-explorer` 与 `coder-reviewer`。
 - `coder` —— 研发团队编码主入口。负责编码、调试、重构、测试与质量门；派发 `coder-lite` 与 `coder-reviewer`。
-- `author` —— 文档团队主入口。负责接单、大纲审批门、作者简报、验证与发布；派发 `author-writer` 与 `coder`。
+- `author` —— 文档团队主入口。负责接单、大纲审批门、作者简报、验证与发布；派发 `author-writer`、`author-reviewer` 与 `coder`。
 
 `janus` 把证据类工作路由给 `consultant`、编码给 `coder`、快答给 `simple`；设计与文档请求交给用户自选的 `architect` 与 `author` 主入口，它们不是派发目标。
 
@@ -33,6 +33,7 @@
 | `coder-reviewer` | 审查 | subagent | 单向门设计事前验尸；对照设计记录独立审查 coder 的 `plan.md`/diff | 网络来源审计、最终回答 |
 | `consultant-auditor` | 审查 | subagent | 来源意图与独立性审计 | 事实核查、最终回答 |
 | `author-writer` | 执笔 | subagent | 全部读者可见正文：蓝图、草稿、维护、一致性检查；在 `writer_docs_roots` 下写已批准的文档文件（scoped 模式） | 证据收集、大纲审批、简报、记忆、发布（author 负责）；宽泛研究 |
+| `author-reviewer` | 审稿 | subagent | `architecture`/`targeted`/`strict` 成稿后的独立审稿：事实与来源台账、简报对齐、阅读友好度；返回 `AuthorReviewerReport` | 执笔与修正（author-writer 负责）、代码实现、网络检索 |
 | `coder-lite` | 编码 | subagent | 完全指定好的机械性编码/文件任务 | 判断、调试、跨模块、安全敏感工作 |
 
 ## 3. 路由
@@ -42,7 +43,7 @@ janus       -> consultant / coder / simple   （设计/文档请求 -> 用户自
 consultant  -> common-explorer / consultant-analyst / consultant-critic / consultant-auditor / simple
 architect   -> common-explorer / coder-reviewer / consultant-analyst / consultant-auditor / simple
 coder       -> coder-lite / coder-reviewer / common-explorer；L3 可用 deep 档模型
-author      -> author-writer / common-explorer / coder / consultant-critic / coder-reviewer
+author      -> author-writer / author-reviewer / common-explorer / coder / consultant-critic
 simple      -> 无（叶节点）
 所有子 agent -> 无（叶节点）
 ```
@@ -101,6 +102,7 @@ coder 选择能胜任的最轻流程，并在开工前用一行宣布。
 | `coder-reviewer` | `opencode/claude-sonnet-5-5` |
 | `consultant-auditor` | `opencode-go/grok-4.7` |
 | `author-writer` | `opencode/claude-sonnet-5-5` |
+| `author-reviewer` | `opencode-go/kimi-k3.1-pro` |
 | `coder-lite` | `opencode-go/glm-5.3-flash` |
 
 每个角色解析到单一已配置模型，没有插件回退链。用户可在 `~/.config/janus-agent/config.jsonc` 用 `<role>_model` 覆盖任意角色，或用 `mode_models`/`tier_models` 按模式/档位路由。按模型的适配块由 system transform 钩子按实际服务当轮的模型注入。author-writer 的可写文档根由 `writer_docs_roots` 配置（默认 `["userdoc"]`，允许 `docs/guides` 这类项目相对路径；空数组选择只读回退——author-writer 返回正文，由 `author` 发布）。
@@ -147,4 +149,4 @@ bun run install:local
 JANUS_PLUGIN_ENTRY=~/.local/share/janus-agent-plugin/dist/index.js bun run integration
 ```
 
-集成证明在隔离的 OpenCode 沙箱中加载已安装的构建产物，断言 13 个 agent 键、记忆 MCP、三个 skill、三条斜杠命令、simple 工作区、派发原语、design/author/handoff 状态权限（含叶节点不持有 handoff 权限的反证），以及五个主入口提示词中的 design 与 handoff 绑定。组装后的提示词由金样快照锁定，生成的 skill 由 `gen-skill.test.ts` 锁定；`skill-consistency.test.ts` 检查七模式 schema 与提示词、skill、eval 的 `modes` 元数据一致。模型评分的行为（路由、自适应过程、派发模式纪律、设计门）由 `evals/fixtures/consultation-cases.json` 覆盖，需要真实模型评审。
+集成证明在隔离的 OpenCode 沙箱中加载已安装的构建产物，断言 14 个 agent 键、记忆 MCP、三个 skill、三条斜杠命令、simple 工作区、派发原语、design/author/handoff 状态权限（含叶节点不持有 handoff 权限的反证与 author-reviewer 的双状态目录只读权限），以及五个主入口提示词中的 design 与 handoff 绑定。组装后的提示词由金样快照锁定，生成的 skill 由 `gen-skill.test.ts` 锁定；`skill-consistency.test.ts` 检查七模式 schema 与提示词、skill、eval 的 `modes` 元数据一致。模型评分的行为（路由、自适应过程、派发模式纪律、设计门）由 `evals/fixtures/consultation-cases.json` 覆盖，需要真实模型评审。

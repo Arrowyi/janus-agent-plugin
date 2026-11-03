@@ -107,6 +107,7 @@ describe("prompt word budgets", () => {
       "source-criteria.md",
       "channel-policy.md",
       "engineering-principles.md",
+      "user-facing-style.md",
     ]) {
       const count = words(await readText(join(ASSETS, "principles", file)))
       if (count > FRAGMENT_BUDGET) {

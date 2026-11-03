@@ -20,7 +20,7 @@ Janus is a daily-driver agent family for [OpenCode](https://opencode.ai) — thr
 | `author-writer` (subagent) | `opencode/claude-sonnet-5-5` | Documentation-team's scoped-write executor and sole author of reader-facing prose; writes only under `writer_docs_roots` (default `userdoc`) |
 | `coder-lite` (subagent) | `opencode-go/glm-5.3-flash` | Mechanical coding lane: fully specified bulk edits, formatting/lint fixes, boilerplate. Workspace edits allowed, everything else asks; stops and reports up on ambiguity |
 | `janus-memory` (MCP) | — | Local SQLite memory shared across the family: auto-saved consultation records, recall, edit, delete, outcome feedback |
-| `janus-models` (command) | — | Model-rotation entry: inventory the 13 agents, evaluate model/prompt fit, and apply approved model or routing changes to the user-level Janus config |
+| `janus-models` (command) | — | Model-rotation entry: inventory the 14 agents, evaluate model/prompt fit, and apply approved model or routing changes to the user-level Janus config |
 | `janus-handoff` (command) | — | Cross-team handoff operator: list, view, mount (`use`), archive, delete, export, and import `handoff.md` documents for topics moving between the primary entries |
 
 ### Which agent should I use?

@@ -37,6 +37,7 @@ const CONFIG_ROLES = [
   "consultant-critic",
   "coder-reviewer",
   "author-writer",
+  "author-reviewer",
   "coder-lite",
 ] as const
 
@@ -111,6 +112,12 @@ export const JanusPluginConfigSchema = z
   author_writer_agent: z.string().default("author-writer"),
   author_writer_model: z.string().optional(),
   author_writer_enabled: z.boolean().default(true),
+  // author's independent read-only document reviewer; separate from the
+  // R&D coder-reviewer so document review never depends on a design.md
+  // baseline or shares the writer's model family.
+  author_reviewer_agent: z.string().default("author-reviewer"),
+  author_reviewer_model: z.string().optional(),
+  author_reviewer_enabled: z.boolean().default(true),
   // Project-relative directories the bundled writer may write approved
   // document files into. `[]` disables writer file writes (read-only
   // fallback: the writer returns prose and the author publishes).
@@ -181,7 +188,10 @@ export type JanusPluginConfig = z.infer<typeof JanusPluginConfigSchema>
 // consultant-critic, coder-reviewer, and author-writer are Anthropic
 // `claude-sonnet-5-5` (Vals Index 70.85%, TB4.0 64.1% Vals / 70.6% vendor,
 // clean prose); consultant-auditor is xAI `grok-4.7` (AA-Briefcase 1657,
-// AA-Omniscience hallucination 29% — the fourth family).
+// AA-Omniscience hallucination 29% — the fourth family). The documentation
+// team closes a three-family loop: Google editor-in-chief (`author`),
+// Anthropic writer (`author-writer`), Moonshot reviewer (`author-reviewer`,
+// `kimi-k3.1-pro` long-context close reading at one call per document).
 //
 // Coding: `coder` is `glm-5.3` (TB4.0 38.9% Vals) with a shipped deep-tier
 // uplift to `kimi-k3.1-pro` for L3 work (see TIER_MODEL_DEFAULTS);
@@ -206,6 +216,7 @@ export const MODEL_DEFAULTS = {
   "consultant-critic": "opencode/claude-sonnet-5-5",
   "coder-reviewer": "opencode/claude-sonnet-5-5",
   "author-writer": "opencode/claude-sonnet-5-5",
+  "author-reviewer": "opencode-go/kimi-k3.1-pro",
   "coder-lite": "opencode-go/glm-5.3-flash",
 } as const
 
@@ -268,6 +279,8 @@ function resolveUserScalarRoleModel(
       return config.coder_reviewer_model
     case "author-writer":
       return config.author_writer_model
+    case "author-reviewer":
+      return config.author_reviewer_model
     case "coder-lite":
       return config.coder_lite_model
   }

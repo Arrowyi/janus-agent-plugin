@@ -106,6 +106,7 @@ describe("resolveRoleTarget", () => {
       "coder-reviewer": { agentName: "coder-reviewer", model: "opencode/claude-sonnet-5-5" },
       "consultant-auditor": { agentName: "consultant-auditor", model: "opencode-go/grok-4.7" },
       "author-writer": { agentName: "author-writer", model: "opencode/claude-sonnet-5-5" },
+      "author-reviewer": { agentName: "author-reviewer", model: "opencode-go/kimi-k3.1-pro" },
       coder: { agentName: "coder", model: "opencode-go/glm-5.3" },
       simple: { agentName: "simple", model: "opencode-go/deepseek-v4.1-flash" },
       "coder-lite": { agentName: "coder-lite", model: "opencode-go/glm-5.3-flash" },
@@ -372,6 +373,29 @@ describe("createJanusDispatchTool", () => {
 
       // then
       expect(result).toBe("Error: simple is disabled by configuration")
+    } finally {
+      delete process.env.JANUS_CONFIG
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it("rejects author-reviewer when author_reviewer_enabled=false", async () => {
+    // given
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-aroff-"))
+    const configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, '{\n  "author_reviewer_enabled": false\n}')
+    process.env.JANUS_CONFIG = configPath
+    const tools = createJanusDispatchTools(createFakeSdk() as unknown as PluginInput["client"])
+
+    try {
+      // when
+      const result = await tools.janus_dispatch.execute(
+        { role: "author-reviewer", prompt: "review the drafted chapter" },
+        fakeContext(),
+      )
+
+      // then
+      expect(result).toBe("Error: author-reviewer is disabled by configuration")
     } finally {
       delete process.env.JANUS_CONFIG
       rmSync(tmpConfigDir, { recursive: true, force: true })
@@ -885,6 +909,31 @@ describe("janus_dispatch_continue", () => {
     )
 
     expect(result).toBe("Error: author-writer is disabled by configuration")
+    expect(promptAsyncCount(fake)).toBe(before)
+  })
+
+  it("rejects a continue onto a disabled author-reviewer session", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("review report", clock)
+    const tools = createTools(fake, clock)
+    const launched = await tools.janus_dispatch.execute(
+      { role: "author-reviewer", prompt: "review the drafted chapter", return_handle: true },
+      fakeContext(),
+    )
+    const parsed = parseOutcomeEnvelope(outputText(launched))
+    if (!parsed.ok || parsed.value.status !== "completed") {
+      throw new Error(`expected completed envelope: ${outputText(launched)}`)
+    }
+    expect(parsed.value.role).toBe("author-reviewer")
+
+    writeFileSync(configPath, JSON.stringify({ author_reviewer_enabled: false }))
+    const before = promptAsyncCount(fake)
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: parsed.value.session_id, prompt: "re-check section two" },
+      fakeContext(),
+    )
+
+    expect(result).toBe("Error: author-reviewer is disabled by configuration")
     expect(promptAsyncCount(fake)).toBe(before)
   })
 

@@ -193,7 +193,7 @@ async function main(): Promise<void> {
             pass: hasWriter,
             detail: hasWriter ? "agent.author-writer present" : "agent.author-writer MISSING",
           })
-          for (const role of ["simple", "architect", "author", "coder", "coder-lite", "common-explorer", "consultant-analyst", "consultant-critic", "consultant-auditor", "coder-reviewer", "author-writer"]) {
+          for (const role of ["simple", "architect", "author", "coder", "coder-lite", "common-explorer", "consultant-analyst", "consultant-critic", "consultant-auditor", "coder-reviewer", "author-writer", "author-reviewer"]) {
             const present = hasNestedKey(json, "agent", role)
             assertions.push({
               name: `config has ${role} agent key`,
@@ -231,6 +231,10 @@ async function main(): Promise<void> {
           const authorExternal = readAgentPermission(json, "author")?.["external_directory"] as
             | Record<string, string>
             | undefined
+          const reviewerExternal = readAgentPermission(json, "author-reviewer")?.["external_directory"] as
+            | Record<string, string>
+            | undefined
+          const reviewerPermission = readAgentPermission(json, "author-reviewer")
           const architectPrompt = readAgentPrompt(json, "architect")
           const authorPrompt = readAgentPrompt(json, "author")
           const coderPrompt = readAgentPrompt(json, "coder")
@@ -254,6 +258,17 @@ async function main(): Promise<void> {
             name: "coder grants external access to the design state dir",
             pass: coderExternal?.[`${designStateDir}/**`] === "allow",
             detail: coderExternal?.[`${designStateDir}/**`] ?? "design state dir not allowed",
+          })
+          assertions.push({
+            name: "author-reviewer grants read-only external access to both state dirs",
+            pass:
+              reviewerExternal?.[`${authorStateDir}/**`] === "allow" &&
+              reviewerExternal?.[`${designStateDir}/**`] === "allow" &&
+              reviewerPermission?.["edit"] === "deny" &&
+              reviewerPermission?.["bash"] === "deny" &&
+              reviewerPermission?.["webfetch"] === "deny" &&
+              reviewerPermission?.["websearch"] === "deny",
+            detail: `author=${reviewerExternal?.[`${authorStateDir}/**`]} design=${reviewerExternal?.[`${designStateDir}/**`]} edit=${reviewerPermission?.["edit"]} bash=${reviewerPermission?.["bash"]}`,
           })
           assertions.push({
             name: "design state directory created",

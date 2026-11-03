@@ -11,6 +11,7 @@ import {
   loadCommonBase,
   loadCommonWrite,
   registerAuthorWriter,
+  registerAuthorReviewer,
   registerCommonExplorer,
   registerConsultantAgent,
   registerConsultantAnalyst,
@@ -50,6 +51,8 @@ const pluginConfig = {
   coder_reviewer_enabled: true,
   author_writer_agent: "author-writer",
   author_writer_enabled: true,
+  author_reviewer_agent: "author-reviewer",
+  author_reviewer_enabled: true,
   writer_docs_roots: ["userdoc"],
   coder_lite_agent: "coder-lite",
   coder_lite_enabled: true,
@@ -92,6 +95,22 @@ const roles = [
     name: "consultant-auditor",
     block: "gemini38flash.md",
     register: registerConsultantAuditor,
+  },
+  {
+    asset: "author-reviewer.md",
+    name: "author-reviewer",
+    block: "kimik31pro.md",
+    // registerAuthorReviewer mkdirs the author and design state dirs; wrap it
+    // with a temp HOME so nothing lands under the real HOME.
+    register: (config: { agent?: Record<string, unknown> }, pluginConfig: JanusPluginConfig) => {
+      const parent = mkdtempSync(join(tmpdir(), "reviewer-prompt-"))
+      try {
+        return registerAuthorReviewer(config, pluginConfig, { HOME: parent } as NodeJS.ProcessEnv)
+      } finally {
+        rmSync(parent, { recursive: true, force: true })
+      }
+    },
+    extras: ["principles/user-facing-style.md"],
   },
 ] as const
 
@@ -235,10 +254,12 @@ describe("dispatch prompt routing contract", () => {
       // when
       await registerAuthorWriter(config, pluginConfig, env)
 
-      // then — author-writer keeps the write gate: base then write, then bindings
+      // then — author-writer keeps the write gate: asset + user-facing-style
+      // fragment, then base, then write, then bindings
+      const style = (await readFile(resolveAsset("principles/user-facing-style.md"), "utf8")).trim()
       const expected = injectRuntimeBindings(
         injectCommonPrinciples(
-          injectCommonPrinciples(source, base),
+          injectCommonPrinciples(injectCommonPrinciples(source, style), base),
           write,
         ),
         buildAuthorWriterRuntimeBindings(pluginConfig, resolveAuthorStateDir(env)),

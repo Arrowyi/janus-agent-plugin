@@ -46,7 +46,7 @@ describe("dispatch role constants", () => {
   it("exports roles, budget and default wait", () => {
     expect(DISPATCH_ROLES).toEqual([
       "common-explorer", "consultant-analyst", "consultant-critic", "coder-reviewer",
-      "consultant-auditor", "author-writer", "simple", "coder-lite", "coder", "consultant",
+      "consultant-auditor", "author-writer", "author-reviewer", "simple", "coder-lite", "coder", "consultant",
     ])
     expect(PRODUCTION_WAIT_BUDGET_MS).toBe(300_000)
     expect(DEFAULT_WAIT_MS).toBe(PRODUCTION_WAIT_BUDGET_MS)

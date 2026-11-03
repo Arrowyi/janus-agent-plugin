@@ -102,9 +102,9 @@ bun run install:local
 1. 注册 `consultant` 主入口（名字可用 `consultant_agent` 配置），授予共享 handoff 状态目录的 `external_directory` 权限，可读写跨团队交接文档；
 2. 注册 `coder` 编码入口（模式 `all`：可选可派发）、`simple` 经济叶节点（模式 `all`，禁止派发）与 `coder-lite` 机械车道（模式 `subagent`，步数上限 50，工作区编辑免确认，禁止继续派发）；
 3. 注册 `simple` 的工作区目录（`$XDG_DATA_HOME/janus-agent/lite`，可用 `simple_workspace_dir` 配置）为免确认可写；其余写入一律先询问。同时创建设计状态目录 `$XDG_DATA_HOME/janus-agent/design`（由 `architect`、`author`、`coder` 访问：architect 写 `design.md` 的决策内容，coder 读它、写 `plan.md`，并可在验证落地后翻转其生命周期行）与 handoff 状态目录 `$XDG_DATA_HOME/janus-agent/handoff`（由五个主入口 `janus`、`consultant`、`architect`、`coder`、`author` 共享访问；叶节点子 agent 绝不写它）；
-4. 注册检索/审查子 agent `common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`（各自只读、各用其配置模型、各自禁 shell 与派发），以及限定写入的执笔者 `author-writer`（仅允许编辑 `writer_docs_roots` 之下，默认 `userdoc/**`；禁 shell 与派发；允许带来源台账的定向网络检索；步数上限 80；`writer_docs_roots` 为空时转为只读，由 author 发布其返回的正文）。同时创建 author 状态目录 `$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报；
+4. 注册检索/审查子 agent `common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`（各自只读、各用其配置模型、各自禁 shell 与派发），限定写入的执笔者 `author-writer`（仅允许编辑 `writer_docs_roots` 之下，默认 `userdoc/**`；禁 shell 与派发；允许带来源台账的定向网络检索；步数上限 80；`writer_docs_roots` 为空时转为只读，由 author 发布其返回的正文），以及文档团队独立审稿人 `author-reviewer`（默认 `opencode-go/kimi-k3.1-pro`，与主笔跨模型家族；只读：`edit`/`bash`/`task`/`webfetch`/`websearch` 全拒，仅授予 author 与 design 状态目录的 `external_directory` 读权限；门禁为 `architecture` 文档或 `targeted`/`strict` 验证级别，`light` 非架构文档与 `briefWaived` 微改跳过；不在 `tier_role_caps` 中）。同时创建 author 状态目录 `$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报；
 5. 注册 `janus-memory` 本地 MCP 服务器（记忆启用时，默认开启）；
-6. 为十个派发角色注册 `janus_dispatch{role,prompt,return_handle?,mode?,tier?,protocol?}`、`janus_dispatch_wait{job_id,wait_ms?}`、`janus_dispatch_cancel{job_id}` 与 `janus_dispatch_continue{session_id,prompt,role?}`（不干扰内置 `task` 工具或其他插件）。`mode`/`tier` 选择模型；`protocol` 在首轮前prepend五张方法论卡片之一；
+6. 为十一个派发角色注册 `janus_dispatch{role,prompt,return_handle?,mode?,tier?,protocol?}`、`janus_dispatch_wait{job_id,wait_ms?}`、`janus_dispatch_cancel{job_id}` 与 `janus_dispatch_continue{session_id,prompt,role?}`（不干扰内置 `task` 工具或其他插件）。`mode`/`tier` 选择模型；`protocol` 在首轮前prepend五张方法论卡片之一；
 7. 把 `consultation`、`consultation-design`、`consultation-doc` 三个 skill 与 `/janus-memory`、`/janus-models`、`/janus-handoff` 三条斜杠命令安装进你的 OpenCode 配置目录。
 
 ### 可恢复的团队任务
@@ -129,7 +129,7 @@ bun run install:local
 
 ```jsonc
 {
-  // 13 个已注册 agent、10 个派发角色。`janus`、`architect`、`author`
+  // 14 个已注册 agent、11 个派发角色。`janus`、`architect`、`author`
   // 是主入口，不可派发。
 
   "janus_agent": "janus",
@@ -182,6 +182,10 @@ bun run install:local
   "writer_docs_roots": ["userdoc"],
   // "writer_delegate_agent": "host-author-writer",
   // "writer_delegate_model": "provider/model",
+
+  "author_reviewer_agent": "author-reviewer",
+  "author_reviewer_model": "opencode-go/kimi-k3.1-pro",
+  "author_reviewer_enabled": true,
 
   // 可选：按模式 / 按档位的模型路由。优先级：
   // mode_models[mode][role] > tier_models[tier][role] >
@@ -245,6 +249,7 @@ bun run install:local
 | `coder_reviewer_agent` / `coder_reviewer_model` / `coder_reviewer_enabled` | string / string / boolean | `"coder-reviewer"` / `opencode/claude-sonnet-5-5` / `true` | 设计事前验尸与 coder 计划/diff 审查 |
 | `consultant_auditor_agent` / `consultant_auditor_model` / `consultant_auditor_enabled` | string / string / boolean | `"consultant-auditor"` / `opencode-go/grok-4.7` / `true` | 来源影响与独立性审计 |
 | `author_writer_agent` / `author_writer_model` / `author_writer_enabled` | string / string / boolean | `"author-writer"` / `opencode/claude-sonnet-5-5` / `true` | 限定写入执行者、正文唯一执笔人 |
+| `author_reviewer_agent` / `author_reviewer_model` / `author_reviewer_enabled` | string / string / boolean | `"author-reviewer"` / `opencode-go/kimi-k3.1-pro` / `true` | 文档独立审稿人（只读；`architecture`/`targeted`/`strict` 门禁；不在 `tier_role_caps` 中） |
 | `writer_docs_roots` | string[] | `["userdoc"]` | author-writer 的项目相对写入根；`[]` = 只读回退 |
 | `writer_delegate_agent` / `writer_delegate_model` | string（可选）/ string（可选） | （无） | 宿主提供的 author-writer；设置后不再注册内置 author-writer |
 | `mode_models` | object（可选） | （无） | 按模式的角色→模型覆盖 |
@@ -262,7 +267,7 @@ bun run install:local
 
 每个角色有一次已配置的尝试，每个 agent 解析到单一模型，插件不做预先回退。未带 `writer_delegate_model` 的代理使用宿主模型选择（持久 job spec 中为 `null`）；它保留宿主权限与宿主内部重试行为。等待超时或状态未知都不授权备用模型。
 
-consultant 把有界的证据工作路由给自己的团队：`common-explorer` 收集缺失证据，`consultant-analyst` 解读实质性分歧，`consultant-critic` 挑战重大结论与计划不确定性，`consultant-auditor` 审计用户/第三方/推广来源中不明的影响或独立性。设计、代码审查与文档属于其他团队：`architect` 负责设计并与 `coder` 共享 `coder-reviewer`（设计事前验尸 / 计划-diff 审查）；`author` 负责文档并派发 `author-writer` 执笔。一项检查在其可能实质改变答案、且归属方能说出它可能改变哪个决策、能抓住哪种具体失败时才被派发；跳过角色必须给出该理由。这些角色不是按档位必须凑齐的名册。每个叶节点（`common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`author-writer`、`coder-lite`、`simple`）都有 `permission.task = "deny"` 加显式 `janus_dispatch* = "deny"`；只读专家同时禁 `edit` 与 `bash`，`author-writer` 是限定写入叶节点——`edit` 在 `<writer_docs_roots>/**` 之外全拒，`webfetch`/`websearch` 允许用于带来源台账的定向检索。外部 `writer_delegate_agent` 保留其宿主定义的权限，不继承这些限制。插件不强制模型家族多样性；请自行选择。角色上限是建议性天花板，不是运行时强制调度器。
+consultant 把有界的证据工作路由给自己的团队：`common-explorer` 收集缺失证据，`consultant-analyst` 解读实质性分歧，`consultant-critic` 挑战重大结论与计划不确定性，`consultant-auditor` 审计用户/第三方/推广来源中不明的影响或独立性。设计、代码审查与文档属于其他团队：`architect` 负责设计并与 `coder` 共享 `coder-reviewer`（设计事前验尸 / 计划-diff 审查）；`author` 负责文档并派发 `author-writer` 执笔与 `author-reviewer` 独立审稿（`architecture` 文档或 `targeted`/`strict` 验证成稿后必经，`light` 非架构文档与 `briefWaived` 保义微改跳过；不可用时披露而非冒领）。一项检查在其可能实质改变答案、且归属方能说出它可能改变哪个决策、能抓住哪种具体失败时才被派发；跳过角色必须给出该理由。这些角色不是按档位必须凑齐的名册。每个叶节点（`common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`author-writer`、`author-reviewer`、`coder-lite`、`simple`）都有 `permission.task = "deny"` 加显式 `janus_dispatch* = "deny"`；只读专家同时禁 `edit` 与 `bash`，`author-reviewer` 额外禁 `webfetch`/`websearch`（只读审稿，不联网），`author-writer` 是限定写入叶节点——`edit` 在 `<writer_docs_roots>/**` 之外全拒，`webfetch`/`websearch` 允许用于带来源台账的定向检索。外部 `writer_delegate_agent` 保留其宿主定义的权限，不继承这些限制；内置 `author-reviewer` 的注册不受其影响。插件不强制模型家族多样性；请自行选择。角色上限是建议性天花板，不是运行时强制调度器。
 
 作者简报位于 `$XDG_DATA_HOME/janus-agent/author/<projectId>/<docId>/brief.md`（固定路径；`projectId` 由项目目录派生）。`author` 创建并更新它；`author-writer` 只读、绝不写。限定写入模式下 `author` 不编辑写手根目录下的文件——它审查 author-writer 的 diff 并请求有界修正。
 

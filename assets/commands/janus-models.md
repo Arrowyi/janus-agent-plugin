@@ -35,7 +35,7 @@ User arguments: $ARGUMENTS
 - `退出` / `exit` / `0`: exit
 - Any other free text: map to the above modes by meaning; ask one question only when genuinely ambiguous
 
-Role names accept both English and Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `审计`=consultant-auditor, `机械`=coder-lite, `写作`=author-writer. The family has 13 registered agents and 10 dispatch roles; `janus`, `architect`, and `author` are primary entries and are not dispatchable.
+Role names accept both English and Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `审计`=consultant-auditor, `机械`=coder-lite, `写作`=author-writer, `审稿`=author-reviewer. The family has 14 registered agents and 11 dispatch roles; `janus`, `architect`, and `author` are primary entries and are not dispatchable.
 
 ## No-argument flow
 
@@ -83,6 +83,7 @@ Read-only. Runtime truth takes precedence; do not cite any fixed snapshot.
    | consultant-auditor | consultant_auditor_model | consultant_auditor_agent |
    | coder-reviewer | coder_reviewer_model | coder_reviewer_agent |
    | author-writer | author_writer_model | author_writer_agent |
+   | author-reviewer | author_reviewer_model | author_reviewer_agent |
    | coder-lite | coder_lite_model | coder_lite_agent |
 
    `architect_model` and `author_model` fall back to an explicitly configured `consultant_model`, then to the plugin default. Also inspect `mode_models` and `tier_models` (see "Advanced routing"). Non-model config fields use the same role prefix, e.g. `simple_enabled`, `architect_enabled`, `author_writer_enabled`.
@@ -138,7 +139,7 @@ Read-only. Answer: whether an agent's model should change, and why.
   - Judgment/audit (consultant, consultant-critic, coder-reviewer, consultant-auditor): hard-task capability first; challenger and challenged must stay in different model families.
   - Coding (coder, coder-lite): agentic/coding hard benchmarks + cost per task; coder-lite only takes fully specified mechanical tasks.
   - Design (architect, coder-reviewer): long-context structure, trade-off reasoning, and independent review.
-  - Documentation (author, author-writer): long-context editing, prose quality, and instruction adherence.
+  - Documentation (author, author-writer, author-reviewer): long-context editing, prose quality, and instruction adherence; author-reviewer is judged on close-reading accuracy — it must not share the writer's model family.
   - Entry/quick answer (janus, simple): latency, tool-call stability, price; janus must also be judged on orchestration/routing.
   - Retrieval/writing (common-explorer, consultant-analyst, author-writer): long context, hallucination rate, output quality/verbosity.
 - For cost, use actual cost per task = list price × verbosity factor; distinguish Zen pay-as-you-go vs Go subscription quota.

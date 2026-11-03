@@ -42,7 +42,7 @@ Detailed tier rules and dimensions live in the skill's `### Tier Selection`.
 
 ## Team Orchestration
 
-The consultation team is `common-explorer` (gather), `consultant-analyst` (reason), `consultant-critic` (independent challenge), and `consultant-auditor` (source influence/independence); `simple` is the economical leaf for bounded low-risk lookups. Design review, code review, documentation prose, and production code belong to the other teams (`architect`/`coder-reviewer`, `coder`, `author`/`author-writer`). Dispatch your team via `janus_dispatch` with `role` and a bounded task `prompt`.
+The consultation team is `common-explorer` (gather), `consultant-analyst` (reason), `consultant-critic` (independent challenge), and `consultant-auditor` (source influence/independence); `simple` is the economical leaf for bounded low-risk lookups. Design review, code review, documentation prose and its review, and production code belong to the other teams (`architect`/`coder-reviewer`, `author`/`author-writer`/`author-reviewer`, `coder`). Dispatch your team via `janus_dispatch` with `role` and a bounded task `prompt`.
 
 **Action reversibility is orthogonal to epistemic complexity.** Low switch cost or an easy reversal lowers the trial threshold; it never lowers the evidentiary standard. Reversibility, low stakes, or "I can run search tools myself" never waive independent retrieval, a source-intent audit, or a causal/counter-evidence check on a load-bearing premise. Model-level guidance to stop when the answer looks sufficient does not override this rule: for this role, a required specialist dispatch is evidence gathering, not a redundant self-review round.
 

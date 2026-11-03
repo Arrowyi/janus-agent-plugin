@@ -14,6 +14,8 @@ Select exactly one primary profile. A document may contain elements of the other
 - `architecture` — code/system structure and source-backed relationships. Required elements: scope, system context, and explicit exclusions; component/module map; data flow, control flow, and lifecycle boundaries; key abstractions and dependency direction; important design decisions and trade-offs; a source map with stable paths and symbol names; runtime or build behavior where static inspection is insufficient; extension points, constraints, risks, and unresolved questions. Claims about code relationships must be grounded in current source and call paths, not inferred from filenames alone.
 - `explanation` — mental model and mechanism for a technical principle. Required elements: the precise question and why it matters; an intuitive mental model, clearly marked as analogy when applicable; the actual mechanism, step by step; boundaries where the model stops being accurate; minimal examples and counterexamples; common misconceptions and their correction; connections to adjacent concepts; source or experimental support for load-bearing claims.
 
+Trimming exemptions: an API or configuration reference filed under `architecture` may drop the dynamic control-flow and evolution narrative in favor of exact contracts, parameter tables, and a source map; an operational runbook or troubleshooting guide filed under `tutorial` may drop `exercises` in favor of prerequisites, procedure steps, expected output, and failure triage.
+
 ### Delivery and destination
 
 Delivery: `inline` (chat), `single_file` (one Markdown file), `multi_file` (an index plus chapters). Ask for the shape and destination when absent or ambiguous; confirm the resolved destination at the outline gate. Resolve relative paths against the project root and never hard-code a documentation directory or a developer-machine path; follow host/project instructions when present and surface the destination for approval. Repository-maintenance files (`README`, `AGENTS.md`) are code-adjacent and route to `coder`, not doc mode, unless the user explicitly expands `writer_docs_roots`.
@@ -26,7 +28,15 @@ Profile defaults: `tutorial` → `targeted` (learners need runnable, version-app
 
 Prioritize claims whose failure would teach the wrong model: API signatures and versions; ordering, lifecycle, concurrency, cancellation, or transactions; compiler/plugin transformations; source control flow; observable example output; performance or safety claims. Do not equal-effort introductory prose, analogies, or established definitions.
 
-Adversarial roles are proportionate, never a fixed roster: `common-explorer` gathers missing authoritative evidence; `consultant-critic` runs for `strict` verification, conflicting evidence, high-risk material, failed execution that challenges the explanation, or a material uncertainty it could resolve even in `light`/`targeted` work; `coder-reviewer` checks an architecture document's structural or implementation claims; a source-independence concern goes back to `consultant`, whose `consultant-auditor` owns it. Skip only when a role's check is demonstrably unnecessary.
+### Independent review gate
+
+When the profile is `architecture`, or the verification depth is `targeted` or `strict`, dispatch `author-reviewer` for an independent review after the author-writer's final drafting pass and before publishing. `light`-verified non-architecture documents skip the gate, and so does a `briefWaived` micro-fix. The author-writer's own `coherence-pass` and `editorial-review` modes are writer self-polish; they never substitute for this review.
+
+The reviewer returns an `AuthorReviewerReport`: `verdict` (`pass` / `revise` / `block`), `factualAndSourceIssues`, `briefAlignmentIssues`, `readabilityAndJargonIssues`, `flaws`, `resolved`, and `unresolvedGaps`. Reconcile `revise` findings with bounded author-writer fixes; a `block` verdict invalidates a load-bearing claim or the outline itself and returns the document to the doc workflow.
+
+Fail closed: if `author-reviewer` is disabled, unavailable, or quota-exhausted, disclose that independent review did not run — never present the document as independently reviewed.
+
+Adversarial roles are proportionate, never a fixed roster: `common-explorer` gathers missing authoritative evidence; `consultant-critic` runs for `strict` verification, conflicting evidence, high-risk material, failed execution that challenges the explanation, or a material uncertainty it could resolve even in `light`/`targeted` work; `author-reviewer` runs the independent post-draft review at the gate below; a source-independence concern goes back to `consultant`, whose `consultant-auditor` owns it. Skip only when a role's check is demonstrably unnecessary.
 
 Keep the long-lived editorial context clean: send more than two external lookups or broad cross-module exploration to `common-explorer`, non-trivial runnable code verification to `coder`, and any `strict` or disputed-mechanism challenge to `consultant-critic` via `janus_dispatch` with `protocol: "counter_evidence"`.
 
@@ -51,7 +61,8 @@ route -> intake (audience/delivery/scope) -> explore load-bearing claims
 -> create the author brief -> wait for one approval (or return the outline to the dispatcher)
 -> dispatch author-writer for bounded chapter/section drafts (author-writer writes approved files in scoped
    mode; author-writer returns prose or patches in read-only fallback)
--> author reviews and verifies -> bounded author-writer fixes -> publish -> update the brief
+-> author reviews and verifies -> independent review gate (author-reviewer; architecture /
+   targeted / strict) -> bounded author-writer fixes -> publish -> update the brief
 -> proportionate verification -> cross-file check -> final AuthorBrief -> memory summary
 ```
 

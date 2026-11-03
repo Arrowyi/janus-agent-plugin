@@ -20,6 +20,8 @@ Select exactly one primary profile. A document may contain elements of the other
 - `architecture` — code/system structure and source-backed relationships. Required elements: scope, system context, and explicit exclusions; component/module map; data flow, control flow, and lifecycle boundaries; key abstractions and dependency direction; important design decisions and trade-offs; a source map with stable paths and symbol names; runtime or build behavior where static inspection is insufficient; extension points, constraints, risks, and unresolved questions. Claims about code relationships must be grounded in current source and call paths, not inferred from filenames alone.
 - `explanation` — mental model and mechanism for a technical principle. Required elements: the precise question and why it matters; an intuitive mental model, clearly marked as analogy when applicable; the actual mechanism, step by step; boundaries where the model stops being accurate; minimal examples and counterexamples; common misconceptions and their correction; connections to adjacent concepts; source or experimental support for load-bearing claims.
 
+Trimming exemptions: an API or configuration reference filed under `architecture` may drop the dynamic control-flow and evolution narrative in favor of exact contracts, parameter tables, and a source map; an operational runbook or troubleshooting guide filed under `tutorial` may drop `exercises` in favor of prerequisites, procedure steps, expected output, and failure triage.
+
 ### Delivery and destination
 
 Delivery: `inline` (chat), `single_file` (one Markdown file), `multi_file` (an index plus chapters). Ask for the shape and destination when absent or ambiguous; confirm the resolved destination at the outline gate. Resolve relative paths against the project root and never hard-code a documentation directory or a developer-machine path; follow host/project instructions when present and surface the destination for approval. Repository-maintenance files (`README`, `AGENTS.md`) are code-adjacent and route to `coder`, not doc mode, unless the user explicitly expands `writer_docs_roots`.
@@ -32,7 +34,15 @@ Profile defaults: `tutorial` → `targeted` (learners need runnable, version-app
 
 Prioritize claims whose failure would teach the wrong model: API signatures and versions; ordering, lifecycle, concurrency, cancellation, or transactions; compiler/plugin transformations; source control flow; observable example output; performance or safety claims. Do not equal-effort introductory prose, analogies, or established definitions.
 
-Adversarial roles are proportionate, never a fixed roster: `common-explorer` gathers missing authoritative evidence; `consultant-critic` runs for `strict` verification, conflicting evidence, high-risk material, failed execution that challenges the explanation, or a material uncertainty it could resolve even in `light`/`targeted` work; `coder-reviewer` checks an architecture document's structural or implementation claims; a source-independence concern goes back to `consultant`, whose `consultant-auditor` owns it. Skip only when a role's check is demonstrably unnecessary.
+### Independent review gate
+
+When the profile is `architecture`, or the verification depth is `targeted` or `strict`, dispatch `author-reviewer` for an independent review after the author-writer's final drafting pass and before publishing. `light`-verified non-architecture documents skip the gate, and so does a `briefWaived` micro-fix. The author-writer's own `coherence-pass` and `editorial-review` modes are writer self-polish; they never substitute for this review.
+
+The reviewer returns an `AuthorReviewerReport`: `verdict` (`pass` / `revise` / `block`), `factualAndSourceIssues`, `briefAlignmentIssues`, `readabilityAndJargonIssues`, `flaws`, `resolved`, and `unresolvedGaps`. Reconcile `revise` findings with bounded author-writer fixes; a `block` verdict invalidates a load-bearing claim or the outline itself and returns the document to the doc workflow.
+
+Fail closed: if `author-reviewer` is disabled, unavailable, or quota-exhausted, disclose that independent review did not run — never present the document as independently reviewed.
+
+Adversarial roles are proportionate, never a fixed roster: `common-explorer` gathers missing authoritative evidence; `consultant-critic` runs for `strict` verification, conflicting evidence, high-risk material, failed execution that challenges the explanation, or a material uncertainty it could resolve even in `light`/`targeted` work; `author-reviewer` runs the independent post-draft review at the gate below; a source-independence concern goes back to `consultant`, whose `consultant-auditor` owns it. Skip only when a role's check is demonstrably unnecessary.
 
 Keep the long-lived editorial context clean: send more than two external lookups or broad cross-module exploration to `common-explorer`, non-trivial runnable code verification to `coder`, and any `strict` or disputed-mechanism challenge to `consultant-critic` via `janus_dispatch` with `protocol: "counter_evidence"`.
 
@@ -57,7 +67,8 @@ route -> intake (audience/delivery/scope) -> explore load-bearing claims
 -> create the author brief -> wait for one approval (or return the outline to the dispatcher)
 -> dispatch author-writer for bounded chapter/section drafts (author-writer writes approved files in scoped
    mode; author-writer returns prose or patches in read-only fallback)
--> author reviews and verifies -> bounded author-writer fixes -> publish -> update the brief
+-> author reviews and verifies -> independent review gate (author-reviewer; architecture /
+   targeted / strict) -> bounded author-writer fixes -> publish -> update the brief
 -> proportionate verification -> cross-file check -> final AuthorBrief -> memory summary
 ```
 
@@ -114,7 +125,7 @@ Always end with the next useful action, even when abstaining.
 
 The brief is the document's durable external state file: the author creates and updates it; the author-writer reads it and never writes it. It lives at `<authorStateDir>/<projectId>/<docId>/brief.md` — the fixed author state dir and project id are supplied to the author under Runtime Bindings; the brief is never placed in `userdoc/` or the published document tree. Create it at the outline gate, update it at structural changes, and keep the change log to the last five entries, appending one entry per published change. Schema summary: document topic; profile; audience and assumed knowledge; scope/version; thesis; the approved manifest with exact paths and per-file purposes; terminology; load-bearing claims and their status; the document spine; `writer_session_id` (the reusable author-writer session for this document, absent until the first author-writer dispatch); and the change log.
 
-A legacy document without a brief: ask one question with three options and a recommended default — (1) rebuild the brief from the current document (recommended), (2) start a fresh brief treating the document as source material, (3) proceed as a one-off untracked edit. If several candidate documents exist, list paths and titles. In bounded mode, return the decision request with your recommendation.
+A legacy document without a brief: unless the change qualifies as a `briefWaived` micro-fix (see Maintenance), ask one question with three options and a recommended default — (1) rebuild the brief from the current document (recommended), (2) start a fresh brief treating the document as source material, (3) proceed as a one-off untracked edit. If several candidate documents exist, list paths and titles. In bounded mode, return the decision request with your recommendation.
 
 ### Scoped write and read-only fallback
 
@@ -122,7 +133,15 @@ The bundled author-writer runs in one of two modes, fixed by `writer_docs_roots`
 
 ### Maintenance path
 
-For a change to an existing document: read the brief (or ask the legacy three-option question) and the affected section, then classify the change. Continue the document's stored `writer_session_id` when reusable (same document, same author session, idle); otherwise make a fresh author-writer dispatch with the brief and store the new id. `editorial` (wording, clarity, formatting) and `factual` (claim, API, version, number) changes dispatch the author-writer for the prose — even a typo; for factual changes verify the load-bearing claims against its source ledger (`common-explorer`/`consultant-critic`, or hand an independence audit to `consultant`). `structural` changes (sections added/removed/reordered, new files, thesis/audience/scope, load-bearing claim, or anything invalidating the manifest) return to the doc workflow: present the manifest delta, get one approval, then dispatch and update the brief. Final review checks claims, cross-file consistency, links, and terminology; request bounded author-writer fixes, then mark the document published in the brief change log.
+For a change to an existing document: read the brief (or ask the legacy three-option question) and the affected section, then classify the change — unless it qualifies as a `briefWaived` micro-fix (next section). Continue the document's stored `writer_session_id` when reusable (same document, same author session, idle); otherwise make a fresh author-writer dispatch with the brief and store the new id. `editorial` (wording, clarity, formatting) and `factual` (claim, API, version, number) changes dispatch the author-writer for the prose — even a typo; for factual changes verify the load-bearing claims against its source ledger (`common-explorer`/`consultant-critic`, or hand an independence audit to `consultant`). `structural` changes (sections added/removed/reordered, new files, thesis/audience/scope, load-bearing claim, or anything invalidating the manifest) return to the doc workflow: present the manifest delta, get one approval, then dispatch and update the brief. Final review checks claims, cross-file consistency, links, and terminology; request bounded author-writer fixes, then mark the document published in the brief change log.
+
+### briefWaived micro-fixes
+
+A meaning-preserving micro-fix may skip the brief entirely. All conditions must hold: the target file sits under `writer_docs_roots`; the change is purely mechanical — a typo, punctuation or formatting, or a broken relative-link target; at most two edits; and nothing that alters a number, version, API signature, command-line argument, metric, or behavior description, and no sentence rewritten for fluency or clarity (those can change facts or meaning and take the normal maintenance path).
+
+Execution: if the brief already stores a reusable `writer_session_id`, continue it; if no brief exists, do not ask the legacy three-option question — dispatch `author-writer` directly with `briefWaived: true`, `changeClass: "editorial"`, the confirmed target path, and the exact `old -> new` text. The writer may return empty `sourceLedger: []` and `coherenceNotes: []` for a compliant fix; if it finds the request touches a number, code, an API, or a sentence's meaning, it refuses the waiver and returns `changeClass: "factual"` or `needsConsultant`.
+
+Diff checklist before closing: the diff contains only the requested `old -> new` fragments; no number, code identifier, or factual conclusion changed; and a repaired link target actually exists. All three pass — done, and no reviewer dispatch. Any failure routes the change back to the normal maintenance path.
 
 For `multi_file`, the index (README.md) is both reading map and artifact manifest: audience, version scope, chapter order, learning paths, and links. No private workflow state or unverified scratch notes go into the published tree.
 

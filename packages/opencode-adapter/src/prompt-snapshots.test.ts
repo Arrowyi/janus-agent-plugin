@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url"
 import {
   registerArchitect,
   registerAuthor,
+  registerAuthorReviewer,
   registerAuthorWriter,
   registerCoder,
   registerCoderLite,
@@ -62,6 +63,7 @@ const ROLE_TARGETS = [
   { golden: "consultant-auditor", agent: "consultant-auditor" },
   { golden: "coder-reviewer", agent: "coder-reviewer" },
   { golden: "author-writer", agent: "author-writer" },
+  { golden: "author-reviewer", agent: "author-reviewer" },
   { golden: "coder-lite", agent: "coder-lite" },
 ] as const
 
@@ -94,6 +96,8 @@ function makeConfig(): JanusPluginConfig {
     coder_reviewer_enabled: true,
     author_writer_agent: "author-writer",
     author_writer_enabled: true,
+    author_reviewer_agent: "author-reviewer",
+    author_reviewer_enabled: true,
     writer_docs_roots: ["userdoc"],
     coder_lite_agent: "coder-lite",
     coder_lite_enabled: true,
@@ -117,6 +121,7 @@ async function assembleAll(): Promise<Map<string, string>> {
   await registerCoderReviewer(config, pluginConfig)
   await registerConsultantAuditor(config, pluginConfig)
   await registerAuthorWriter(config, pluginConfig, SNAPSHOT_ENV, SNAPSHOT_PROJECT_DIR)
+  await registerAuthorReviewer(config, pluginConfig, SNAPSHOT_ENV)
 
   const prompts = new Map<string, string>()
   for (const target of ROLE_TARGETS) {

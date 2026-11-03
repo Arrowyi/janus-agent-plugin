@@ -148,13 +148,14 @@ describe("createJanusConfigHook", () => {
       expect(config.agent?.["coder"]).toMatchObject({ mode: "all", model: "opencode-go/glm-5.3" })
       expect(config.agent?.["author"]).toMatchObject({ mode: "primary", model: "opencode-go/gemini-4-argon" })
 
-      // the seven hyphenated team members
+      // the eight hyphenated team members
       expect(config.agent?.["common-explorer"]).toMatchObject({ mode: "subagent", model: "opencode-go/deepseek-v4.1-flash" })
       expect(config.agent?.["consultant-analyst"]).toMatchObject({ mode: "subagent", model: "opencode-go/kimi-k3.1-pro" })
       expect(config.agent?.["consultant-critic"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
       expect(config.agent?.["coder-reviewer"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
       expect(config.agent?.["consultant-auditor"]).toMatchObject({ mode: "subagent", model: "opencode-go/grok-4.7" })
       expect(config.agent?.["author-writer"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
+      expect(config.agent?.["author-reviewer"]).toMatchObject({ mode: "subagent", model: "opencode-go/kimi-k3.1-pro" })
       expect(config.agent?.["coder-lite"]).toMatchObject({ mode: "subagent", model: "opencode-go/glm-5.3-flash" })
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
@@ -204,6 +205,58 @@ describe("createJanusConfigHook", () => {
       expect(writer.prompt).toContain("Write mode: `scoped`")
       // the author state dir is created at registration
       expect(existsSync(authorDir)).toBe(true)
+    } finally {
+      delete process.env.XDG_DATA_HOME
+      rmSync(tmpHome, { recursive: true, force: true })
+    }
+  })
+
+  it("registers the author-reviewer subagent by default with read-only dual state-dir access", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    process.env.HOME = tmpHome
+    delete process.env.JANUS_CONFIG
+    delete process.env.XDG_CONFIG_HOME
+    delete process.env.XDG_DATA_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
+
+    try {
+      // when
+      await hook(config)
+
+      // then
+      const reviewer = config.agent?.["author-reviewer"] as {
+        mode: string
+        description: string
+        prompt: string
+        model: string
+        permission: Record<string, unknown>
+      }
+      expect(reviewer.mode).toBe("subagent")
+      expect(reviewer.model).toBe("opencode-go/kimi-k3.1-pro")
+      expect(reviewer.description).toContain("independent read-only reviewer")
+      expect(reviewer.permission.edit).toBe("deny")
+      expect(reviewer.permission.bash).toBe("deny")
+      expect(reviewer.permission.task).toBe("deny")
+      expect(reviewer.permission.webfetch).toBe("deny")
+      expect(reviewer.permission.websearch).toBe("deny")
+      expect(reviewer.permission.janus_dispatch).toBe("deny")
+      expect(reviewer.permission.janus_dispatch_wait).toBe("deny")
+      expect(reviewer.permission.janus_dispatch_cancel).toBe("deny")
+      expect(reviewer.permission.janus_dispatch_continue).toBe("deny")
+      const authorDir = join(tmpHome, ".local", "share", "janus-agent", "author")
+      const designDir = join(tmpHome, ".local", "share", "janus-agent", "design")
+      const external = reviewer.permission.external_directory as Record<string, string>
+      expect(external[`${authorDir}/**`]).toBe("allow")
+      expect(external[`${designDir}/**`]).toBe("allow")
+      expect(reviewer.prompt).toContain("# Author-Reviewer")
+      expect(reviewer.prompt).toContain("## User-Facing Style")
+      expect(reviewer.prompt).not.toContain("## Common Operating Principles")
+      // both state dirs are created at registration
+      expect(existsSync(authorDir)).toBe(true)
+      expect(existsSync(designDir)).toBe(true)
     } finally {
       delete process.env.XDG_DATA_HOME
       rmSync(tmpHome, { recursive: true, force: true })
@@ -497,6 +550,32 @@ describe("createJanusConfigHook", () => {
       expect(config.agent?.["consultant-critic"]).toBeUndefined()
       expect(config.agent?.["common-explorer"]).toBeDefined()
       expect(config.agent?.["consultant-analyst"]).toBeDefined()
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true })
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it("omits the author-reviewer subagent when author_reviewer_enabled=false", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-aroff-"))
+    const configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, '{\n  "author_reviewer_enabled": false\n}')
+    process.env.HOME = tmpHome
+    process.env.JANUS_CONFIG = configPath
+    delete process.env.XDG_CONFIG_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
+
+    try {
+      // when
+      await hook(config)
+
+      // then
+      expect(config.agent?.["author-reviewer"]).toBeUndefined()
+      expect(config.agent?.["author-writer"]).toBeDefined()
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
       rmSync(tmpConfigDir, { recursive: true, force: true })

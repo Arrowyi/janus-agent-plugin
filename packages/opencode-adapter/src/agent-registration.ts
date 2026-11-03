@@ -54,6 +54,8 @@ const CHANNEL_POLICY_ASSET = "principles/channel-policy.md"
 
 const ENGINEERING_PRINCIPLES_ASSET = "principles/engineering-principles.md"
 
+const USER_FACING_STYLE_ASSET = "principles/user-facing-style.md"
+
 const COMMON_EXPLORER_DESCRIPTION =
   "Shared research floor for all three teams: searches external documentation and open-source practice and surveys the local codebase for bounded questions. Dispatched by consultant, architect, coder, and author; read-only and a leaf that never dispatches."
 
@@ -71,6 +73,9 @@ const CODER_REVIEWER_DESCRIPTION =
 
 const AUTHOR_WRITER_DESCRIPTION =
   "Documentation team's scoped-write author executor and the sole author of reader-facing prose. Produces the pre-approval writing blueprint, drafts and maintains approved document files under the configured writer roots, and runs coherence and editorial passes; targeted web lookups with a source ledger only — no shell, no dispatch, no memory."
+
+const AUTHOR_REVIEWER_DESCRIPTION =
+  "Documentation team's independent read-only reviewer, dispatched by the author after the writer's draft: checks facts, source symbols, and paths against the source ledger and current source, alignment with the brief's outline, audience, and section goals, and human readability including first-use term explanations. Returns a structured report; no shell, no web, no dispatch, no edits."
 
 const SIMPLE_DESCRIPTION =
   "Economical quick-answer entry (DeepSeek V4.1-Flash by default) for low-risk facts, concepts, and simple how-to. A leaf: never dispatches; escalates multi-source/contested questions to the consultant, architecture questions to the architect, coding to the coder, documents to the author, and general questions to janus."
@@ -303,6 +308,7 @@ export async function registerSimple(
 
   const assembledPrompt = await assemblePrompt({
     assetFile: "agents/simple.md",
+    fragments: [USER_FACING_STYLE_ASSET],
     runtimeBlock: buildSimpleRuntimeBindings(pluginConfig, workspaceDir, namespace),
   })
 
@@ -421,7 +427,7 @@ export async function registerCoder(
   const handoff: HandoffBinding = { handoffStateDir, projectId }
   const assembledPrompt = await assemblePrompt({
     assetFile: "agents/coder.md",
-    fragments: [DISPATCH_HUB_ASSET, ENGINEERING_PRINCIPLES_ASSET],
+    fragments: [DISPATCH_HUB_ASSET, ENGINEERING_PRINCIPLES_ASSET, USER_FACING_STYLE_ASSET],
     runtimeBlock: buildCoderRuntimeBindings(pluginConfig, design, handoff),
   })
 
@@ -564,7 +570,7 @@ export async function registerJanus(
 
   const assembledPrompt = await assemblePrompt({
     assetFile: "agents/janus.md",
-    fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET],
+    fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET, USER_FACING_STYLE_ASSET],
     runtimeBlock: buildJanusRuntimeBindings(pluginConfig, handoff),
   })
 
@@ -836,7 +842,7 @@ export async function registerConsultantAgent(
 
   const assembledPrompt = await assemblePrompt({
     assetFile: "agents/consultant.md",
-    fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET, CHANNEL_POLICY_ASSET],
+    fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET, CHANNEL_POLICY_ASSET, USER_FACING_STYLE_ASSET],
     runtimeBlock: buildConsultantRuntimeBindings(pluginConfig, namespace, handoff),
   })
 
@@ -1099,6 +1105,7 @@ export async function registerAuthorWriter(
 
   const assembledPrompt = await assemblePrompt({
     assetFile: "agents/author-writer.md",
+    fragments: [USER_FACING_STYLE_ASSET],
     runtimeBlock: buildAuthorWriterRuntimeBindings(pluginConfig, authorStateDir),
   })
 
@@ -1109,6 +1116,76 @@ export async function registerAuthorWriter(
     model: resolveRoleModel(pluginConfig, "author-writer"),
     steps: 80,
     permission: buildAuthorWriterPermission(roots, authorStateDir, directory),
+  }
+
+  if (!config.agent) config.agent = {}
+  config.agent[agentName] = entry
+}
+
+/**
+ * author-reviewer's permissions: strictly read-only. Every write/exec/search
+ * tool is denied; `external_directory` grants read access to the fixed author
+ * state dir (briefs) and design state dir (architecture reference records) so
+ * the reviewer can open the materials it audits; every dispatch tool is denied
+ * at the permission layer (leaf node).
+ */
+export function buildAuthorReviewerPermission(
+  authorStateDir: string,
+  designStateDir: string,
+): Record<string, unknown> {
+  return {
+    edit: "deny",
+    bash: "deny",
+    task: "deny",
+    webfetch: "deny",
+    websearch: "deny",
+    external_directory: {
+      [`${authorStateDir}/**`]: "allow",
+      [`${designStateDir}/**`]: "allow",
+    },
+    ...LEAF_DISPATCH_DENY,
+  }
+}
+
+/**
+ * Register the `author-reviewer` independent document reviewer: mode
+ * "subagent", the layered read-only prompt (role asset + research-leaf +
+ * user-facing-style + common base, no common-write gate), the resolved
+ * reviewer model, and read-only permissions over the author and design state
+ * dirs (created non-fatally so briefs and records are readable). Independent
+ * of `writer_delegate_agent`: a delegated writer still gets plugin-owned
+ * review. A pre-existing user-defined entry is left untouched.
+ */
+export async function registerAuthorReviewer(
+  config: MutableConfig,
+  pluginConfig: JanusPluginConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  const agentName = pluginConfig.author_reviewer_agent
+  if (config.agent?.[agentName]) return
+
+  const authorStateDir = resolveAuthorStateDir(env)
+  const designStateDir = resolveDesignStateDir(env)
+  for (const dir of [authorStateDir, designStateDir]) {
+    try {
+      mkdirSync(dir, { recursive: true })
+    } catch {
+      // Non-fatal: the permission still ships; reads may ask later.
+    }
+  }
+
+  const prompt = await assemblePrompt({
+    assetFile: "agents/author-reviewer.md",
+    fragments: [RESEARCH_LEAF_ASSET, USER_FACING_STYLE_ASSET],
+    includeCommonWrite: false,
+  })
+
+  const entry = {
+    mode: "subagent" as const,
+    description: AUTHOR_REVIEWER_DESCRIPTION,
+    prompt,
+    model: resolveRoleModel(pluginConfig, "author-reviewer"),
+    permission: buildAuthorReviewerPermission(authorStateDir, designStateDir),
   }
 
   if (!config.agent) config.agent = {}
@@ -1213,7 +1290,7 @@ export async function registerArchitect(
 
   const assembledPrompt = await assemblePrompt({
     assetFile: "agents/architect.md",
-    fragments: [DISPATCH_HUB_ASSET, ENGINEERING_PRINCIPLES_ASSET],
+    fragments: [DISPATCH_HUB_ASSET, ENGINEERING_PRINCIPLES_ASSET, USER_FACING_STYLE_ASSET],
     runtimeBlock: buildArchitectRuntimeBindings(pluginConfig, namespace, design, handoff),
   })
 
@@ -1269,9 +1346,9 @@ export function buildAuthorRuntimeBindings(
     pluginConfig.consultant_critic_enabled
       ? `consultant-critic \`${pluginConfig.consultant_critic_agent}\` (${resolveRoleModel(pluginConfig, "consultant-critic")}) with \`protocol: "counter_evidence"\``
       : "consultant-critic DISABLED by configuration",
-    pluginConfig.coder_reviewer_enabled
-      ? `coder-reviewer \`${pluginConfig.coder_reviewer_agent}\` (${resolveRoleModel(pluginConfig, "coder-reviewer")}) for an independent document/architecture review`
-      : "coder-reviewer DISABLED by configuration",
+    pluginConfig.author_reviewer_enabled
+      ? `author-reviewer \`${pluginConfig.author_reviewer_agent}\` (${resolveRoleModel(pluginConfig, "author-reviewer")}) for independent post-draft document review`
+      : "author-reviewer DISABLED by configuration",
   ]
   const teamLine = `- Documentation team: ${roleParts.join(", ")}`
 
@@ -1334,7 +1411,7 @@ export async function registerAuthor(
 
   const assembledPrompt = await assemblePrompt({
     assetFile: "agents/author.md",
-    fragments: [DISPATCH_HUB_ASSET, CHANNEL_POLICY_ASSET],
+    fragments: [DISPATCH_HUB_ASSET, CHANNEL_POLICY_ASSET, USER_FACING_STYLE_ASSET],
     runtimeBlock: buildAuthorRuntimeBindings(pluginConfig, namespace, author, design, handoff),
   })
 

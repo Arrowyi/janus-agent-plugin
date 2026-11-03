@@ -90,4 +90,10 @@ describe("buildChainFailureMessage hint", () => {
     const message = buildChainFailureMessage("author-writer", ["opencode/claude-sonnet-5-5"], "unrecognized provider error")
     expect(message).not.toContain("Hint:")
   })
+
+  it("names the author_reviewer_model field for the author-reviewer role", () => {
+    const message = buildChainFailureMessage("author-reviewer", ["opencode-go/kimi-k3.1-pro"], "APIError: 429")
+    expect(message).toContain('set "author_reviewer_model"')
+    expect(message).toContain("degrade by answering inline")
+  })
 })

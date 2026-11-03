@@ -170,6 +170,74 @@ describe("agent prompt contracts", () => {
     expectFields(prompt, ["sectionPlan", "continuityMap", "teachingBeats"])
   })
 
+  it("author-reviewer exposes the report contract and its three review duties", async () => {
+    const prompt = await readAgentPrompt("author-reviewer.md")
+
+    expectFields(prompt, [
+      "verdict",
+      "factualAndSourceIssues",
+      "briefAlignmentIssues",
+      "readabilityAndJargonIssues",
+      "flaws",
+      "resolved",
+      "unresolvedGaps",
+    ])
+    expect(prompt).toContain("Facts and sources")
+    expect(prompt).toContain("red-herring")
+    expect(prompt).toContain("sourceLedger")
+    expect(prompt).toContain("Brief alignment")
+    expect(prompt).toContain("Readability and jargon")
+    expect(prompt).toContain("User-Facing Style")
+    expect(prompt).toContain("no shell, no web access, and no dispatch")
+    expect(prompt).toContain("resolved: true")
+  })
+
+  it("author carries the briefWaived pointer, the reviewer gate, and the degradation disclosure", async () => {
+    const author = await readAgentPrompt("author.md")
+
+    expect(author).toContain("briefWaived: true")
+    expect(author).toContain("at most two edits")
+    expect(author).toContain("consultation-doc")
+    expect(author).toContain("Independent review gate")
+    expect(author).toContain("`targeted` or `strict` verification")
+    expect(author).toContain("never substitute for this review")
+    expect(author).toContain("disclose that independent review did not run")
+    expect(author).not.toContain("coder-reviewer")
+  })
+
+  it("author-writer carries the code-graph navigation rule and the briefWaived guard without the moved term rule", async () => {
+    const writer = await readAgentPrompt("author-writer.md")
+
+    expect(writer).toContain("code-graph or structural index tools")
+    expect(writer).toContain("possibly stale navigation hints")
+    expect(writer).toContain("never rescan the whole repo")
+    expect(writer).toContain("briefWaived: true")
+    expect(writer).toContain("refuse the waiver")
+    expect(writer).toContain("`sourceLedger: []`")
+    // the first-use term rule moved to the shared user-facing-style fragment
+    expect(writer).not.toContain("terms defined at first use")
+  })
+
+  it("the doc skill carries the review-gate SSOT, the trimming exemptions, and the briefWaived protocol", async () => {
+    const docSkill = await readSkill("consultation-doc")
+    const coreSkill = await readSkill("consultation")
+
+    expect(docSkill).toContain("### Independent review gate")
+    expect(docSkill).toContain("`architecture`, or the verification depth is `targeted` or `strict`")
+    expect(docSkill).toContain("never substitute for this review")
+    expect(docSkill).toContain("AuthorReviewerReport")
+    expect(docSkill).toContain("Trimming exemptions")
+    expect(docSkill).toContain("runbook or troubleshooting guide filed under `tutorial` may drop `exercises`")
+    expect(docSkill).toContain("### briefWaived micro-fixes")
+    expect(docSkill).toContain("at most two edits")
+    expect(docSkill).toContain("Diff checklist")
+    expect(docSkill).not.toContain("coder-reviewer")
+    // the consultation core keeps the doc summary in sync with the gate
+    expect(coreSkill).toContain("`author-reviewer` gate")
+    // team orchestration names the reviewer handoff
+    expect(coreSkill).toContain("**Author-reviewer** (owned by `author`)")
+  })
+
   it("consultant states dispatched-mode precedence and memory ownership", async () => {
     const prompt = await readAgentPrompt("consultant.md")
 
@@ -477,7 +545,7 @@ describe("agent prompt contracts", () => {
     const agentDir = new URL("../../../assets/agents/", import.meta.url)
     const files = (await readdir(agentDir)).filter((file) => file.endsWith(".md")).sort()
 
-    expect(files.length).toBe(13)
+    expect(files.length).toBe(14)
     for (const file of files) {
       const prompt = await readFile(new URL(file, agentDir), "utf8")
       if (prompt.includes("## File Change Confirmation")) {

@@ -38,6 +38,11 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/author-writer.md")
   })
 
+  test("requires the packaged reviewer agent asset and the user-facing-style fragment", () => {
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/author-reviewer.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/user-facing-style.md")
+  })
+
   test("requires both shared common principle assets", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/common-base.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/common-write.md")
@@ -55,6 +60,7 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/source-criteria.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/channel-policy.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/engineering-principles.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/user-facing-style.md")
   })
 
   test("requires the janus-models and janus-handoff command assets", () => {

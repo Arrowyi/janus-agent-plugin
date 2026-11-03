@@ -36,3 +36,14 @@ export const AuthorClaimSchema = z
     { message: "inferred/unverifiable author claims must carry a basis", path: ["basis"] },
   )
 export type AuthorClaim = z.infer<typeof AuthorClaimSchema>
+
+export const AuthorReviewerReportSchema = z.object({
+  verdict: z.enum(["pass", "revise", "block"]),
+  factualAndSourceIssues: z.array(z.string()).default([]), // source symbol/path mismatches, unsupported red-herring chains, sourceLedger gaps
+  briefAlignmentIssues: z.array(z.string()).default([]), // deviations from the brief's outline, audience, section goals, or required elements
+  readabilityAndJargonIssues: z.array(z.string()).default([]), // AI-jargon stacking, unexplained first-use terms, stilted boilerplate
+  flaws: z.array(z.string()).default([]), // substantive problems affecting accuracy or reader understanding
+  resolved: z.boolean(), // true only when verdict === "pass" and the input material was complete
+  unresolvedGaps: z.array(z.string()).default([]), // missing inputs (e.g. no brief or target file) or checks still owed
+})
+export type AuthorReviewerReport = z.infer<typeof AuthorReviewerReportSchema>

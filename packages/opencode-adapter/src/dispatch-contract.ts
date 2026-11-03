@@ -7,6 +7,7 @@ export const DISPATCH_ROLES = [
   "coder-reviewer",
   "consultant-auditor",
   "author-writer",
+  "author-reviewer",
   "simple",
   "coder-lite",
   "coder",

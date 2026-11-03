@@ -19,7 +19,7 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 83 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, and C75-C83 the mode-stack, coder-reviewer, dynamic model routing, continuation-lock, removed-key rejection, and critique-contract cases.
+- `fixtures/consultation-cases.json` - 88 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, C75-C85 the mode-stack, coder-reviewer, dynamic model routing, continuation-lock, removed-key rejection, critique-contract, and inline-ceiling cases, and C86-C88 the author-reviewer gate, briefWaived micro-fix, and user-facing-style cases.
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
@@ -144,6 +144,7 @@ and its host permissions are retained, not replaced by bundled restrictions.
 | consultant-auditor | Same launch/wait/cancel | One | Separate execution status from evidence-quality uncertainty |
 | bundled author-writer | Same launch/wait/cancel | One (single-model chain) | No fallback advance — a confirmed terminal retryable failure ends the job after one attempt; preserve outline gate and scoped-write roots (edit only under `writer_docs_roots`; `[]` = read-only fallback) |
 | delegate author-writer | Same launch/wait/cancel | One, pinned model or host selection | No plugin fallback advance; retain external host permissions |
+| author-reviewer | Same launch/wait/cancel | One | Await the independent report before publishing an architecture/targeted/strict document; a disabled or failed reviewer is disclosed, never credited |
 
 Exercise pending/unknown/recovery/cancel for each role and both delegate model
 forms. Check configured-attempt routing separately from host-internal provider
@@ -218,6 +219,14 @@ author-writer session exists for that document, a `janus_dispatch_continue` on a
 pending job, a continuation `job_id` passed as `session_id`, cross-document
 session reuse, and a lost session silently replaced without updating the
 brief's stored id.**
+
+## Reviewer gate, micro-fix, and user-facing style evaluation (C86-C88)
+
+These cases cover the documentation team's third seat and the shared output style:
+
+- **C86** — the `author-reviewer` gate: an independent dispatch between the writer's final pass and publishing for `architecture` documents and `targeted`/`strict` verification, returning an `AuthorReviewerReport`; `light` non-architecture documents and waived micro-fixes skip it, the writer's self-polish never substitutes, and a disabled or failed reviewer is disclosed, never credited.
+- **C87** — the `briefWaived` fast path: a qualifying micro-fix (typo, punctuation, broken relative link, at most two edits) on a brief-less document takes a single delta-sized `author-writer` dispatch with `briefWaived: true`, the writer refuses anything touching numbers, code, APIs, or meaning, and the author closes after the three-item diff check with no reviewer dispatch.
+- **C88** — the shared user-facing style: the eight human-facing roles gloss a technical term at its first occurrence and never paraphrase exact identifiers, commands, paths, or config keys for plainness; the six structural leaves stay exempt.
 
 ## Task-fit routing evaluation (C15-C25)
 

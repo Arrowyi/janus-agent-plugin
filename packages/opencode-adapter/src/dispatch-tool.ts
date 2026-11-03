@@ -34,11 +34,11 @@ import path from "node:path"
 export { splitModel, errorText, isRetryableModelError }
 
 /**
- * The ten dispatch roles: the shared research floor, the four consultation /
- * R&D specialists, the documentation executor, the two entry delegates
- * (consultant, coder), the economical leaf (simple), and the mechanical lane
- * (coder-lite). `janus`, `architect`, and `author` are primary entries and are
- * intentionally not dispatchable.
+ * The eleven dispatch roles: the shared research floor, the four consultation /
+ * R&D specialists, the documentation executor and its independent reviewer,
+ * the two entry delegates (consultant, coder), the economical leaf (simple),
+ * and the mechanical lane (coder-lite). `janus`, `architect`, and `author`
+ * are primary entries and are intentionally not dispatchable.
  */
 export { DISPATCH_ROLES }
 export type { DispatchRole }
@@ -78,6 +78,8 @@ export function resolveRoleTarget(
         return { agentName: config.writer_delegate_agent, model: config.writer_delegate_model }
       }
       return { agentName: config.author_writer_agent, model: resolveRoleModel(config, "author-writer", options) }
+    case "author-reviewer":
+      return { agentName: config.author_reviewer_agent, model: resolveRoleModel(config, "author-reviewer", options) }
     case "coder":
       return { agentName: config.coder_agent, model: resolveRoleModel(config, "coder", options) }
     case "simple":
@@ -98,9 +100,10 @@ export interface DispatchToolDeps {
 /**
  * Build the four consultation job tools with one shared coordinator set.
  *
- * It dispatches ONLY to the ten dispatchable roles (`consultant`, `coder`,
+ * It dispatches ONLY to the eleven dispatchable roles (`consultant`, `coder`,
  * `simple`, `common-explorer`, `consultant-analyst`, `consultant-critic`,
- * `coder-reviewer`, `consultant-auditor`, `author-writer`, `coder-lite`)
+ * `coder-reviewer`, `consultant-auditor`, `author-writer`, `author-reviewer`,
+ * `coder-lite`)
  * using the recoverable lifecycle coordinator. `janus_dispatch_continue`
  * reuses an existing dispatch session from the same caller. It is additive:
  * it neither shadows nor interferes with the built-in `task` tool or any
@@ -120,7 +123,7 @@ export function createJanusDispatchTools(
 
   const dispatch = tool({
     description:
-      "Dispatch ONLY to a dispatchable role (consultant, coder, simple, common-explorer, consultant-analyst, consultant-critic, coder-reviewer, consultant-auditor, author-writer, coder-lite). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Optional mode, tier, and protocol select the model and prepend a methodology card to the first turn. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
+      "Dispatch ONLY to a dispatchable role (consultant, coder, simple, common-explorer, consultant-analyst, consultant-critic, coder-reviewer, consultant-auditor, author-writer, author-reviewer, coder-lite). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Optional mode, tier, and protocol select the model and prepend a methodology card to the first turn. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
     args: {
       role: tool.schema.string(),
       prompt: tool.schema.string(),
@@ -152,6 +155,7 @@ export function createJanusDispatchTools(
         "coder-reviewer": config.coder_reviewer_enabled,
         "consultant-auditor": config.consultant_auditor_enabled,
         "author-writer": config.author_writer_enabled || config.writer_delegate_agent !== undefined,
+        "author-reviewer": config.author_reviewer_enabled,
         simple: config.simple_enabled,
         coder: config.coder_enabled,
         "coder-lite": config.coder_lite_enabled,
@@ -261,6 +265,7 @@ export function createJanusDispatchTools(
         "coder-reviewer": config.coder_reviewer_enabled,
         "consultant-auditor": config.consultant_auditor_enabled,
         "author-writer": config.author_writer_enabled || config.writer_delegate_agent !== undefined,
+        "author-reviewer": config.author_reviewer_enabled,
         simple: config.simple_enabled,
         coder: config.coder_enabled,
         "coder-lite": config.coder_lite_enabled,

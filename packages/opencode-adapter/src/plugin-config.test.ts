@@ -107,6 +107,7 @@ describe("model defaults sync (decision 20)", () => {
     expect(resolveRoleModel(config(), "consultant-critic")).toBe("opencode/claude-sonnet-5-5")
     expect(resolveRoleModel(config(), "consultant-auditor")).toBe("opencode-go/grok-4.7")
     expect(resolveRoleModel(config(), "author-writer")).toBe("opencode/claude-sonnet-5-5")
+    expect(resolveRoleModel(config(), "author-reviewer")).toBe("opencode-go/kimi-k3.1-pro")
   })
 
   it("collapses every role to a single-model chain", () => {
@@ -114,6 +115,53 @@ describe("model defaults sync (decision 20)", () => {
     expect(resolveRoleModelChain(config(), "author-writer")).toEqual(["opencode/claude-sonnet-5-5"])
     expect(resolveRoleModelChain(config(), "consultant-critic")).toEqual(["opencode/claude-sonnet-5-5"])
     expect(resolveRoleModelChain(config(), "common-explorer")).toEqual(["opencode-go/deepseek-v4.1-flash"])
+    expect(resolveRoleModelChain(config(), "author-reviewer")).toEqual(["opencode-go/kimi-k3.1-pro"])
+  })
+})
+
+describe("author-reviewer role configuration", () => {
+  it("defaults the packaged author-reviewer role", () => {
+    // given // when
+    const cfg = config()
+
+    // then
+    expect(cfg.author_reviewer_agent).toBe("author-reviewer")
+    expect(cfg.author_reviewer_enabled).toBe(true)
+    expect(cfg.author_reviewer_model).toBeUndefined()
+    expect(resolveRoleModel(cfg, "author-reviewer")).toBe("opencode-go/kimi-k3.1-pro")
+    expect(resolveRoleModelChain(cfg, "author-reviewer")).toEqual(["opencode-go/kimi-k3.1-pro"])
+  })
+
+  it("overrides the reviewer model when author_reviewer_model is set", () => {
+    // given
+    const cfg = config({ author_reviewer_model: "opencode-go/glm-5.3" })
+
+    // when // then
+    expect(resolveRoleModel(cfg, "author-reviewer")).toBe("opencode-go/glm-5.3")
+  })
+
+  it("accepts a custom reviewer agent name and disabling the role", () => {
+    // given
+    const cfg = config({ author_reviewer_agent: "doc-reviewer", author_reviewer_enabled: false })
+
+    // when // then
+    expect(cfg.author_reviewer_agent).toBe("doc-reviewer")
+    expect(cfg.author_reviewer_enabled).toBe(false)
+  })
+
+  it("keeps tier_role_caps free of an author-reviewer key so existing configs parse unchanged", () => {
+    // given // when // then — the reviewer gate is mandatory per profile,
+    // not a capped roster seat, so no caps key exists to default to 0.
+    expect(resolveTierRoleCaps(config()).standard).not.toHaveProperty("author_reviewer")
+    expect(() =>
+      config({
+        tier_role_caps: {
+          fast: {},
+          standard: { author_reviewer: 1 } as never,
+          deep: {},
+        },
+      }),
+    ).toThrow()
   })
 })
 

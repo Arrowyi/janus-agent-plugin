@@ -119,6 +119,7 @@ describe("consultation dispatch reliability", () => {
     { role: "consultant-critic", config: { consultant_critic_enabled: false } },
     { role: "consultant-auditor", config: { consultant_auditor_enabled: false } },
     { role: "author-writer", config: { author_writer_enabled: false } },
+    { role: "author-reviewer", config: { author_reviewer_enabled: false } },
   ] as const) {
     it(`rejects a disabled ${scenario.role} before creating a child session`, async () => {
       writeFileSync(process.env.JANUS_CONFIG ?? "", JSON.stringify(scenario.config))

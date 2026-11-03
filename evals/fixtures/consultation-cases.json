@@ -1013,5 +1013,41 @@
       "select"
     ],
     "notes": "Rubric: Reject an unnecessary common-explorer or consultant-auditor dispatch. Accept a direct cited answer with the residual-uncertainty line."
+  },
+  {
+    "id": "C86",
+    "title": "The author-reviewer gate runs for architecture documents and targeted/strict verification",
+    "given": "An approved document is drafted to completion; its profile is architecture, or its verification depth is targeted or strict; the bundled author-reviewer is enabled.",
+    "when": "The author-writer's final drafting pass returns",
+    "then": "It dispatches author-reviewer for an independent post-draft review before publishing; the reviewer returns an AuthorReviewerReport with verdict pass/revise/block, factualAndSourceIssues, briefAlignmentIssues, readabilityAndJargonIssues, flaws, resolved, and unresolvedGaps; the author reconciles revise findings with bounded writer fixes and treats a block verdict as invalidating a load-bearing claim. A light-verified non-architecture document or a briefWaived micro-fix skips the gate, and the writer's own coherence-pass or editorial-review never substitutes for it; if the reviewer is disabled or fails, the delivery discloses that independent review did not run.",
+    "grading": "model",
+    "modes": [
+      "doc"
+    ],
+    "notes": "Rubric: Inspect the tool trace — an author-reviewer dispatch between the final writer pass and publishing for architecture/targeted/strict, and none for a light non-architecture document; reject crediting the writer's self-polish as the independent review, or a published architecture document with no reviewer call and no disclosure. Deterministic backstop: the gate text lives in consultation-doc core (prompt-contracts.test.ts) and the reviewer registration, permission, and report schema are covered by agent-registration.test.ts, plugin.test.ts, and author-contracts.test.ts."
+  },
+  {
+    "id": "C87",
+    "title": "A meaning-preserving micro-fix on a brief-less document takes the briefWaived fast path",
+    "given": "The user reports one typo and one broken relative link in a published tutorial file under the writer roots; the document has no author brief and no stored writer_session_id.",
+    "when": "The author handles the maintenance request",
+    "then": "It does not ask the legacy three-option brief question; it dispatches author-writer directly with briefWaived: true, changeClass editorial, the confirmed path, and the exact old -> new text; the writer applies only the requested edits (or refuses the waiver if anything touches a number, code, an API, or a sentence's meaning, returning changeClass factual or needsConsultant) and may return empty sourceLedger and coherenceNotes; the author checks the diff contains only the requested fragments, that no number/code/fact changed, and that the repaired link target exists, then closes without dispatching author-reviewer.",
+    "grading": "model",
+    "modes": [
+      "doc"
+    ],
+    "notes": "Rubric: Inspect the dispatch arguments (briefWaived flag, delta-sized prompt) and the author's three-item diff check; reject a three-option question for a qualifying micro-fix, a fresh full-outline approval, an author-authored edit of the document file, or a version-number/API/fluency rewrite sneaking through the waiver. Deterministic backstop: the briefWaived protocol lives in consultation-doc policies (prompt-contracts.test.ts) and the writer guard in author-writer.md."
+  },
+  {
+    "id": "C88",
+    "title": "Human-facing roles explain a technical term at first use without touching exact symbols",
+    "given": "A human-facing role (janus, simple, consultant, architect, coder, author, author-writer, or author-reviewer) must answer or draft prose containing a domain term whose first occurrence the reader has not met.",
+    "when": "It produces user-facing output",
+    "then": "It prefers plain everyday language over stacked jargon and boilerplate; at the term's first occurrence it adds a plain-language gloss, an analogy, or a one-line concrete example; it never paraphrases code identifiers, signatures, CLI commands and arguments, file paths, config keys, verbatim quotations, or structured field names for the sake of plainness. A structural leaf (common-explorer, consultant-analyst, consultant-critic, consultant-auditor, coder-reviewer, coder-lite) is exempt: its structured output is unchanged.",
+    "grading": "model",
+    "modes": [
+      "doc"
+    ],
+    "notes": "Rubric: Inspect a user-facing reply and a drafted section for a first-use gloss on each load-bearing term, and exact symbol/command/path preservation; reject jargon stacking with no explanation or a 'simplified' identifier/command. Deterministic backstop: the fragment is injected into exactly the eight human-facing roles and none of the six structural leaves (agent-registration.test.ts), and its wording lives once in assets/principles/user-facing-style.md (prompt-lint.test.ts budget)."
   }
 ]

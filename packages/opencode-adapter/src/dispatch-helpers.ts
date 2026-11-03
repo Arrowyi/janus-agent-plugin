@@ -72,6 +72,7 @@ export const ROLE_MODEL_FIELDS: Record<DispatchRole, string> = {
   "coder-reviewer": "coder_reviewer_model",
   "consultant-auditor": "consultant_auditor_model",
   "author-writer": "author_writer_model",
+  "author-reviewer": "author_reviewer_model",
   simple: "simple_model",
   coder: "coder_model",
   "coder-lite": "coder_lite_model",

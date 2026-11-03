@@ -76,10 +76,10 @@ const SIMPLE_DESCRIPTION =
   "Economical quick-answer entry (DeepSeek V4.1-Flash by default) for low-risk facts, concepts, and simple how-to. A leaf: never dispatches; escalates multi-source/contested questions to the consultant, architecture questions to the architect, coding to the coder, documents to the author, and general questions to janus."
 
 const CODER_DESCRIPTION =
-  "R&D team's coding and maintenance entry, starting from a bug, feature, or refactor (or taking over an accepted design.md). Owns coding, debugging, refactoring, tests, and repository work; selects a direct, brief-plan, design-gate, or quality-gate process by task weight; dispatches coder-lite for mechanical work, coder-reviewer for plan/diff review, and can take a deep-tier model override for L3 work. Escalates to architect when research or a cross-module architecture change is needed."
+  "R&D team's coding and maintenance entry — its module architect and senior engineer — starting from a bug, feature, or refactor (or taking over an accepted design.md). Owns module-level design, root-cause debugging, tests, and repository work; selects a direct, brief-plan, design-gate, or quality-gate process by task weight; delegates coder-lite by cost-performance for spec-complete coding and unit-test work, coder-reviewer for plan/diff review, and can take a deep-tier model override for L3 work. Escalates to architect when research or a cross-module architecture change is needed."
 
 const CODER_LITE_DESCRIPTION =
-  "Cheap mechanical coding executor (GLM-5.3-Flash by default) for fully specified, decision-free, mechanically repeatable coding tasks: batch renames/moves, copy-adapt from existing in-repo patterns, formatting and lint fixes, boilerplate from explicit templates, simple tests following existing patterns, spec-complete CRUD glue. Stops and reports up on anything ambiguous, judgment-heavy, debugging, protocol-precision, cross-module, or security-sensitive — never attempts them."
+  "Junior-to-mid engineer executor (GLM-5.3-Flash by default) taking over spec-complete coding from the senior coder seat: function/module implementation with settled signatures, unit tests from a checklist or exemplar, CRUD/schema/glue code, and batch mechanical coding such as renames, pattern adaptation, or formatting fixes. Stops and reports up on anything ambiguous, judgment-heavy, debugging, protocol-precision, cross-module, or security-sensitive — never attempts them."
 
 const ARCHITECT_DESCRIPTION =
   "R&D team's solution and architecture entry, starting from a one-sentence requirement: runs brainstorming ⇄ convergence ⇄ system/module design with the user, dispatches common-explorer for research, and sends one-way decisions to coder-reviewer for a design pre-mortem. Sole author of the decisions in design.md; the coder flips only its lifecycle line."
@@ -367,7 +367,7 @@ export function buildCoderRuntimeBindings(
 ): string {
   const modelLine = `- Coder model: \`${resolveRoleModel(pluginConfig, "coder")}\``
   const coderLiteLine = pluginConfig.coder_lite_enabled
-    ? `- Mechanical lane: \`${pluginConfig.coder_lite_agent}\` (\`${resolveRoleModel(pluginConfig, "coder-lite")}\`) for fully specified mechanical coding and file tasks`
+    ? `- Mechanical lane: \`${pluginConfig.coder_lite_agent}\` (\`${resolveRoleModel(pluginConfig, "coder-lite")}\`) for spec-complete coding, unit tests, and batch mechanical file tasks`
     : "- Mechanical lane: coder-lite DISABLED by configuration"
   const deepModel = resolveRoleModel(pluginConfig, "coder", { tier: "deep" })
   const deepLine = `- L3 model uplift: dispatch with \`tier: "deep"\` to use \`${deepModel}\`; configure \`tier_models.deep.coder\` to change it`
@@ -1118,9 +1118,9 @@ export async function registerAuthorWriter(
 /**
  * Build the runtime bindings block injected into the architect prompt: the
  * memory MCP server, its own model, the shared research floor and reviewers it
- * may dispatch, the design-record directory it alone writes, the cross-team
- * handoff binding, the tier caps, the dispatch job-tool discipline, and the
- * memory namespace.
+ * may dispatch, the coder implementation handoff for an accepted design.md, the
+ * design-record directory it alone writes, the cross-team handoff binding, the
+ * tier caps, the dispatch job-tool discipline, and the memory namespace.
  */
 export function buildArchitectRuntimeBindings(
   pluginConfig: JanusPluginConfig,
@@ -1150,6 +1150,10 @@ export function buildArchitectRuntimeBindings(
   ]
   const teamLine = `- Design team: ${roleParts.join(", ")}`
 
+  const coderLine = pluginConfig.coder_enabled
+    ? `- Implementation handoff: \`coder\` (\`${pluginConfig.coder_agent}\`) — dispatch an accepted design.md into a clean sub-session (\`return_handle: true\`) and continue that same session when a decision returns`
+    : "- Implementation handoff: coder DISABLED by configuration"
+
   const simpleLine = pluginConfig.simple_enabled
     ? `- Economical leaf: \`${pluginConfig.simple_agent}\` (\`${resolveRoleModel(pluginConfig, "simple")}\`) for bounded quick-answer tasks`
     : "- Economical leaf: simple DISABLED by configuration"
@@ -1166,6 +1170,7 @@ export function buildArchitectRuntimeBindings(
     memoryLine,
     modelLine,
     teamLine,
+    coderLine,
     simpleLine,
     designLine,
     ...handoffBindingLines(handoff),

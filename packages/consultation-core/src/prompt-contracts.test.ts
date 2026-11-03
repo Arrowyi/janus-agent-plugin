@@ -315,6 +315,47 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("deferred to coder")
   })
 
+  it("the R&D prompts carry the engineer tiers, ROI-first delegation, TDD integrity, and the dual-mode handoff", async () => {
+    const coder = await readAgentPrompt("coder.md")
+    const lite = await readAgentPrompt("coder-lite.md")
+    const architect = await readAgentPrompt("architect.md")
+    const card = await readFile(
+      new URL("../../../assets/protocols/code_plan_review.md", import.meta.url),
+      "utf8",
+    )
+
+    // tier positioning (D2)
+    expect(coder).toContain("module architect and senior engineer")
+    expect(coder).toContain("junior/mid engineer")
+    expect(lite).toContain("junior/mid engineer")
+    expect(lite).toContain("Scoped and pattern- or spec-guided")
+    expect(lite).toContain("unit tests from a given scenario checklist or exemplar")
+
+    // ROI-first delegation (D2)
+    expect(coder).toContain("Route by cost-performance")
+    expect(coder).toContain("never dispatch to offload, only to save")
+
+    // Option B+ TDD integrity and the L0/L1 self-check (D1/D3)
+    expect(coder).toContain("Test integrity:")
+    expect(coder).toContain("never reach green by deleting a failing test")
+    expect(coder).toContain("test-integrity self-check")
+    expect(coder).toContain("existing-test or test-config changes")
+
+    // dispatched design-record scope (D4, coder side)
+    expect(coder).toContain("a dispatcher-supplied accepted `design.md` with `Confirmed paths`")
+
+    // dual-mode clean-context handoff and same-session continuation (D4, architect side)
+    expect(architect).toContain('role: "coder"')
+    expect(architect).toContain("/new")
+    expect(architect).toContain("janus_dispatch_continue")
+    expect(architect).toContain("apply the record's lifecycle flip yourself")
+
+    // Stage 2 test-surface review (D3)
+    expect(card).toContain("Review the test surface")
+    expect(card).toContain("assertion-equivalent through a refactor or signature change")
+    expect(card).toContain("`.skip`/`.only`-parked test")
+  })
+
   it("common-explorer prefers host code-graph tools for codebase surveys with a stale-index guard", async () => {
     const prompt = await readAgentPrompt("common-explorer.md")
 

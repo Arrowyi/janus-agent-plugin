@@ -279,6 +279,9 @@ describe("buildArchitectRuntimeBindings", () => {
     expect(block).toContain("coder-reviewer")
     expect(block).toContain("consultant-analyst")
     expect(block).toContain("consultant-auditor")
+    expect(block).toContain("Implementation handoff: `coder`")
+    expect(block).toContain("dispatch an accepted design.md into a clean sub-session")
+    expect(block).toContain("continue that same session when a decision returns")
     expect(block).toContain("Economical leaf: `simple`")
     expect(block).toContain("Design state dir: `/xdg/data/janus-agent/design`")
     expect(block).toContain("my-project-a1b2c3d4/<designId>/design.md")
@@ -303,6 +306,17 @@ describe("buildArchitectRuntimeBindings", () => {
 
     // then
     expect(block).toContain("coder-reviewer DISABLED by configuration")
+  })
+
+  it("says the coder implementation handoff is DISABLED when coder is disabled", () => {
+    // given
+    const config = makeConfig({ coder_enabled: false })
+
+    // when
+    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING, HANDOFF_BINDING)
+
+    // then
+    expect(block).toContain("Implementation handoff: coder DISABLED by configuration")
   })
 
   it("reports the memory-disabled variant and namespace", () => {
@@ -396,6 +410,7 @@ describe("buildCoderRuntimeBindings", () => {
     // then
     expect(block).toContain("Coder model")
     expect(block).toContain("Mechanical lane: `coder-lite`")
+    expect(block).toContain("spec-complete coding, unit tests, and batch mechanical file tasks")
     expect(block).toContain("Research floor: `common-explorer`")
     expect(block).toContain("Independent reviewer: `coder-reviewer`")
     expect(block).toContain('protocol: "code_plan_review"')
@@ -1599,6 +1614,8 @@ describe("registerCoder", () => {
     expect(coder.mode).toBe("all")
     expect(coder.model).toBe("opencode-go/glm-5.3")
     expect(coder.description).toContain("coding and maintenance entry")
+    expect(coder.description).toContain("module architect and senior engineer")
+    expect(coder.description).toContain("delegates coder-lite by cost-performance")
     expect(coder.prompt).toContain("# Coder")
     expect(coder.prompt).toContain("Task triage")
     expect(coder.prompt).toContain("## Dispatched mode")
@@ -1709,6 +1726,8 @@ describe("registerCoderLite", () => {
     expect(lite.model).toBe("opencode-go/glm-5.3-flash")
     expect(lite.steps).toBe(50)
     expect(lite.description).toContain("mechanical coding")
+    expect(lite.description).toContain("Junior-to-mid engineer executor")
+    expect(lite.description).toContain("unit tests from a checklist or exemplar")
     expect(lite.prompt).toContain("# Coder-Lite")
     expect(lite.prompt).toContain("Report-Up discipline")
     // Model adaptation is injected per request; the asset keeps the inert

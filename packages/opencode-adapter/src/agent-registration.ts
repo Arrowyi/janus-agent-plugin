@@ -227,15 +227,19 @@ export function computeProjectId(directory: string): string {
 }
 
 /**
- * Tool-level dispatch denial shared by every leaf role. `task: "deny"` blocks
- * the host's built-in subagent tool; these four rules block the plugin's own
- * dispatch tools so a leaf can never recurse into the dispatch lifecycle.
+ * Tool-level denial shared by every leaf role. `task: "deny"` blocks the
+ * host's built-in subagent tool; the four dispatch rules block the plugin's
+ * own dispatch tools so a leaf can never recurse into the dispatch lifecycle,
+ * and `janus_config` / `janus_provider_keys` keep plugin-config and provider
+ * credential edits with the primary entries.
  */
 export const LEAF_DISPATCH_DENY = {
   janus_dispatch: "deny",
   janus_dispatch_wait: "deny",
   janus_dispatch_cancel: "deny",
   janus_dispatch_continue: "deny",
+  janus_config: "deny",
+  janus_provider_keys: "deny",
 } as const
 
 /**

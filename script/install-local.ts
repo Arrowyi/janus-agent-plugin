@@ -11,10 +11,19 @@
  * Run from the repo root:  bun run install:local
  */
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+
+import {
+  installConfigCommand,
+  installHandoffCommand,
+  installMemoryCommands,
+  installModelsCommand,
+} from "../packages/opencode-adapter/src/command-installer.ts"
+import { loadPluginConfig } from "../packages/opencode-adapter/src/plugin-config.ts"
+import { resolveOpencodeConfigDir } from "../packages/opencode-adapter/src/skill-installer.ts"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, "..")
@@ -24,6 +33,8 @@ const ASSETS_DIR = join(repoRoot, "assets")
 export const REQUIRED_INSTALLED_FILES = [
   "dist/index.js",
   "dist/memory-mcp-server.js",
+  "dist/janus-keys.js",
+  "bin/janus-keys",
   "assets/agents/janus.md",
   "assets/agents/simple.md",
   "assets/agents/consultant.md",
@@ -61,6 +72,7 @@ export const REQUIRED_INSTALLED_FILES = [
   "assets/principles/user-facing-style.md",
   "assets/commands/janus-models.md",
   "assets/commands/janus-handoff.md",
+  "assets/commands/janus-config.md",
   "assets/protocols/counter_evidence.md",
   "assets/protocols/hypothesis_matrix.md",
   "assets/protocols/plan_robustness.md",
@@ -142,6 +154,50 @@ function writeManifests(installRoot: string): void {
   )
 }
 
+/** The `janus-keys` launcher: a shell shim over the bundled CLI. */
+export function keysShimContent(installRoot: string): string {
+  return `#!/bin/sh\nexec bun "${join(installRoot, "dist", "janus-keys.js")}" "$@"\n`
+}
+
+function writeKeysShim(installRoot: string): string {
+  const shim = join(installRoot, "bin", "janus-keys")
+  mkdirSync(dirname(shim), { recursive: true })
+  writeFileSync(shim, keysShimContent(installRoot))
+  chmodSync(shim, 0o755)
+  return shim
+}
+
+/**
+ * Write the slash-command files now so they exist before OpenCode's next
+ * startup scans its commands directory; the plugin's config hook only writes
+ * them during startup, which is too late for that same startup. Honors
+ * `install_commands` and the `<!-- user-modified -->` marker;
+ * `JANUS_SKIP_COMMAND_SYNC=1` skips it (throwaway installs such as the
+ * integration run must not touch the real OpenCode config).
+ */
+async function syncCommands(): Promise<void> {
+  if (process.env.JANUS_SKIP_COMMAND_SYNC === "1") {
+    console.log("commands not synced: JANUS_SKIP_COMMAND_SYNC=1")
+    return
+  }
+  let installCommands = true
+  try {
+    installCommands = (await loadPluginConfig(process.env)).install_commands
+  } catch (error) {
+    console.warn(`WARNING: plugin config unreadable, commands not synced: ${error instanceof Error ? error.message : String(error)}`)
+    return
+  }
+  if (!installCommands) {
+    console.log("commands not synced: install_commands is false")
+    return
+  }
+  await installMemoryCommands(process.env)
+  await installModelsCommand(process.env)
+  await installHandoffCommand(process.env)
+  await installConfigCommand(process.env)
+  console.log(`synced commands into ${join(resolveOpencodeConfigDir(process.env), "commands")}`)
+}
+
 function missingFiles(installRoot: string): string[] {
   return REQUIRED_INSTALLED_FILES.filter((rel) => !existsSync(join(installRoot, rel)))
 }
@@ -153,6 +209,7 @@ async function main(): Promise<void> {
   await runBuild()
   stage(installRoot)
   writeManifests(installRoot)
+  const shim = writeKeysShim(installRoot)
 
   const missing = missingFiles(installRoot)
   if (missing.length > 0) {
@@ -160,9 +217,14 @@ async function main(): Promise<void> {
     for (const rel of missing) console.error(`  missing: ${rel}`)
     process.exit(1)
   }
+  await syncCommands()
 
   const entry = `file://${join(installRoot, "dist/index.js")}`
   console.log(`installed ${REQUIRED_INSTALLED_FILES.length} required files`)
+  console.log("")
+  console.log("Provider key CLI (optional shortcut):")
+  console.log(`  ${shim} help`)
+  console.log(`  alias janus-keys='${shim}'   # add to ~/.zshrc to type just janus-keys`)
   console.log("")
   console.log("Point your OpenCode config at the installed bundle:")
   console.log(`  "plugin": ["${entry}"]`)

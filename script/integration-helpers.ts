@@ -90,7 +90,7 @@ async function installBundleToTempPrefix(): Promise<InstallMetadata> {
   console.log(`integration: installing bundle to ${metadata.installRoot}`)
   const proc = Bun.spawn(["bun", "run", "script/install-local.ts"], {
     cwd: repoRoot,
-    env: { ...process.env, JANUS_INSTALL_DIR: metadata.installRoot },
+    env: { ...process.env, JANUS_INSTALL_DIR: metadata.installRoot, JANUS_SKIP_COMMAND_SYNC: "1" },
     stdout: "inherit",
     stderr: "inherit",
   })

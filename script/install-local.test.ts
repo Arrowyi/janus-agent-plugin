@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { REQUIRED_INSTALLED_FILES, resolveInstallRoot } from "./install-local.ts"
+import { REQUIRED_INSTALLED_FILES, keysShimContent, resolveInstallRoot } from "./install-local.ts"
 
 describe("resolveInstallRoot", () => {
   test("uses JANUS_INSTALL_DIR when present", () => {
@@ -66,6 +66,13 @@ describe("REQUIRED_INSTALLED_FILES", () => {
   test("requires the janus-models and janus-handoff command assets", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/commands/janus-models.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/commands/janus-handoff.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/commands/janus-config.md")
+  })
+
+  test("requires the bundled janus-keys CLI and its shim", () => {
+    expect(REQUIRED_INSTALLED_FILES).toContain("dist/janus-keys.js")
+    expect(REQUIRED_INSTALLED_FILES).toContain("bin/janus-keys")
+    expect(keysShimContent("/opt/janus")).toBe('#!/bin/sh\nexec bun "/opt/janus/dist/janus-keys.js" "$@"\n')
   })
 
   test("requires the bundled entry points, role assets, protocols, and three skills", () => {

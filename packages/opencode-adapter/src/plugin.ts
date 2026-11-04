@@ -18,9 +18,16 @@ import {
   resolveModelPrompt,
 } from "./agent-registration.ts"
 import { createJanusDispatchTools } from "./dispatch-tool.ts"
+import { CONFIG_TOOL_NAME, createJanusConfigTool } from "./config-tool.ts"
+import { PROVIDER_KEYS_TOOL_NAME, createProviderKeysTool } from "./provider-keys-tool.ts"
 import { registerMemoryMcp } from "./mcp-registration.ts"
 import { installConsultationSkills } from "./skill-installer.ts"
-import { installHandoffCommand, installMemoryCommands, installModelsCommand } from "./command-installer.ts"
+import {
+  installConfigCommand,
+  installHandoffCommand,
+  installMemoryCommands,
+  installModelsCommand,
+} from "./command-installer.ts"
 import { computeNamespace } from "./namespace.ts"
 
 /**
@@ -107,6 +114,7 @@ export function createJanusConfigHook(
       await installMemoryCommands(env)
       await installModelsCommand(env)
       await installHandoffCommand(env)
+      await installConfigCommand(env)
     }
   }
 }
@@ -148,6 +156,10 @@ export function createSystemTransformHook(env: NodeJS.ProcessEnv = process.env) 
  */
 export const JanusAgentPlugin: Plugin = async (input) => ({
   config: createJanusConfigHook(input.project, input.directory),
-  tool: createJanusDispatchTools(input.client),
+  tool: {
+    ...createJanusDispatchTools(input.client),
+    [CONFIG_TOOL_NAME]: createJanusConfigTool(),
+    [PROVIDER_KEYS_TOOL_NAME]: createProviderKeysTool(),
+  },
   "experimental.chat.system.transform": createSystemTransformHook(),
 })

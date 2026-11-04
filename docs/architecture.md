@@ -183,7 +183,7 @@ SQLite 适配器负责：
 - 注册或启动内置的本地记忆 MCP；
 - 把 OpenCode 会话 ID 映射为带命名空间的核心 ID；
 - 暴露模型与提供商配置；
-- 安装 `/janus-memory` 浏览、`/janus-models` 模型轮换、`/janus-handoff` 交接管理三条命令；
+- 安装 `/janus-memory` 浏览、`/janus-models` 模型轮换、`/janus-handoff` 交接管理、`/janus-config` 配置编辑四条命令（`/janus-config` 经 `janus_config` 工具读写配置：字段目录 `config-catalog.ts`、保留注释的校验写入 `config-editor.ts`；第 10 组经 `janus_provider_keys` 工具与终端 `janus-keys` 管理 OpenCode provider 的命名 key，候选库为 `provider-keys.json`，切换时写入 OpenCode `auth.json`）；
 - 按「角色 asset + 模型块 + 共享片段（`research-leaf`、`reasoning-failures`、`dispatch-hub`）+ 公共基线 + 公共写入门（只读角色跳过）+ 运行时绑定」组装每个提示词，每个角色配一份经评审的金样快照；
 - 不包含证据、建议或持久化逻辑。
 

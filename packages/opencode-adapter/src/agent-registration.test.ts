@@ -1054,6 +1054,8 @@ describe("buildAuthorWriterPermission", () => {
       janus_dispatch_wait: "deny",
       janus_dispatch_cancel: "deny",
       janus_dispatch_continue: "deny",
+      janus_config: "deny",
+      janus_provider_keys: "deny",
     })
   })
 
@@ -1237,6 +1239,8 @@ describe("registerAuthorWriter", () => {
         janus_dispatch_wait: "deny",
         janus_dispatch_cancel: "deny",
         janus_dispatch_continue: "deny",
+        janus_config: "deny",
+        janus_provider_keys: "deny",
       })
       expect(writer.prompt).toContain("Write mode: `read-only`")
     } finally {

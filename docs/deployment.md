@@ -83,6 +83,9 @@ bun run install:local
   assets/skills/consultation-doc/SKILL.md      生成的文档子 skill
   assets/commands/janus-models.md
   assets/commands/janus-handoff.md
+  assets/commands/janus-config.md
+  dist/janus-keys.js
+  bin/janus-keys
   package.json                溯源
   build-meta.json             版本 / git sha / 构建时间
 ```
@@ -105,7 +108,7 @@ bun run install:local
 4. 注册检索/审查子 agent `common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`（各自只读、各用其配置模型、各自禁 shell 与派发），限定写入的执笔者 `author-writer`（仅允许编辑 `writer_docs_roots` 之下，默认 `userdoc/**`；禁 shell 与派发；允许带来源台账的定向网络检索；步数上限 80；`writer_docs_roots` 为空时转为只读，由 author 发布其返回的正文），以及文档团队独立审稿人 `author-reviewer`（默认 `opencode-go/kimi-k3.1-pro`，与主笔跨模型家族；只读：`edit`/`bash`/`task`/`webfetch`/`websearch` 全拒，仅授予 author 与 design 状态目录的 `external_directory` 读权限；门禁为 `architecture` 文档或 `targeted`/`strict` 验证级别，`light` 非架构文档与 `briefWaived` 微改跳过；不在 `tier_role_caps` 中）。同时创建 author 状态目录 `$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报；
 5. 注册 `janus-memory` 本地 MCP 服务器（记忆启用时，默认开启）；
 6. 为十一个派发角色注册 `janus_dispatch{role,prompt,return_handle?,mode?,tier?,protocol?}`、`janus_dispatch_wait{job_id,wait_ms?}`、`janus_dispatch_cancel{job_id}` 与 `janus_dispatch_continue{session_id,prompt,role?}`（不干扰内置 `task` 工具或其他插件）。`mode`/`tier` 选择模型；`protocol` 在首轮前prepend五张方法论卡片之一；
-7. 把 `consultation`、`consultation-design`、`consultation-doc` 三个 skill 与 `/janus-memory`、`/janus-models`、`/janus-handoff` 三条斜杠命令安装进你的 OpenCode 配置目录。
+7. 把 `consultation`、`consultation-design`、`consultation-doc` 三个 skill 与 `/janus-memory`、`/janus-models`、`/janus-handoff`、`/janus-config` 四条斜杠命令安装进你的 OpenCode 配置目录。
 
 ### 可恢复的团队任务
 
@@ -124,6 +127,27 @@ bun run install:local
 1. `$JANUS_CONFIG` —— 显式路径覆盖
 2. `$XDG_CONFIG_HOME/janus-agent/config.jsonc`
 3. `~/.config/janus-agent/config.jsonc`
+
+不想手写 JSON 时，在 OpenCode 里运行 `/janus-config`。它按九个分组列出全部可配置项，并显示每项的当前值、默认值和来源（用户设置、默认、继承）。选中某项后，命令会按类型给出编号选项：开关、数字、列表；模型字段从 `opencode models` 中列候选。写入前先展示预览 diff，经你确认后才写入。写入由插件的 `janus_config` 工具完成：按下面的 schema 全量校验，保留注释与格式，写前备份到 `<配置路径>.bak`，写后回读复核。只有五个主入口（`janus`/`consultant`/`architect`/`coder`/`author`）能调用该工具，叶节点一律拒绝。改动在重启 OpenCode 后生效；`model_prompts` 例外，下一轮对话即生效。常用快捷参数：`/janus-config 2`（直接打开第 2 组）、`/janus-config 设 <key> <value>`、`/janus-config 清除 <key>`、`/janus-config 已改`、`/janus-config 校验`、`/janus-config 重置`。
+
+`/janus-config` 的第 10 组（或 `/janus-config key`）管理 OpenCode 的 provider API key，由 `janus_provider_keys` 工具和终端命令 `janus-keys` 配合完成：
+
+- **存放位置**：OpenCode 的生效 key 在 `$XDG_DATA_HOME/opencode/auth.json`，每个 provider 一条。本插件把每个 provider 的多个命名候选 key 存在 `$XDG_DATA_HOME/janus-agent/provider-keys.json`（权限 600，目录 700）。可选的 provider 来自 `$XDG_CACHE_HOME/opencode/models.json`，外加 `opencode.jsonc` 中的自定义 `provider`。
+- **首次使用**：已在 OpenCode 中但没有名字的 key 显示为"未命名"，命令会先建议全部以 `default` 收录。收录只是把 key 复制进候选库，不改 `auth.json`，也不需要重启。只要某个 provider 当前的 key 还没有名字，就不能切换到别的 key，以免它被覆盖。
+- **切换与删除**：切换会把选中的 key 写进 `auth.json`，写前备份为 `auth.json.bak`，且只改动这一个 provider 的条目。oauth 登录的 provider 不能用这里切换。删除当前生效的 key 时，需要选择只删候选（`--keep`），还是同时从 OpenCode 移除（`--logout`）。未命名的生效 key 不在候选库里：要改它的名字，用 `adopt <p> <名字>` 起名；要删除它，用不带名字的 `remove <p> --logout`。`show <p>` 的末尾会列出该 provider 当前可用的切换、改名、删除命令。
+- **重启**：切换、logout，以及 `add --use` 都要完全退出并重新打开 OpenCode 才生效。在重启之前，列表的状态列显示"已切换，待重启生效"，每次写入后都会输出"当前状态 / 下一步 / 回滚"三段提示。改名、收录、只添加候选、删除非生效候选都不需要重启。
+- **添加 key**：只能在终端里添加，这样 key 不会进入对话：
+
+```bash
+~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --use      # 隐藏输入，需输入两次
+pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --stdin
+~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --env DEEPSEEK_API_KEY
+~/.local/share/janus-agent-plugin/bin/janus-keys list | show <p> | use <p> <name> | remove <p> <name> --keep|--logout | rename <p> <a> <b> | adopt --all
+```
+
+  每个 key 都挂在添加时指定的 provider 下，切换时只写入 `auth.json` 中该 provider 的条目。工具无法验证 key 是否真的属于这个 provider，但如果同一个 key 已用于另一个 provider，添加会被拒绝，以防填错 provider（`opencode` 和 `opencode-go` 这类确实共用 key 的情况加 `--force`）。不在 provider 目录里的自定义 provider 也需要加 `--force`。如果当前生效的 key 还没有名字，`add --use` 要配合 `--adopt-as <名字>` 先收录它。`install:local` 会打印一行 `alias janus-keys=…`，可按需加进 shell 配置。
+
+`bun run install:local` 安装时会同时把四条斜杠命令写进 OpenCode 配置目录。这一步遵守 `install_commands` 设置和 `<!-- user-modified -->` 标记；设置 `JANUS_SKIP_COMMAND_SYNC=1` 可以跳过。因此装完重启一次，新命令就会出现。
 
 文件缺失没有问题；所有字段都有默认值。schema 是严格的：顶层键被删除、`mode_models`/`tier_models` 内出现旧角色或旧模式键、或 `tier_role_caps` 出现旧键，都会让配置加载以 schema 错误失败，而不是被静默忽略或清零。`writer_docs_roots`、`writer_delegate_agent`/`writer_delegate_model`、以及简报中的 `writer_session_id` 就是现用字段名。创建该文件即可覆盖默认值：
 
@@ -259,7 +283,7 @@ bun run install:local
 | `tier_role_caps.*` | object | fast `5/0/0/0/0/0`，standard `5/1/1/1/1/1`，deep `5/3/2/2/2/2` | 每档位每角色的建议性实例上限（`common_explorer`/`consultant_analyst`/`consultant_critic`/`coder_reviewer`/`consultant_auditor`/`author_writer`） |
 | `cost_guard_provider_usd` | number | `10` | 每提供商的建议性止损线 |
 | `install_skill` | boolean | `true` | 安装三个咨询 skill |
-| `install_commands` | boolean | `true` | 安装 `janus-memory`、`janus-models`、`janus-handoff` 三条命令 |
+| `install_commands` | boolean | `true` | 安装 `janus-memory`、`janus-models`、`janus-handoff`、`janus-config` 四条命令 |
 | `memory_enabled` | boolean | `true` | 注册并启动记忆 MCP 服务器 |
 | `embedding.*` | object（可选） | （无） | OpenAI 兼容 embedding 配置（全有或全无） |
 
@@ -267,7 +291,7 @@ bun run install:local
 
 每个角色有一次已配置的尝试，每个 agent 解析到单一模型，插件不做预先回退。未带 `writer_delegate_model` 的代理使用宿主模型选择（持久 job spec 中为 `null`）；它保留宿主权限与宿主内部重试行为。等待超时或状态未知都不授权备用模型。
 
-consultant 把有界的证据工作路由给自己的团队：`common-explorer` 收集缺失证据，`consultant-analyst` 解读实质性分歧，`consultant-critic` 挑战重大结论与计划不确定性，`consultant-auditor` 审计用户/第三方/推广来源中不明的影响或独立性。设计、代码审查与文档属于其他团队：`architect` 负责设计并与 `coder` 共享 `coder-reviewer`（设计事前验尸 / 计划-diff 审查）；`author` 负责文档并派发 `author-writer` 执笔与 `author-reviewer` 独立审稿（`architecture` 文档或 `targeted`/`strict` 验证成稿后必经，`light` 非架构文档与 `briefWaived` 保义微改跳过；不可用时披露而非冒领）。一项检查在其可能实质改变答案、且归属方能说出它可能改变哪个决策、能抓住哪种具体失败时才被派发；跳过角色必须给出该理由。这些角色不是按档位必须凑齐的名册。每个叶节点（`common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`author-writer`、`author-reviewer`、`coder-lite`、`simple`）都有 `permission.task = "deny"` 加显式 `janus_dispatch* = "deny"`；只读专家同时禁 `edit` 与 `bash`，`author-reviewer` 额外禁 `webfetch`/`websearch`（只读审稿，不联网），`author-writer` 是限定写入叶节点——`edit` 在 `<writer_docs_roots>/**` 之外全拒，`webfetch`/`websearch` 允许用于带来源台账的定向检索。外部 `writer_delegate_agent` 保留其宿主定义的权限，不继承这些限制；内置 `author-reviewer` 的注册不受其影响。插件不强制模型家族多样性；请自行选择。角色上限是建议性天花板，不是运行时强制调度器。
+consultant 把有界的证据工作路由给自己的团队：`common-explorer` 收集缺失证据，`consultant-analyst` 解读实质性分歧，`consultant-critic` 挑战重大结论与计划不确定性，`consultant-auditor` 审计用户/第三方/推广来源中不明的影响或独立性。设计、代码审查与文档属于其他团队：`architect` 负责设计并与 `coder` 共享 `coder-reviewer`（设计事前验尸 / 计划-diff 审查）；`author` 负责文档并派发 `author-writer` 执笔与 `author-reviewer` 独立审稿（`architecture` 文档或 `targeted`/`strict` 验证成稿后必经，`light` 非架构文档与 `briefWaived` 保义微改跳过；不可用时披露而非冒领）。一项检查在其可能实质改变答案、且归属方能说出它可能改变哪个决策、能抓住哪种具体失败时才被派发；跳过角色必须给出该理由。这些角色不是按档位必须凑齐的名册。每个叶节点（`common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`author-writer`、`author-reviewer`、`coder-lite`、`simple`）都有 `permission.task = "deny"` 加显式 `janus_dispatch* = "deny"`、`janus_config = "deny"` 与 `janus_provider_keys = "deny"`；只读专家同时禁 `edit` 与 `bash`，`author-reviewer` 额外禁 `webfetch`/`websearch`（只读审稿，不联网），`author-writer` 是限定写入叶节点——`edit` 在 `<writer_docs_roots>/**` 之外全拒，`webfetch`/`websearch` 允许用于带来源台账的定向检索。外部 `writer_delegate_agent` 保留其宿主定义的权限，不继承这些限制；内置 `author-reviewer` 的注册不受其影响。插件不强制模型家族多样性；请自行选择。角色上限是建议性天花板，不是运行时强制调度器。
 
 作者简报位于 `$XDG_DATA_HOME/janus-agent/author/<projectId>/<docId>/brief.md`（固定路径；`projectId` 由项目目录派生）。`author` 创建并更新它；`author-writer` 只读、绝不写。限定写入模式下 `author` 不编辑写手根目录下的文件——它审查 author-writer 的 diff 并请求有界修正。
 
@@ -326,7 +350,7 @@ handoff 状态目录位于 `$XDG_DATA_HOME/janus-agent/handoff`（默认 `~/.loc
 5. **审查子 agent 已注册**：`common-explorer`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`consultant-analyst`（只读）与 `author-writer`（限定写入：除非改了 `writer_docs_roots`，仅允许编辑 `userdoc/**` 之下）以子 agent（模式 `subagent`）出现，经 `janus_dispatch` 工具派发。
 6. **skill 就位**：`consultation/SKILL.md`、`consultation-design/SKILL.md`、`consultation-doc/SKILL.md` 存在于 `~/.config/opencode/skills/`（或你的 `$OPENCODE_CONFIG_DIR/skills/`）；设计与文档子 skill 含其模式模板。
 7. **设计与交接状态**：`~/.local/share/janus-agent/design` 与 `~/.local/share/janus-agent/handoff` 存在；五个主入口提示词标注项目交接目录，其权限映射允许 `<handoffStateDir>/**`。
-8. **命令就位**：`commands/janus-memory.md`、`commands/janus-models.md`、`commands/janus-handoff.md` 存在于 `~/.config/opencode/`（或你的 `$OPENCODE_CONFIG_DIR/commands/`）。
+8. **命令就位**：`commands/janus-memory.md`、`commands/janus-models.md`、`commands/janus-handoff.md`、`commands/janus-config.md` 存在于 `~/.config/opencode/`（或你的 `$OPENCODE_CONFIG_DIR/commands/`）。
 
 也可以运行自动化集成证明：
 
@@ -377,7 +401,7 @@ bun run evals/run-evals.ts   # 打印评估清单（不调用真实模型）
 4. **移除已安装的命令**（可选）：
 
    ```bash
-   rm -f ~/.config/opencode/commands/janus-memory.md ~/.config/opencode/commands/janus-models.md ~/.config/opencode/commands/janus-handoff.md
+   rm -f ~/.config/opencode/commands/janus-memory.md ~/.config/opencode/commands/janus-models.md ~/.config/opencode/commands/janus-handoff.md ~/.config/opencode/commands/janus-config.md
    ```
 
 5. **移除插件配置文件**（可选）：

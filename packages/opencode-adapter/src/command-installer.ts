@@ -21,6 +21,12 @@ export const MODELS_COMMAND_PREFIX = "janus-models"
  */
 export const HANDOFF_COMMAND_PREFIX = "janus-handoff"
 
+/**
+ * The guided plugin-config command: list, view, set, clear, reset, and
+ * validate `config.jsonc` through the `janus_config` tool.
+ */
+export const CONFIG_COMMAND_PREFIX = "janus-config"
+
 const USER_MODIFIED_MARKER = "<!-- user-modified -->"
 
 function commandContent(): string {
@@ -112,4 +118,15 @@ export async function installHandoffCommand(env: NodeJS.ProcessEnv): Promise<voi
   const configDir = resolveOpencodeConfigDir(env)
   const content = await readFile(resolveAsset("commands/janus-handoff.md"), "utf8")
   await installCommandFile(configDir, HANDOFF_COMMAND_PREFIX, content)
+}
+
+/**
+ * Install the explicit `/janus-config` command from the shipped asset. The
+ * asset is the single source of truth; the file is written only when missing
+ * or when the content differs, and a user-modified file is never overwritten.
+ */
+export async function installConfigCommand(env: NodeJS.ProcessEnv): Promise<void> {
+  const configDir = resolveOpencodeConfigDir(env)
+  const content = await readFile(resolveAsset("commands/janus-config.md"), "utf8")
+  await installCommandFile(configDir, CONFIG_COMMAND_PREFIX, content)
 }

@@ -22,6 +22,7 @@ Janus is a daily-driver agent family for [OpenCode](https://opencode.ai) — thr
 | `janus-memory` (MCP) | — | Local SQLite memory shared across the family: auto-saved consultation records, recall, edit, delete, outcome feedback |
 | `janus-models` (command) | — | Model-rotation entry: inventory the 14 agents, evaluate model/prompt fit, and apply approved model or routing changes to the user-level Janus config |
 | `janus-handoff` (command) | — | Cross-team handoff operator: list, view, mount (`use`), archive, delete, export, and import `handoff.md` documents for topics moving between the primary entries |
+| `janus-config` (command) | — | Guided editor for the plugin config file: browse every setting by group, see its current value, default, and choices, then set, clear, reset, or validate it with a preview and confirmation |
 
 ### Which agent should I use?
 
@@ -65,7 +66,7 @@ Register the printed entry in `~/.config/opencode/opencode.json` (create if miss
 }
 ```
 
-Restart OpenCode. The plugin registers the agents, the memory MCP, the `consultation`, `consultation-design`, and `consultation-doc` skills, the `/janus-memory`, `/janus-models`, and `/janus-handoff` commands, and the dispatch tools automatically.
+Restart OpenCode. The plugin registers the agents, the memory MCP, the `consultation`, `consultation-design`, and `consultation-doc` skills, the `/janus-memory`, `/janus-models`, `/janus-handoff`, and `/janus-config` commands, the dispatch tools, and the `janus_config` tool automatically.
 
 ## Usage
 
@@ -88,6 +89,10 @@ Answers are terminal-first: a full answer opens with `结论 / 理由 / 下一�
 **Memory.** Consultations auto-save (question + conclusion summaries — never transcripts). Browse and manage them with the `/janus-memory` command or the `janus-memory` CLI. Prior experience and preferences surface in later consultations, with an outcome-feedback loop.
 
 **Models.** Run `/janus-models` for an explicit, interactive model-rotation workflow. With no arguments it inventories every suite agent's effective model and prompt source, then offers a menu: model evaluation, `model_prompt` evaluation, a combined recommendation, or execution. Model and prompt changes are written only to the user-level Janus config; the command shows an exact diff and waits for confirmation before writing. `/janus-models 帮助` lists the argument forms.
+
+**Settings.** Run `/janus-config` to change any plugin setting without touching JSON. With no arguments it shows the config file path and nine numbered groups (role switches and names, role models, advanced routing, model prompts, team caps, document writer, simple workspace, memory/embedding, install). Pick a group to see every field with its current value, default, and source. Pick a field to get numbered choices for its type; model fields list candidates from `opencode models`. Every write goes through the plugin's `janus_config` tool: it validates against the config schema, shows a preview diff, waits for your confirmation, keeps your comments, and leaves a `.bak` backup. Shortcuts such as `/janus-config 设 author_writer_enabled false`, `/janus-config 清除 team_caps.round_cap`, and `/janus-config 校验` skip the menus.
+
+**Provider keys.** Group 10 of `/janus-config` (or `/janus-config key`) manages OpenCode's provider API keys. It lists the providers that have a key, which named key is active, how many candidates each one has, and whether a switch is waiting for a restart. It can also search the full provider catalog. Each provider can hold several named keys, for example `work` and `personal`. You can switch between them, rename them, or delete them. Switching writes the chosen key into OpenCode's `auth.json` (backed up first) and needs a full OpenCode restart; the command prints the exact steps to confirm the switch and to roll it back. On first use it offers to save your existing unnamed keys under the name `default`, and it will not switch away from an unnamed key, so no key is ever lost. Keys are added only in a terminal, so a key never enters the conversation: `~/.local/share/janus-agent-plugin/bin/janus-keys add <provider> <name> --use` prompts twice with hidden input. It also accepts `--stdin` (for example `pbpaste | …`) or `--env VAR`. Candidates live in `~/.local/share/janus-agent/provider-keys.json` (mode 600), and every output masks keys as `sk-…ab12`.
 
 **Documents.** Doc-mode documents are produced by an author + author-writer pair: `author` owns intake, evidence, the outline approval, the brief, verification, and publishing; `author-writer` is the sole author of reader-facing prose and (unless `writer_docs_roots` is empty) the sole writer of approved document files under the configured roots (default `userdoc`). With `writer_docs_roots: []` the author-writer returns prose and the author publishes it. A document's writer session is reused across its feedback turns: the first author-writer dispatch captures a session handle (`return_handle: true`), the brief stores it as `writer_session_id`, and later bounded edits continue that session via `janus_dispatch_continue`.
 

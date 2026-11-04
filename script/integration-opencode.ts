@@ -35,7 +35,8 @@
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { computeProjectId } from "../packages/opencode-adapter/src/agent-registration.ts"
 import { buildCleanRoomEnv } from "./integration-env.ts"
 import { proveDispatchPrimitives } from "./integration-dispatch-primitives.ts"
@@ -437,6 +438,36 @@ async function main(): Promise<void> {
           detail: `contract=${hasContract} subcommands=${hasSubcommands}`,
         })
       }
+      const configCommandPath = join(sandboxConfig, "opencode", "commands", "janus-config.md")
+      const configCommandExists = existsSync(configCommandPath)
+      assertions.push({
+        name: "janus-config command installed in sandbox config",
+        pass: configCommandExists,
+        detail: configCommandExists ? configCommandPath : `NOT FOUND: ${configCommandPath}`,
+      })
+
+      if (configCommandExists) {
+        const configCommandText = readFileSync(configCommandPath, "utf8")
+        const hasTool =
+          configCommandText.includes("`janus_config`") && configCommandText.includes("`janus_provider_keys`")
+        const hasFlows =
+          configCommandText.includes("## Main menu") &&
+          configCommandText.includes("## Change a value") &&
+          configCommandText.includes("## Reset everything")
+        assertions.push({
+          name: "installed janus-config command drives the janus_config tool through guided menus",
+          pass: hasTool && hasFlows,
+          detail: `tool=${hasTool} flows=${hasFlows}`,
+        })
+      }
+      const entryPath = adapterEntry.startsWith("file://") ? fileURLToPath(adapterEntry) : adapterEntry
+      const keysCli = join(dirname(entryPath), "janus-keys.js")
+      const keysShim = join(dirname(dirname(entryPath)), "bin", "janus-keys")
+      assertions.push({
+        name: "installed artifact ships the janus-keys CLI and its shim",
+        pass: existsSync(keysCli) && existsSync(keysShim),
+        detail: `cli=${existsSync(keysCli) ? keysCli : `NOT FOUND: ${keysCli}`} shim=${existsSync(keysShim) ? keysShim : `NOT FOUND: ${keysShim}`}`,
+      })
       const liteWorkspace = join(sandboxData, "janus-agent", "lite")
       const liteWorkspaceExists = existsSync(liteWorkspace)
       assertions.push({

@@ -24,7 +24,7 @@ const roleCapsSchema = z
   })
   .strict()
 
-const CONFIG_ROLES = [
+export const CONFIG_ROLES = [
   "janus",
   "simple",
   "consultant",
@@ -41,8 +41,8 @@ const CONFIG_ROLES = [
   "coder-lite",
 ] as const
 
-const CONFIG_MODES = ["select", "verify", "roadmap", "research", "guide", "design", "doc"] as const
-const CONFIG_TIERS = ["fast", "standard", "deep"] as const
+export const CONFIG_MODES = ["select", "verify", "roadmap", "research", "guide", "design", "doc"] as const
+export const CONFIG_TIERS = ["fast", "standard", "deep"] as const
 
 /** Normalize a public mode input to its canonical name. */
 export function normalizeConfigMode(value: string): ConfigMode | undefined {
@@ -452,7 +452,7 @@ export function resolvePluginConfigPath(env: NodeJS.ProcessEnv): string | undefi
   return join(home, ".config", "janus-agent", "config.jsonc")
 }
 
-function formatZodError(error: z.ZodError): string {
+export function formatZodError(error: z.ZodError): string {
   return error.issues
     .map((issue) => `  at ${issue.path.join(".")}: ${issue.message}`)
     .join("\n")

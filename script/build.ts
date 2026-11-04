@@ -6,6 +6,7 @@
 // Entrypoints:
 //   packages/opencode-adapter/src/index.ts -> dist/index.js
 //   packages/memory-mcp/src/server.ts     -> dist/memory-mcp-server.js (optional)
+//   packages/opencode-adapter/src/provider-keys-cli.ts -> dist/janus-keys.js
 //
 // The memory-mcp entry is optional: if its source file does not exist yet, the
 // script prints a warning and continues, so the script is correct both before
@@ -40,6 +41,12 @@ const jobs: BuildJob[] = [
     outfile: join(DIST_DIR, "memory-mcp-server.js"),
     required: false,
     naming: "memory-mcp-server.js",
+  },
+  {
+    entrypoint: join(REPO_ROOT, "packages/opencode-adapter/src/provider-keys-cli.ts"),
+    outfile: join(DIST_DIR, "janus-keys.js"),
+    required: true,
+    naming: "janus-keys.js",
   },
 ]
 

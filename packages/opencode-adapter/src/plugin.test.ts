@@ -332,6 +332,8 @@ describe("createJanusConfigHook", () => {
         janus_dispatch_wait: "deny",
         janus_dispatch_cancel: "deny",
         janus_dispatch_continue: "deny",
+        janus_config: "deny",
+        janus_provider_keys: "deny",
       })
       expect(writer.prompt).toContain("Write mode: `read-only`")
     } finally {
@@ -713,6 +715,7 @@ describe("createJanusConfigHook", () => {
       expect(existsSync(join(tmpHome, "commands", "janus-memory.md"))).toBe(true)
       expect(existsSync(join(tmpHome, "commands", "janus-models.md"))).toBe(true)
       expect(existsSync(join(tmpHome, "commands", "janus-handoff.md"))).toBe(true)
+      expect(existsSync(join(tmpHome, "commands", "janus-config.md"))).toBe(true)
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
     }
@@ -739,6 +742,7 @@ describe("createJanusConfigHook", () => {
       expect(existsSync(join(tmpHome, "commands", "janus-memory.md"))).toBe(false)
       expect(existsSync(join(tmpHome, "commands", "janus-models.md"))).toBe(false)
       expect(existsSync(join(tmpHome, "commands", "janus-handoff.md"))).toBe(false)
+      expect(existsSync(join(tmpHome, "commands", "janus-config.md"))).toBe(false)
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
     }
@@ -891,7 +895,7 @@ describe("JanusAgentPlugin", () => {
     expect(typeof hooks.config).toBe("function")
   })
 
-  it("registers exactly the four consultation dispatch tools", async () => {
+  it("registers exactly the four dispatch tools plus the config and provider-key tools", async () => {
     // given
     const input: PluginInput = {
       project: { id: "wiring-test", worktree: "/wt", time: { created: 0 } },
@@ -913,9 +917,12 @@ describe("JanusAgentPlugin", () => {
       "janus_dispatch_wait",
       "janus_dispatch_cancel",
       "janus_dispatch_continue",
+      "janus_config",
+      "janus_provider_keys",
     ])
     expect(hooks.tool?.["janus_dispatch"]).toBeDefined()
     expect(hooks.tool?.["janus_dispatch_continue"]).toBeDefined()
+    expect(hooks.tool?.["janus_config"]).toBeDefined()
   })
 
   it("is typed as Plugin", () => {

@@ -3,9 +3,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
+  CONFIG_COMMAND_PREFIX,
   HANDOFF_COMMAND_PREFIX,
   MEMORY_COMMAND_PREFIX,
   MODELS_COMMAND_PREFIX,
+  installConfigCommand,
   installHandoffCommand,
   installMemoryCommands,
   installModelsCommand,
@@ -178,5 +180,42 @@ describe("installHandoffCommand", () => {
     const after = await readFile(target, "utf8")
     // then
     expect(after).toBe("<!-- user-modified -->\ncustom")
+  })
+})
+
+describe("installConfigCommand", () => {
+  test("writes the shipped janus-config command driving the janus_config tool", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    // when
+    await installConfigCommand(envFor(configDir))
+    const file = await readFile(join(configDir, "commands", `${CONFIG_COMMAND_PREFIX}.md`), "utf8")
+    const asset = await readFile(resolveAsset("commands/janus-config.md"), "utf8")
+    // then
+    expect(file).toBe(asset)
+    expect(file).toContain("`janus_config`")
+    expect(file).toContain("without** `apply`")
+    expect(file).toContain("apply: true")
+    expect(file).toContain("/janus-models")
+    expect(file).toContain("Never edit `config.jsonc`, OpenCode's `auth.json`")
+    expect(file).toContain("## Provider keys (group 10)")
+    expect(file).toContain("`janus_provider_keys`")
+    expect(file).toContain("**in full and in order**")
+    expect(file).toContain("do not pass it to any tool")
+    const frontmatter = file.split("---")[1] ?? ""
+    expect(frontmatter).not.toContain("agent:")
+  })
+
+  test("does not overwrite a user-modified command file", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    const commandsDir = join(configDir, "commands")
+    await mkdir(commandsDir, { recursive: true })
+    const target = join(commandsDir, `${CONFIG_COMMAND_PREFIX}.md`)
+    await writeFile(target, "<!-- user-modified -->\ncustom", "utf8")
+    // when
+    await installConfigCommand(envFor(configDir))
+    // then
+    expect(await readFile(target, "utf8")).toBe("<!-- user-modified -->\ncustom")
   })
 })

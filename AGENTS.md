@@ -34,8 +34,10 @@ Full detail: the "部署规则" section of [docs/deployment.md](docs/deployment.
 2. Run `bun test` and `bun run typecheck` (plus `bun run gen:skill` after a skill change).
 3. Run `bun run install:local`, then prove the installed artifact:
    `JANUS_PLUGIN_ENTRY=~/.local/share/janus-agent-plugin/dist/index.js bun run integration`.
-4. Restart OpenCode so it loads the new bundle (the `config` hook re-registers agents, the memory MCP, the skill, and the three commands).
+4. Restart OpenCode so it loads the new bundle (the `config` hook re-registers agents, the memory MCP, the skill, and the four commands).
 5. When changing `/janus-models`, update `assets/commands/janus-models.md`, `command-installer.ts`, `script/install-local.ts` (`REQUIRED_INSTALLED_FILES`), the command tests, the integration assertion, and the README/deployment docs together.
+6. When adding, removing, or renaming a config field in `JanusPluginConfigSchema`, add or update its entry in `config-catalog.ts` (group, type, default, Chinese summary); `config-catalog.test.ts` fails on any schema/catalog drift. `/janus-config` (`assets/commands/janus-config.md`) drives the `janus_config` tool (`config-tool.ts`, writes via `config-editor.ts`), which every leaf denies through `LEAF_DISPATCH_DENY`.
+7. Provider keys (`/janus-config` group 10): `provider-keys.ts` (vault at `$XDG_DATA_HOME/janus-agent/provider-keys.json`, plans, `auth.json` writes), `provider-keys-view.ts` (shared rendering), `provider-keys-tool.ts` (`janus_provider_keys`, leaf-denied, no key-value argument by design), and `provider-keys-cli.ts` (bundled to `dist/janus-keys.js`, launched via the installed `bin/janus-keys` shim; the only place a key value is entered). Never add a tool argument that accepts a key, and never print an unmasked key. `install:local` also syncs the command files into the OpenCode config dir (skip with `JANUS_SKIP_COMMAND_SYNC=1`).
 
 Role model defaults live in `packages/opencode-adapter/src/plugin-config.ts` (`MODEL_DEFAULTS` and the shipped `TIER_MODEL_DEFAULTS`) and are mirrored in `docs/deployment.md`; update both, plus the assertions in `plugin.test.ts`, `agent-registration.test.ts`, and `dispatch-tool.test.ts`. A shipped model with no `assets/model-prompts/<key>.md` block ships without driving notes, so add the block and its `REQUIRED_INSTALLED_FILES` entry in the same change.
 

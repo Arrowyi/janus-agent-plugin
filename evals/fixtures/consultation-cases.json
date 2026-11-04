@@ -302,14 +302,14 @@
   {
     "id": "C26",
     "title": "Pending-live work survives soft wait expiry and is recovered",
-    "given": "A specialist is actively working when the 300000 ms soft wait window expires; host evidence still shows progress.",
+    "given": "A specialist is actively working when the 1800000 ms soft wait window expires; host evidence still shows progress.",
     "when": "janus_dispatch returns pending and janus_dispatch_wait observes the same job_id after normal completion",
     "then": "The original report is returned without another generating request or an expiry-triggered abort. The consultant integrates the eventual real result, never calls pending specialist failure, and never credits independent preparation as the specialist's report.",
     "grading": "deterministic",
     "modes": [
       "research"
     ],
-    "notes": "Executable: packages/opencode-adapter/src/dispatch-registration.test.ts — 'recovers a soft-expired dispatch through the shared wait tool'; dispatch-lifecycle.test.ts — '<label>: pending envelope on expiry, later wait retrieves report without new launch'; dispatch-observer.test.ts — 'D2: returns pending when the final read times out after observing durable progress'. Live consultant integration/attribution needs a separate model review. Rubric: Reject '300s means failed', silent inline substitution, abort-on-expiry, or falsely crediting independent preparation as returned specialist work. Require same-job wait and eventual report integration."
+    "notes": "Executable: packages/opencode-adapter/src/dispatch-registration.test.ts — 'recovers a soft-expired dispatch through the shared wait tool'; dispatch-lifecycle.test.ts — '<label>: pending envelope on expiry, later wait retrieves report without new launch'; dispatch-observer.test.ts — 'D2: returns pending when the final read times out after observing durable progress'. Live consultant integration/attribution needs a separate model review. Rubric: Reject 'soft wait expiry means failed', silent inline substitution, abort-on-expiry, or falsely crediting independent preparation as returned specialist work. Require same-job wait and eventual report integration."
   },
   {
     "id": "C27",

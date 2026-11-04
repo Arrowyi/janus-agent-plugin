@@ -17,6 +17,7 @@ import type {
   SdkTextPart,
 } from "./dispatch-contract.ts"
 import { observeDispatch, extractUsableText, POLL_INTERVAL_MS } from "./dispatch-observer.ts"
+import { PRODUCTION_WAIT_BUDGET_MS } from "./dispatch-contract.ts"
 import type { ObservationOutcome } from "./dispatch-observer.ts"
 
 // Local helpers and fake — dispatch-test-fixtures.ts is shared with the
@@ -728,6 +729,26 @@ describe("observeDispatch", () => {
     sdk.seedMessages(CHILD_SESSION_ID, [])
 
     const promise = observeDispatch(baseRequest(sdk, clock, { waitBudgetMs: 100, signal: controller.signal }))
+    await Promise.resolve()
+    clock.advance(POLL_INTERVAL_MS / 2)
+    controller.abort()
+    await Promise.resolve()
+    clock.advance(POLL_INTERVAL_MS)
+
+    const result = await promise
+
+    expect(result).toEqual({ kind: "pending", diagnostics: { aborted: true } })
+    expect(sdk.calls.some((c) => c.method === "abort")).toBe(false)
+  })
+
+  it("aborts immediately under the production 1800000 ms wait budget", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(0)
+    const controller = new AbortController()
+
+    sdk.seedMessages(CHILD_SESSION_ID, [])
+
+    const promise = observeDispatch(baseRequest(sdk, clock, { waitBudgetMs: PRODUCTION_WAIT_BUDGET_MS, signal: controller.signal }))
     await Promise.resolve()
     clock.advance(POLL_INTERVAL_MS / 2)
     controller.abort()

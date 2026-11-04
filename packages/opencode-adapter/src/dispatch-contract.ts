@@ -16,7 +16,7 @@ export const DISPATCH_ROLES = [
 export type DispatchRole = (typeof DISPATCH_ROLES)[number]
 export type JournalRole = DispatchRole
 
-export const PRODUCTION_WAIT_BUDGET_MS = 300_000
+export const PRODUCTION_WAIT_BUDGET_MS = 1_800_000
 export const DEFAULT_WAIT_MS = PRODUCTION_WAIT_BUDGET_MS
 
 export function normalizeDispatchRole(value: string): DispatchRole | undefined {

@@ -1080,7 +1080,7 @@ describe("cancel intent blocks fallback", () => {
 })
 
 describe("production default budget", () => {
-  it("uses 300000 ms when waitMs is omitted", async () => {
+  it("uses 1800000 ms when waitMs is omitted", async () => {
     const requestedDurations: number[] = []
     const baseClock = createFakeClock()
     const recordingClock = {
@@ -1102,8 +1102,8 @@ describe("production default budget", () => {
       directory: FAKE_DIRECTORY,
     })
 
-    expect(PRODUCTION_WAIT_BUDGET_MS).toBe(300_000)
-    expect(requestedDurations).toContain(300_000)
+    expect(PRODUCTION_WAIT_BUDGET_MS).toBe(1_800_000)
+    expect(requestedDurations).toContain(1_800_000)
   })
 })
 

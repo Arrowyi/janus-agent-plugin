@@ -325,7 +325,7 @@ export function createJanusDispatchTools(
 
   const wait = tool({
     description:
-      "Retrieve a consultation job's result or detect completion, waiting up to wait_ms (default 300000, max 300000; 0 takes one snapshot). Soft expiry preserves the job and returns a recoverable job id, not a specialist failure.",
+      "Retrieve a consultation job's result or detect completion, waiting up to wait_ms (default 1800000, max 1800000; 0 takes one snapshot). Soft expiry preserves the job and returns a recoverable job id, not a specialist failure.",
     args: {
       job_id: tool.schema.string(),
       wait_ms: tool.schema.number().optional(),

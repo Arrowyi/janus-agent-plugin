@@ -48,7 +48,7 @@ describe("dispatch role constants", () => {
       "common-explorer", "consultant-analyst", "consultant-critic", "coder-reviewer",
       "consultant-auditor", "author-writer", "author-reviewer", "simple", "coder-lite", "coder", "consultant",
     ])
-    expect(PRODUCTION_WAIT_BUDGET_MS).toBe(300_000)
+    expect(PRODUCTION_WAIT_BUDGET_MS).toBe(1_800_000)
     expect(DEFAULT_WAIT_MS).toBe(PRODUCTION_WAIT_BUDGET_MS)
   })
 })
@@ -242,7 +242,7 @@ describe("wait args validation", () => {
 
   it("rejects invalid wait values and job ids", () => {
     expect(assertError(parseWaitArgs({ job_id: FAKE_JOB_ID, wait_ms: -1 })).message).toContain("wait_ms")
-    expect(assertError(parseWaitArgs({ job_id: FAKE_JOB_ID, wait_ms: 300_001 })).message).toContain("wait_ms")
+    expect(assertError(parseWaitArgs({ job_id: FAKE_JOB_ID, wait_ms: PRODUCTION_WAIT_BUDGET_MS + 1 })).message).toContain("wait_ms")
     expect(assertError(parseWaitArgs({ job_id: FAKE_JOB_ID, wait_ms: 1.5 })).message).toContain("wait_ms")
     expect(assertError(parseWaitArgs({ job_id: FAKE_JOB_ID, wait_ms: "abc" })).message).toContain("wait_ms")
     expect(assertError(parseWaitArgs({ job_id: "" })).message).toContain("job_id")

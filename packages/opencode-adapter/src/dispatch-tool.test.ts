@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { setImmediate } from "node:timers/promises"
 import type { PluginInput, ToolContext } from "@opencode-ai/plugin"
 
 import { createJanusDispatchTool, createJanusDispatchTools, resolveRoleTarget, splitModel } from "./dispatch-tool.ts"
@@ -87,12 +88,24 @@ function outputText(result: unknown): string {
   throw new Error(`unexpected tool result: ${JSON.stringify(result)}`)
 }
 
-/** Advance the fake clock past the 300000 ms soft wait budget so a pending
- * observation expires deterministically instead of sleeping forever. */
-async function exhaustBudget(clock: ReturnType<typeof createFakeClock>): Promise<void> {
+/** Advance the fake clock until the observed promise settles so a pending
+ * observation expires deterministically instead of sleeping forever. Each
+ * step yields a real macrotask so the observation chain keeps pace with the
+ * clock — a bare `await Promise.resolve()` starves the chain and can leave
+ * the observation a few cycles short when the loop ends, hanging the awaited
+ * promise forever because nothing advances the clock again. The settle-driven
+ * condition plus the bounded cap turns a stalled chain into a visible hang
+ * instead of a margin-guessing flake. */
+async function exhaustBudget(clock: ReturnType<typeof createFakeClock>, observed: Promise<unknown>): Promise<void> {
+  let settled = false
+  const mark = (): void => {
+    settled = true
+  }
+  void observed.then(mark, mark)
   await new Promise<void>((resolve) => setTimeout(resolve, 0))
-  for (let i = 0; i < 160; i++) {
-    await Promise.resolve()
+  const maxSteps = Math.ceil(PRODUCTION_WAIT_BUDGET_MS / 2_000) * 4
+  for (let i = 0; i < maxSteps && !settled; i++) {
+    await setImmediate()
     clock.advance(2_000)
   }
 }
@@ -474,7 +487,7 @@ describe("createJanusDispatchTool", () => {
     expect(promptAsyncCount(fake)).toBe(0)
   })
 
-  it("uses the production 300000 ms wait budget at the tool boundary", async () => {
+  it("uses the production 1800000 ms wait budget at the tool boundary", async () => {
     const captured: LaunchInput[] = []
     const spyLifecycle: DispatchLifecycle = {
       launch: async (input) => {
@@ -732,7 +745,7 @@ describe("janus_dispatch_continue", () => {
 
     const firstResult = await (async () => {
       const launched = tools.janus_dispatch.execute({ role: "author-writer", prompt: "draft chapter one" }, fakeContext())
-      await exhaustBudget(clock)
+      await exhaustBudget(clock, launched)
       return outputText(await launched)
     })()
     const first = parseOutcomeEnvelope(firstResult)
@@ -745,7 +758,7 @@ describe("janus_dispatch_continue", () => {
         { session_id: targetSession, prompt: "apply the review fix" },
         fakeContext(),
       )
-      await exhaustBudget(clock)
+      await exhaustBudget(clock, continued)
       return outputText(await continued)
     })()
     const continued = parseOutcomeEnvelope(continueResult)

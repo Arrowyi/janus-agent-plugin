@@ -9,6 +9,7 @@ import { JanusAgentPlugin } from "./plugin.ts"
 import { buildConsultantRuntimeBindings, buildCoderRuntimeBindings, buildJanusRuntimeBindings } from "./agent-registration.ts"
 import { JanusPluginConfigSchema } from "./plugin-config.ts"
 import { createFakeClock } from "./dispatch-test-fixtures.ts"
+import { PRODUCTION_WAIT_BUDGET_MS } from "./dispatch-contract.ts"
 import { context, envelope, fixture, pluginInput } from "./dispatch-registration-fixtures.ts"
 
 const { createJanusDispatchTools } = dispatchTools
@@ -36,7 +37,21 @@ describe("unified dispatch registration", () => {
     const tools = createJanusDispatchTools(pluginInput(f.sdk).client, { clock })
     const launched = tools.janus_dispatch.execute({ role: "consultant-analyst", prompt: "analyze" }, context())
     await setImmediate()
-    for (let i = 0; i < 300; i++) {
+    // Settle-driven burst: a fixed step count with a thin margin leaves the
+    // observation a few cycles short when the loop ends, and nothing advances
+    // the clock afterwards, so the awaited promise hangs and the test times
+    // out. Advance until the observation settles, bounded by a generous cap.
+    let settled = false
+    void Promise.resolve(launched).then(
+      () => {
+        settled = true
+      },
+      () => {
+        settled = true
+      },
+    )
+    const maxSteps = Math.ceil(PRODUCTION_WAIT_BUDGET_MS / 2_000) * 4
+    for (let i = 0; i < maxSteps && !settled; i++) {
       await setImmediate()
       clock.advance(2_000)
     }

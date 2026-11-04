@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { setImmediate } from "node:timers/promises"
 import type { PluginInput, ToolContext } from "@opencode-ai/plugin"
 import { createJanusDispatchTool } from "./dispatch-tool.ts"
 import { createFakeClock, createFakeSdk, type FakeSdk } from "./dispatch-test-fixtures.ts"
@@ -104,14 +105,25 @@ describe("consultation dispatch reliability", () => {
     })
   }
 
-  async function advanceClockTo(clock: Clock & { advance(ms: number): void }, target: number, chunk = 2_000): Promise<void> {
-    // Yield one real macrotask so the tool's execute() wrapper has started before
-    // we begin advancing the fake clock.
+  /** Advance the fake clock until the observed promise settles so a pending
+   * observation expires deterministically instead of sleeping forever. Each
+   * step yields a real macrotask so the observation chain keeps pace with the
+   * clock — a bare `await Promise.resolve()` starves the chain and can leave
+   * the observation a few cycles short when the loop ends, hanging the awaited
+   * promise forever because nothing advances the clock again. The
+   * settle-driven condition plus the bounded cap turns a stalled chain into a
+   * visible hang instead of a margin-guessing flake. */
+  async function advanceClockTo(clock: Clock & { advance(ms: number): void }, observed: Promise<unknown>): Promise<void> {
+    let settled = false
+    const mark = (): void => {
+      settled = true
+    }
+    void observed.then(mark, mark)
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
-    while (clock.now() < target) {
-      await Promise.resolve()
-      const step = Math.min(chunk, target - clock.now())
-      clock.advance(step)
+    const maxSteps = Math.ceil(PRODUCTION_WAIT_BUDGET_MS / 2_000) * 4
+    for (let i = 0; i < maxSteps && !settled; i++) {
+      await setImmediate()
+      clock.advance(2_000)
     }
   }
 
@@ -179,7 +191,7 @@ describe("consultation dispatch reliability", () => {
     const dispatch = createJanusDispatchTool(fake as unknown as PluginInput["client"], { clock })
 
     const promise = dispatch.execute({ role: "consultant-analyst", prompt: "analyze evidence" }, context)
-    await advanceClockTo(clock, PRODUCTION_WAIT_BUDGET_MS)
+    await advanceClockTo(clock, promise)
     const result = (await promise) as string
 
     const envelope = parseEnvelope(result)

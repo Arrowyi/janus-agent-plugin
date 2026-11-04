@@ -35,7 +35,7 @@
     "author_writer_model": "<你的提供商>/writing-model",
     "coder_model": "<你的提供商>/strong-coding-model",
     "simple_model": "<你的提供商>/fast-cheap-model",
-    "coder_lite_model": "<你的提供商>/mechanical-coding-model"
+    "coder_lite_model": "<你的提供商>/junior-mid-coding-model"
   }
   ```
 
@@ -103,7 +103,7 @@ bun run install:local
 重启 OpenCode 使其加载新的插件条目。启动时插件的 `config` 钩子执行：
 
 1. 注册 `consultant` 主入口（名字可用 `consultant_agent` 配置），授予共享 handoff 状态目录的 `external_directory` 权限，可读写跨团队交接文档；
-2. 注册 `coder` 编码入口（模式 `all`：可选可派发）、`simple` 经济叶节点（模式 `all`，禁止派发）与 `coder-lite` 机械车道（模式 `subagent`，步数上限 50，工作区编辑免确认，禁止继续派发）；
+2. 注册 `coder` 编码入口（模式 `all`：可选可派发）、`simple` 经济叶节点（模式 `all`，禁止派发）与 `coder-lite` 初中级工程师车道（模式 `subagent`，步数上限 80，工作区编辑免确认，项目原生构建/测试命令允许执行、VCS 写/还原与破坏性删除被 `CODER_LITE_BASH_DENY_RULES` 拒绝，禁止继续派发）；
 3. 注册 `simple` 的工作区目录（`$XDG_DATA_HOME/janus-agent/lite`，可用 `simple_workspace_dir` 配置）为免确认可写；其余写入一律先询问。同时创建设计状态目录 `$XDG_DATA_HOME/janus-agent/design`（由 `architect`、`author`、`coder` 访问：architect 写 `design.md` 的决策内容，coder 读它、写 `plan.md`，并可在验证落地后翻转其生命周期行）与 handoff 状态目录 `$XDG_DATA_HOME/janus-agent/handoff`（由五个主入口 `janus`、`consultant`、`architect`、`coder`、`author` 共享访问；叶节点子 agent 绝不写它）；
 4. 注册检索/审查子 agent `common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`（各自只读、各用其配置模型、各自禁 shell 与派发），限定写入的执笔者 `author-writer`（仅允许编辑 `writer_docs_roots` 之下，默认 `userdoc/**`；禁 shell 与派发；允许带来源台账的定向网络检索；步数上限 80；`writer_docs_roots` 为空时转为只读，由 author 发布其返回的正文），以及文档团队独立审稿人 `author-reviewer`（默认 `opencode-go/kimi-k3.1-pro`，与主笔跨模型家族；只读：`edit`/`bash`/`task`/`webfetch`/`websearch` 全拒，仅授予 author 与 design 状态目录的 `external_directory` 读权限；门禁为 `architecture` 文档或 `targeted`/`strict` 验证级别，`light` 非架构文档与 `briefWaived` 微改跳过；不在 `tier_role_caps` 中）。同时创建 author 状态目录 `$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报；
 5. 注册 `janus-memory` 本地 MCP 服务器（记忆启用时，默认开启）；
@@ -266,7 +266,7 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
 | `author_agent` / `author_model` / `author_enabled` | string / string / boolean | `"author"` / `opencode-go/gemini-4-argon` / `true` | 文档主入口；未设置时继承显式配置的 `consultant_model` |
 | `simple_agent` / `simple_model` / `simple_enabled` | string / string / boolean | `"simple"` / `opencode-go/deepseek-v4.1-flash` / `true` | 经济型快答叶节点 |
 | `simple_workspace_dir` | string（可选） | `$XDG_DATA_HOME/janus-agent/lite` | simple 的预授权可写工作区 |
-| `coder_lite_agent` / `coder_lite_model` / `coder_lite_enabled` | string / string / boolean | `"coder-lite"` / `opencode-go/glm-5.3-flash` / `true` | 机械编码车道（subagent，步数 50） |
+| `coder_lite_agent` / `coder_lite_model` / `coder_lite_enabled` | string / string / boolean | `"coder-lite"` / `opencode-go/glm-5.3-flash` / `true` | 初中级工程师车道（subagent，步数 80，bash 全允许加 VCS 写/删除/janus-keys 护栏） |
 | `common_explorer_agent` / `common_explorer_model` / `common_explorer_enabled` | string / string / boolean | `"common-explorer"` / `opencode-go/deepseek-v4.1-flash` / `true` | 共享检索层（只读叶节点） |
 | `consultant_analyst_agent` / `consultant_analyst_model` / `consultant_analyst_enabled` | string / string / boolean | `"consultant-analyst"` / `opencode-go/kimi-k3.1-pro` / `true` | 咨询团队解读专家 |
 | `consultant_critic_agent` / `consultant_critic_model` / `consultant_critic_enabled` | string / string / boolean | `"consultant-critic"` / `opencode/claude-sonnet-5-5` / `true` | 反证与计划稳健性审查者 |
@@ -295,7 +295,7 @@ consultant 把有界的证据工作路由给自己的团队：`common-explorer` 
 
 作者简报位于 `$XDG_DATA_HOME/janus-agent/author/<projectId>/<docId>/brief.md`（固定路径；`projectId` 由项目目录派生）。`author` 创建并更新它；`author-writer` 只读、绝不写。限定写入模式下 `author` 不编辑写手根目录下的文件——它审查 author-writer 的 diff 并请求有界修正。
 
-`architect` 拥有 `design` 模式：逐层决定架构、模块边界与接口，把结果记入 `design.md`，并把记录移交给 `coder` 做实施计划。设计状态位于 `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`；`coder` 读它、在同目录写 `plan.md`，并可在验证落地后翻转其生命周期行。`architect` 与 `coder` 拥有 `<designStateDir>/**` 的预授权 `external_directory` 权限；两者都不把设计状态写进项目树。跨团队交接位于 `$XDG_DATA_HOME/janus-agent/handoff/<projectId>/<handoffId>/handoff.md`——五个主入口共享的唯一业务态目录（`consultant` 不持有其他）；交接文档在首次跨主入口交接时懒创建，由 ≤ 80 行的现态快照加倒序 Hop 账本构成，跨会话追加、没有自动完结，通过 `/janus-handoff` 命令管理。编码由 `coder` 负责：完全指定的机械工作交给 `coder-lite`（工作区编辑免确认、外部编辑先询问、禁止继续派发——它的停下上报是合法的部分结果，由派发方整合）；判断密集型工作留在 `coder`，L3 工作可用 `tier: "deep"` 派发到更强的已配置模型。`coder` 按任务复杂度选择 L0/L1/L2/L3 过程权重，并在编辑前对 L2/L3 设置用户审批门。
+`architect` 拥有 `design` 模式：逐层决定架构、模块边界与接口，把结果记入 `design.md`，并把记录移交给 `coder` 做实施计划。设计状态位于 `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`；`coder` 读它、在同目录写 `plan.md`，并可在验证落地后翻转其生命周期行。`architect` 与 `coder` 拥有 `<designStateDir>/**` 的预授权 `external_directory` 权限；两者都不把设计状态写进项目树。跨团队交接位于 `$XDG_DATA_HOME/janus-agent/handoff/<projectId>/<handoffId>/handoff.md`——五个主入口共享的唯一业务态目录（`consultant` 不持有其他）；交接文档在首次跨主入口交接时懒创建，由 ≤ 80 行的现态快照加倒序 Hop 账本构成，跨会话追加、没有自动完结，通过 `/janus-handoff` 命令管理。编码由 `coder` 负责：计划里程碑与完全指定的编码/单测工作交给 `coder-lite`（工作区编辑免确认、外部编辑先询问、项目原生命令允许执行、禁止继续派发——它的停下上报是合法的部分结果，由派发方整合）。`coder-lite` 的 bash 为 `"*": "allow"` 加 `CODER_LITE_BASH_DENY_RULES` 护栏，且只拒绝清单内的命令（git/svn/hg 写与还原、`rm -rf`、`sudo`、`janus-keys` CLI）。该护栏是防误操作的 Speed Bump，不是沙箱：它拦不住子 shell 或脚本重定向——包括直接读写外部文件、插件配置或密钥文件（`janus-keys*` 的拒绝只挡 CLI 调用，不挡对密钥文件的直接读写）；安装脚本与网络请求等工作区快照之外的不可逆副作用也无法由基线还原。工作区文件完整性由 `coder` 侧的基线对账兜底。判断密集型工作留在 `coder`，L3 工作可用 `tier: "deep"` 派发到更强的已配置模型。`coder` 按任务复杂度选择 L0/L1/L2/L3 过程权重，并在编辑前对 L2/L3 设置用户审批门。
 
 `janus` 是默认前台：处理一般问题与轻量任务，通过 `janus_dispatch` 把快答路由给 `simple`、证据工作给 `consultant`、编码给 `coder`；设计与文档请求交给用户自选且不可派发的 `architect` 与 `author`。派发 `consultant` 时 janus 附带 `Memory ownership: consultant saves`，因为 janus 不持有咨询记忆。它自己不做深度研究、设计、文档或重编码。
 
@@ -345,7 +345,7 @@ handoff 状态目录位于 `$XDG_DATA_HOME/janus-agent/handoff`（默认 `~/.loc
 
 1. **主入口可选**：启动 OpenCode，确认 `janus`、`simple`、`consultant`、`architect`、`coder`、`author` 出现在 agent 列表。
 2. **simple 工作区**：`~/.local/share/janus-agent/lite` 存在，且是唯一免确认的可写位置。
-3. **coder-lite 车道已注册**：`coder-lite` 以子 agent 出现（步数 50、工作区编辑允许、task 拒绝）。
+3. **coder-lite 车道已注册**：`coder-lite` 以子 agent 出现（步数 80、工作区编辑允许、项目原生命令允许、VCS 写与破坏性命令拒绝、task 拒绝）。
 4. **记忆 MCP 启动**：`janus-memory` MCP 服务器已注册。其五个工具（`memory_recall`、`memory_expand`、`memory_prepare`、`memory_commit`、`memory_manage`）可用。
 5. **审查子 agent 已注册**：`common-explorer`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`consultant-analyst`（只读）与 `author-writer`（限定写入：除非改了 `writer_docs_roots`，仅允许编辑 `userdoc/**` 之下）以子 agent（模式 `subagent`）出现，经 `janus_dispatch` 工具派发。
 6. **skill 就位**：`consultation/SKILL.md`、`consultation-design/SKILL.md`、`consultation-doc/SKILL.md` 存在于 `~/.config/opencode/skills/`（或你的 `$OPENCODE_CONFIG_DIR/skills/`）；设计与文档子 skill 含其模式模板。

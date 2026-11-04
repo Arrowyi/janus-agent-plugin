@@ -28,9 +28,10 @@ function words(text: string): number {
 
 const DEFAULT_AGENT_BUDGET = 1500
 
+// Word budgets are soft anti-bloat guardrails, not rigid dogma: guarantee prompt quality and rule clarity first, then optimize word count; raise a budget deliberately when compression would hurt clarity.
 const AGENT_BUDGETS: Record<string, number> = {
   "consultant.md": 4500,
-  "coder.md": 3200,
+  "coder.md": 3600,
 }
 
 const FRAGMENT_BUDGET = 500

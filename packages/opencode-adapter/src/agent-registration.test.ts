@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { execSync } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -40,6 +41,8 @@ import {
   loadCommonWrite,
   resolveModelPrompt,
   normalizeModelKey,
+  CODER_LITE_BASH_DENY_RULES,
+  LEAF_DISPATCH_DENY,
 } from "./agent-registration.ts"
 import { resolveAsset } from "./asset-paths.ts"
 import type { JanusPluginConfig } from "./plugin-config.ts"
@@ -415,8 +418,10 @@ describe("buildCoderRuntimeBindings", () => {
 
     // then
     expect(block).toContain("Coder model")
-    expect(block).toContain("Mechanical lane: `coder-lite`")
-    expect(block).toContain("spec-complete coding, unit tests, and batch mechanical file tasks")
+    expect(block).toContain("Junior/mid engineer lane: `coder-lite`")
+    expect(block).toContain(
+      "for planned milestones, spec-complete coding, unit tests, and batch mechanical file tasks",
+    )
     expect(block).toContain("Research floor: `common-explorer`")
     expect(block).toContain("Independent reviewer: `coder-reviewer`")
     expect(block).toContain('protocol: "code_plan_review"')
@@ -1833,7 +1838,39 @@ describe("registerCoder", () => {
 })
 
 describe("buildCoderLitePermission", () => {
-  it("allows workspace edits, asks for external, denies further dispatch", () => {
+  // The D2/QS2 contract, pinned literally so a dropped or misspelled deny key
+  // fails even if the exported constant drifts.
+  const DENY_KEYS = [
+    "git add*",
+    "git commit*",
+    "git push*",
+    "git reset*",
+    "git checkout*",
+    "git restore*",
+    "git clean*",
+    "git stash*",
+    "git rm*",
+    "git mv*",
+    "git switch*",
+    "git rebase*",
+    "git merge*",
+    "git pull*",
+    "git apply*",
+    "git am*",
+    "git cherry-pick*",
+    "git revert*",
+    "svn commit*",
+    "svn revert*",
+    "hg commit*",
+    "hg push*",
+    "hg revert*",
+    "rm -rf *",
+    "sudo *",
+    "janus-keys*",
+    "*/janus-keys*",
+  ] as const
+
+  it("allows workspace edits and project-native commands while denying VCS writes, destructive deletes, and the key CLI", () => {
     // given // when
     const permission = buildCoderLitePermission()
 
@@ -1842,17 +1879,46 @@ describe("buildCoderLitePermission", () => {
     expect(edit["*"]).toBe("allow")
     expect(edit["/*"]).toBe("ask")
     expect(edit).toEqual({ "*": "allow", "/*": "ask" })
+
     const bash = permission.bash as Record<string, string>
-    expect(bash["*"]).toBe("ask")
-    expect(bash["cat *"]).toBe("allow")
+    expect(Object.keys(bash)[0]).toBe("*")
+    expect(bash["*"]).toBe("allow")
+    expect(Object.keys(CODER_LITE_BASH_DENY_RULES)).toEqual([...DENY_KEYS])
+    expect(Object.keys(CODER_LITE_BASH_DENY_RULES)).toHaveLength(27)
+    for (const pattern of DENY_KEYS) {
+      expect(bash[pattern]).toBe("deny")
+    }
+    // Last matching rule wins: every deny rule sits after the catch-all.
+    const patterns = Object.keys(bash)
+    for (const pattern of DENY_KEYS) {
+      expect(patterns.indexOf(pattern)).toBeGreaterThan(patterns.indexOf("*"))
+    }
+
     expect(permission.webfetch).toBe("allow")
     expect(permission.websearch).toBe("allow")
     expect(permission.task).toBe("deny")
+    expect(Object.keys(LEAF_DISPATCH_DENY)).toHaveLength(6)
+    for (const tool of Object.keys(LEAF_DISPATCH_DENY)) {
+      expect(permission[tool]).toBe("deny")
+    }
+  })
+
+  it("keeps buildSimplePermission on the read-only bash rules", () => {
+    // given // when
+    const permission = buildSimplePermission("/xdg/data/janus-agent/lite")
+
+    // then
+    const bash = permission.bash as Record<string, string>
+    expect(bash["*"]).toBe("ask")
+    expect(bash["cat *"]).toBe("allow")
+    expect(bash["git status"]).toBe("allow")
+    expect(bash["git commit*"]).toBeUndefined()
+    expect(bash["sudo *"]).toBeUndefined()
   })
 })
 
 describe("registerCoderLite", () => {
-  it("registers a leaf subagent with steps 50 and the role body", async () => {
+  it("registers a leaf subagent with steps 80 and the role body", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
@@ -1871,7 +1937,9 @@ describe("registerCoderLite", () => {
     }
     expect(lite.mode).toBe("subagent")
     expect(lite.model).toBe("opencode-go/glm-5.3-flash")
-    expect(lite.steps).toBe(50)
+    expect(lite.steps).toBe(80)
+    expect(lite.description).toContain("planned milestones")
+    expect(lite.description).toContain("unplanned cross-module")
     expect(lite.description).toContain("mechanical coding")
     expect(lite.description).toContain("Junior-to-mid engineer executor")
     expect(lite.description).toContain("unit tests from a checklist or exemplar")
@@ -1944,6 +2012,148 @@ describe("registerCoderLite", () => {
     // then
     const lite = config.agent?.["coder-lite"] as { prompt: string }
     expect(lite.prompt).toBe(userPrompt)
+  })
+})
+
+describe("coder-lite dispatch baseline restore", () => {
+  // The restore procedure lives in the coder prompt; this test pins that the
+  // exact commands coder.md prescribes actually restore a polluted worktree
+  // to its pre-dispatch content (baseline-first origin restore protocol).
+  const ISOLATED_GIT_ENV: NodeJS.ProcessEnv = {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_SYSTEM: "/dev/null",
+  }
+
+  function run(repo: string, command: string): string {
+    return execSync(command, {
+      cwd: repo,
+      env: ISOLATED_GIT_ENV,
+      stdio: ["ignore", "pipe", "pipe"],
+    }).toString()
+  }
+
+  function seedRepo(repo: string, withUntracked: boolean): void {
+    mkdirSync(join(repo, "src"))
+    writeFileSync(join(repo, ".gitignore"), "dist/\n")
+    writeFileSync(join(repo, "src", "app.ts"), "export const app = 1\n")
+    writeFileSync(join(repo, "src", "wip.ts"), "export const wip = 1\n")
+    mkdirSync(join(repo, "dist"))
+    writeFileSync(join(repo, "dist", "api.js"), "export const api = 1\n")
+    run(repo, "git init -q")
+    run(repo, 'git config user.email "t@example.com"')
+    run(repo, 'git config user.name "t"')
+    run(repo, "git config commit.gpgsign false")
+    run(repo, "git add -A")
+    run(repo, "git add -f dist/api.js")
+    run(repo, 'git commit -q -m "initial"')
+    // wip.ts is dirty before the dispatch; notes.md exists untracked.
+    writeFileSync(join(repo, "src", "wip.ts"), "export const wip = 1\n// pre-dispatch edit\n")
+    if (withUntracked) writeFileSync(join(repo, "notes.md"), "untracked before dispatch\n")
+  }
+
+  it("restores exact pre-dispatch content across the five pollution scenarios", async () => {
+    // The tested procedure and the coder.md prompt must not drift apart.
+    const coderPrompt = await readFile(resolveAsset("agents/coder.md"), "utf8")
+    for (const command of [
+      "git checkout HEAD --",
+      "git apply --include=",
+      "git diff HEAD --binary",
+      "git ls-files -o --exclude-standard -z | tar --null -T - -cf",
+      "quarantine",
+    ]) {
+      expect(coderPrompt).toContain(command)
+    }
+
+    const repo = mkdtempSync(join(tmpdir(), "baseline-restore-"))
+    // The baseline dir lives outside the worktree so it never shows as ?? .
+    const baselineDir = mkdtempSync(join(tmpdir(), "baseline-artifacts-"))
+    try {
+      seedRepo(repo, true)
+
+      // Baseline-first artifacts, created before the dispatch.
+      writeFileSync(
+        join(baselineDir, "status.txt"),
+        run(repo, "git status --porcelain --untracked-files=all"),
+      )
+      run(repo, `git diff HEAD --stat > ${JSON.stringify(join(baselineDir, "stat.txt"))}`)
+      run(repo, `git diff HEAD --binary > ${JSON.stringify(join(baselineDir, "dirty.patch"))}`)
+      run(
+        repo,
+        `git ls-files -o --exclude-standard -z | tar --null -T - -cf ${JSON.stringify(
+          join(baselineDir, "untracked.tar"),
+        )}`,
+      )
+
+      // coder-lite pollution: an out-of-scope tracked edit, a further edit to
+      // the pre-dirty file, an edit to the pre-existing untracked file, an
+      // unauthorized new file, a fresh ignored build artifact, and a
+      // modification of a tracked file inside the build-named directory.
+      writeFileSync(join(repo, "src", "app.ts"), "export const app = 1\n// polluted\n")
+      writeFileSync(join(repo, "src", "wip.ts"), "export const wip = 1\n// pre-dispatch edit\n// polluted\n")
+      writeFileSync(join(repo, "notes.md"), "untracked before dispatch\n// polluted\n")
+      writeFileSync(join(repo, "src", "rogue.ts"), "unauthorized new file\n")
+      writeFileSync(join(repo, "dist", "bundle.js"), "build output\n")
+      writeFileSync(join(repo, "dist", "api.js"), "export const api = 1\n// polluted\n")
+
+      // The directory-name exclusion never masks a tracked modification.
+      expect(run(repo, "git status --porcelain --untracked-files=all")).toContain(" M dist/api.js")
+
+      // Restore per the protocol: clean-at-baseline and build-dir tracked
+      // files reset to HEAD; the pre-dirty file reset then re-patched.
+      run(repo, "git checkout HEAD -- src/app.ts dist/api.js")
+      run(repo, "git checkout HEAD -- src/wip.ts")
+      run(repo, `git apply --include=src/wip.ts ${JSON.stringify(join(baselineDir, "dirty.patch"))}`)
+      run(repo, `tar -xf ${JSON.stringify(join(baselineDir, "untracked.tar"))} notes.md`)
+      mkdirSync(join(baselineDir, "quarantine"))
+      renameSync(join(repo, "src", "rogue.ts"), join(baselineDir, "quarantine", "rogue.ts"))
+
+      expect(readFileSync(join(repo, "src", "app.ts"), "utf8")).toBe("export const app = 1\n")
+      expect(readFileSync(join(repo, "src", "wip.ts"), "utf8")).toBe(
+        "export const wip = 1\n// pre-dispatch edit\n",
+      )
+      expect(readFileSync(join(repo, "notes.md"), "utf8")).toBe("untracked before dispatch\n")
+      expect(readFileSync(join(repo, "dist", "api.js"), "utf8")).toBe("export const api = 1\n")
+      expect(existsSync(join(repo, "src", "rogue.ts"))).toBe(false)
+      expect(readFileSync(join(baselineDir, "quarantine", "rogue.ts"), "utf8")).toBe(
+        "unauthorized new file\n",
+      )
+      expect(readFileSync(join(repo, "dist", "bundle.js"), "utf8")).toBe("build output\n")
+      // The restored tree matches the recorded baseline byte for byte.
+      expect(run(repo, "git status --porcelain --untracked-files=all")).toBe(
+        readFileSync(join(baselineDir, "status.txt"), "utf8"),
+      )
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+      rmSync(baselineDir, { recursive: true, force: true })
+    }
+  })
+
+  it("skips untracked.tar when the untracked list is empty and still restores tracked pollution", () => {
+    const repo = mkdtempSync(join(tmpdir(), "baseline-restore-empty-"))
+    const baselineDir = mkdtempSync(join(tmpdir(), "baseline-artifacts-empty-"))
+    try {
+      seedRepo(repo, false)
+
+      // Guard path: no untracked files -> no untracked.tar to create.
+      expect(run(repo, "git ls-files -o --exclude-standard")).toBe("")
+      writeFileSync(
+        join(baselineDir, "status.txt"),
+        run(repo, "git status --porcelain --untracked-files=all"),
+      )
+      run(repo, `git diff HEAD --binary > ${JSON.stringify(join(baselineDir, "dirty.patch"))}`)
+      expect(existsSync(join(baselineDir, "untracked.tar"))).toBe(false)
+
+      writeFileSync(join(repo, "src", "app.ts"), "export const app = 1\n// polluted\n")
+      run(repo, "git checkout HEAD -- src/app.ts")
+      expect(readFileSync(join(repo, "src", "app.ts"), "utf8")).toBe("export const app = 1\n")
+      expect(run(repo, "git status --porcelain --untracked-files=all")).toBe(
+        readFileSync(join(baselineDir, "status.txt"), "utf8"),
+      )
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+      rmSync(baselineDir, { recursive: true, force: true })
+    }
   })
 })
 

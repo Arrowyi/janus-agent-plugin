@@ -102,7 +102,7 @@ export const ROLE_INFO: readonly RoleInfo[] = [
   { role: "coder-reviewer", label: "设计事前验尸、计划/diff 审查", hasEnabled: true },
   { role: "author-writer", label: "文档正文唯一执笔人", hasEnabled: true },
   { role: "author-reviewer", label: "文档独立审稿（只读）", hasEnabled: true },
-  { role: "coder-lite", label: "机械编码车道", hasEnabled: true },
+  { role: "coder-lite", label: "初中级编码车道（里程碑/规格完备编码/单测）", hasEnabled: true },
 ]
 
 const ROLE_CAP_KEYS = Object.keys(TIER_ROLE_CAPS_DEFAULTS.fast)

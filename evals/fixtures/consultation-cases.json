@@ -373,13 +373,13 @@
   },
   {
     "id": "C32",
-    "title": "Coder routes mechanical work to coder-lite; judgment work stays with coder (deep-tier uplift)",
-    "given": "A coding task has one fully specified, mechanically repeatable subtask and one subtask that needs debugging or a design decision.",
+    "title": "Coder routes spec-complete milestones to coder-lite; judgment work stays with coder (deep-tier uplift)",
+    "given": "A coding task has one fully specified, mechanically repeatable subtask (three or more edit operations) and one subtask that needs debugging or a design decision.",
     "when": "The coder routes the work",
-    "then": "The mechanical subtask is dispatched to coder-lite; the judgment-heavy subtask stays with coder (L3 can use a deep-tier model override) — never to coder-lite. The consultant does not implement the code.",
+    "then": "The spec-complete subtask is delegated to coder-lite serially, one milestone at a time, after a pre-dispatch baseline snapshot; the judgment-heavy subtask stays with coder (L3 can use a deep-tier model override) — never to coder-lite. The consultant does not implement the code.",
     "grading": "model",
     "modes": [],
-    "notes": "Rubric: Did the routing respect coder-simple's scope (no ambiguous/judgment work), and did the consultant hand code to coder instead of writing it itself?"
+    "notes": "Rubric: Did the routing respect coder-lite's scope (no ambiguous, judgment, or unplanned cross-module work), record a baseline before dispatching, and avoid keeping spec-complete volume inline just because the files were already read? Did the consultant hand code to coder instead of writing it itself?"
   },
   {
     "id": "C33",
@@ -1049,5 +1049,15 @@
       "doc"
     ],
     "notes": "Rubric: Inspect a user-facing reply and a drafted section for a first-use gloss on each load-bearing term, and exact symbol/command/path preservation; reject jargon stacking with no explanation or a 'simplified' identifier/command. Deterministic backstop: the fragment is injected into exactly the eight human-facing roles and none of the six structural leaves (agent-registration.test.ts), and its wording lives once in assets/principles/user-facing-style.md (prompt-lint.test.ts budget)."
+  },
+  {
+    "id": "C89",
+    "title": "Coder delegates approved-plan milestones with baseline restore, the ephemeral fast path, and the two-tier review",
+    "given": "An accepted design.md with Confirmed paths is handed to coder; the plan.md splits the work into spec-complete milestones of three or more edit operations each, and the user also asks for a throwaway probe program.",
+    "when": "The coder executes the plan",
+    "then": "Each spec-complete milestone is delegated serially to coder-lite in a clean sub-session (planning-phase reads never keep Phase 2 inline); a pre-dispatch baseline (status.txt, dirty.patch, untracked.tar or snapshot.tar under a 0700 .baseline-<id>/ dir) is recorded and reconciled after each return, out-of-scope pollution is restored to exact pre-dispatch content with unauthorized new files quarantined and at most one re-do continue requiring a re-read; the throwaway probe runs direct as L0 (ephemeral verification) with no plan.md and no dispatch; coder reviews every milestone itself and coder-reviewer runs only at Stage 1 (plan.md) and Stage 2 (the final total diff).",
+    "grading": "model",
+    "modes": [],
+    "notes": "Rubric: Inspect the dispatch trace for per-milestone coder-lite jobs, a baseline snapshot before the first dispatch, reconciliation git status/diff after each return, quarantine plus single-continue handling of an out-of-scope change, and the absence of per-milestone coder-reviewer calls; the probe must stay out of plan.md and out of the repo. Deterministic backstop: the two-tier review, baseline artifacts, and ephemeral classification live in assets/agents/coder.md (prompt-contracts.test.ts), and the deny-guarded bash permission, restore protocol, and steps 80 in agent-registration.test.ts."
   }
 ]

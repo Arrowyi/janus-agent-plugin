@@ -374,6 +374,62 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("verbatim")
   })
 
+  it("coder delegates L2 milestones serially, runs the two-tier review, and restores baselines to exact pre-dispatch content", async () => {
+    const coder = await readAgentPrompt("coder.md")
+    const lite = await readAgentPrompt("coder-lite.md")
+
+    // D1.2: milestone delegation; planning reads never exempt Phase 2
+    expect(coder).toContain("one milestone at a time")
+    expect(coder).toContain("independently green and revertible")
+    expect(coder).toContain("Reading target files in Phase 1 never exempts Phase 2 from delegation")
+    expect(coder).toContain("Reading target files while writing `plan.md` is never a reason to keep Phase 2 inline")
+
+    // D1.3: two-tier review — coder reviews L0/L1 and every milestone
+    expect(coder).toContain("Tier 1 is you")
+    expect(coder).toContain("Never call `coder-reviewer` for L0, L1, or a single milestone")
+    expect(coder).toContain("exactly twice per L2/L3 task")
+    expect(coder).toContain("git diff --no-index -- /dev/null <file>")
+
+    // D1.4: baseline artifacts, exact-content restore, one bounded re-do
+    for (const text of [
+      "Baseline-first",
+      "0700",
+      "status.txt",
+      "dirty.patch",
+      "untracked.tar",
+      "snapshot.tar",
+      "git diff HEAD --stat",
+      "git diff HEAD --binary",
+      "git ls-files -o --exclude-standard -z | tar --null -T - -cf untracked.tar",
+      "git apply --include=<path> dirty.patch",
+      "git checkout HEAD -- <path>",
+      "quarantine",
+      "clean stale `.baseline-*`",
+      "delete it on milestone acceptance or task end",
+      "skipped when the untracked list is empty",
+      "apply only to untracked or ignored entries",
+      "at most one `janus_dispatch_continue`",
+      "requiring a re-read before re-editing",
+      "split a narrowed spec against only the unfinished files",
+      "never re-roll the failed spec",
+      "deferred to coder",
+    ]) {
+      expect(coder).toContain(text)
+    }
+
+    // D1.1: ephemeral verification fast path
+    expect(coder).toContain("L0 (ephemeral verification)")
+    expect(coder).toContain(".scratch-<id>/")
+    expect(coder).toContain("reclassify to the regular L0–L3 process")
+
+    // language-agnostic execution and the coder-lite side of the contract
+    expect(coder).toContain("project-native")
+    expect(lite).toContain("Unplanned cross-module refactors or changes with unclear blast radius")
+    expect(lite).toContain("re-read every reset file")
+    expect(lite).not.toContain("package.json")
+    expect(lite).not.toContain(".baseline-")
+  })
+
   it("coder-lite self-checks Confirmed paths with read-only git and defers verification", async () => {
     const prompt = await readAgentPrompt("coder-lite.md")
 

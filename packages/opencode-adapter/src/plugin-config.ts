@@ -196,7 +196,7 @@ export type JanusPluginConfig = z.infer<typeof JanusPluginConfigSchema>
 // Coding: `coder` is `glm-5.3` (TB4.0 38.9% Vals) with a shipped deep-tier
 // uplift to `kimi-k3.1-pro` for L3 work (see TIER_MODEL_DEFAULTS);
 // `coder-lite` is `glm-5.3-flash` (TB4.0 37.4% Vals at $1.22 per run), the
-// strongest small mechanical lane. Entry/retrieval: `janus` is
+// strongest small junior/mid engineer lane. Entry/retrieval: `janus` is
 // `glm-5.3-flash` (latency and tool-call stability at a flat $0.15/$0.50) and
 // `simple`/`common-explorer` are `deepseek-v4.1-flash` (1M context, largest Go
 // Plus cap). Every role resolves to a single model with no fallback. An

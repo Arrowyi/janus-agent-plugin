@@ -19,7 +19,7 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 88 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, C75-C85 the mode-stack, coder-reviewer, dynamic model routing, continuation-lock, removed-key rejection, critique-contract, and inline-ceiling cases, and C86-C88 the author-reviewer gate, briefWaived micro-fix, and user-facing-style cases.
+- `fixtures/consultation-cases.json` - 89 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, C75-C85 the mode-stack, coder-reviewer, dynamic model routing, continuation-lock, removed-key rejection, critique-contract, and inline-ceiling cases, and C86-C89 the author-reviewer gate, briefWaived micro-fix, user-facing-style, and coder-lite delegation cases.
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
@@ -155,7 +155,7 @@ retries; the plugin cannot claim control of an external delegate's internals.
 These cases check the entry layout and the coder's adaptive process, not model
 quality. Run them with a live model and record the observed tool trace:
 
-- **C31/C32** — bounded work goes to `simple`; mechanical code goes to `coder-lite`; judgment code stays with `coder` (L3 can use a deep-tier model); the consultant does not implement code.
+- **C31/C32** — bounded work goes to `simple`; spec-complete milestones and mechanical code go to `coder-lite` (serially, one milestone at a time, after a baseline snapshot); judgment code stays with `coder` (L3 can use a deep-tier model); the consultant does not implement code.
 - **C33/C34** — `janus` routes consulting/coding/quick answers; direct entry to `consultant`/`coder`/`simple` does not bounce back.
 - **C35/C36/C37** — coder L0 skips the plan; L2 presents the design gate and waits; L3 runs the quality gate.
 - **C38** — a dispatched consultant does not ask the end user; it saves only when the task assigns `Memory ownership: consultant saves`, otherwise it returns a summary and the dispatcher owns the record.
@@ -220,13 +220,14 @@ pending job, a continuation `job_id` passed as `session_id`, cross-document
 session reuse, and a lost session silently replaced without updating the
 brief's stored id.**
 
-## Reviewer gate, micro-fix, and user-facing style evaluation (C86-C88)
+## Reviewer gate, micro-fix, user-facing style, and delegation evaluation (C86-C89)
 
 These cases cover the documentation team's third seat and the shared output style:
 
 - **C86** — the `author-reviewer` gate: an independent dispatch between the writer's final pass and publishing for `architecture` documents and `targeted`/`strict` verification, returning an `AuthorReviewerReport`; `light` non-architecture documents and waived micro-fixes skip it, the writer's self-polish never substitutes, and a disabled or failed reviewer is disclosed, never credited.
 - **C87** — the `briefWaived` fast path: a qualifying micro-fix (typo, punctuation, broken relative link, at most two edits) on a brief-less document takes a single delta-sized `author-writer` dispatch with `briefWaived: true`, the writer refuses anything touching numbers, code, APIs, or meaning, and the author closes after the three-item diff check with no reviewer dispatch.
 - **C88** — the shared user-facing style: the eight human-facing roles gloss a technical term at its first occurrence and never paraphrase exact identifiers, commands, paths, or config keys for plainness; the six structural leaves stay exempt.
+- **C89** — coder-lite milestone delegation: an approved plan's spec-complete milestones go serially to `coder-lite` after a 0700 baseline snapshot, with exact-content restore, quarantine, and one bounded re-do on pollution, an ephemeral probe staying on the L0 fast path, and `coder-reviewer` held to the two Stage 1/Stage 2 gate reviews.
 
 ## Task-fit routing evaluation (C15-C25)
 

@@ -9,3 +9,4 @@ Operating notes:
 - When a trustworthy answer is reached, stop; do not re-litigate or revise a correct conclusion just to look careful.
 - In long sessions, restate the current objective and remaining steps; if the thread drifts, compact your working summary and continue from it.
 - Keep output proportional; this model can be verbose.
+- Batch independent tool calls in one turn (parallel reads/searches, or non-overlapping edits after reading) instead of issuing one tool call per turn.

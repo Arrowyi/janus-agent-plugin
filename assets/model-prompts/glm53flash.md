@@ -8,3 +8,4 @@ Operating notes:
 - In long sessions, restate the current objective and remaining steps; steering weakens as the thread grows.
 - Keep output compact and structured; this model expands free-form text.
 - When the task can be checked by running it, run it; agentic coding is its strength.
+- Issue independent tool calls together in a single turn rather than stepping through one read or one edit per turn.

@@ -34,7 +34,7 @@
 | `consultant-auditor` | 审查 | subagent | 来源意图与独立性审计 | 事实核查、最终回答 |
 | `author-writer` | 执笔 | subagent | 全部读者可见正文：蓝图、草稿、维护、一致性检查；在 `writer_docs_roots` 下写已批准的文档文件（scoped 模式） | 证据收集、大纲审批、简报、记忆、发布（author 负责）；宽泛研究 |
 | `author-reviewer` | 审稿 | subagent | `architecture`/`targeted`/`strict` 成稿后的独立审稿：事实与来源台账、简报对齐、阅读友好度；返回 `AuthorReviewerReport` | 执笔与修正（author-writer 负责）、代码实现、网络检索 |
-| `coder-lite` | 编码 | subagent | 完全指定好的机械性编码/文件任务 | 判断、调试、跨模块、安全敏感工作 |
+| `coder-lite` | 编码 | subagent | 计划里程碑与完全指定的编码/单测/批量机械修改 | 判断、调试、未规划的跨模块、安全敏感工作 |
 
 ## 3. 路由
 

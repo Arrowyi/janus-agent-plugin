@@ -81,10 +81,10 @@ const SIMPLE_DESCRIPTION =
   "Economical quick-answer entry (DeepSeek V4.1-Flash by default) for low-risk facts, concepts, and simple how-to. A leaf: never dispatches; escalates multi-source/contested questions to the consultant, architecture questions to the architect, coding to the coder, documents to the author, and general questions to janus."
 
 const CODER_DESCRIPTION =
-  "R&D team's coding and maintenance entry — its module architect and senior engineer — starting from a bug, feature, or refactor (or taking over an accepted design.md). Owns module-level design, root-cause debugging, tests, and repository work; selects a direct, brief-plan, design-gate, or quality-gate process by task weight; delegates coder-lite by cost-performance for spec-complete coding and unit-test work, coder-reviewer for plan/diff review, and can take a deep-tier model override for L3 work. Escalates to architect when research or a cross-module architecture change is needed."
+  "R&D team's coding and maintenance entry — its module architect and senior engineer (Tech Lead) — starting from a bug, feature, or refactor (or taking over an accepted design.md). Owns module-level design, root-cause debugging, tests, and repository work; selects a direct, brief-plan, design-gate, or quality-gate process by task weight; delegates coder-lite by cost-performance for planned milestones and spec-complete coding and unit-test work, personally reviews every returned milestone, and reserves coder-reviewer for the two L2/L3 gate reviews (plan and final diff); can take a deep-tier model override for L3 work. Escalates to architect when research or a cross-module architecture change is needed."
 
 const CODER_LITE_DESCRIPTION =
-  "Junior-to-mid engineer executor (GLM-5.3-Flash by default) taking over spec-complete coding from the senior coder seat: function/module implementation with settled signatures, unit tests from a checklist or exemplar, CRUD/schema/glue code, and batch mechanical coding such as renames, pattern adaptation, or formatting fixes. Stops and reports up on anything ambiguous, judgment-heavy, debugging, protocol-precision, cross-module, or security-sensitive — never attempts them."
+  "Junior-to-mid engineer executor (GLM-5.3-Flash by default) taking over planned milestones and spec-complete coding from the senior coder seat: function/module implementation with settled signatures, unit tests from a checklist or exemplar, CRUD/schema/glue code, and batch mechanical coding such as renames, pattern adaptation, or formatting fixes; runs the project's native compile/typecheck/lint/test commands to green before returning. Stops and reports up on anything ambiguous, judgment-heavy, debugging, protocol-precision, unplanned cross-module, or security-sensitive — never attempts them."
 
 const ARCHITECT_DESCRIPTION =
   "R&D team's solution and architecture entry, starting from a one-sentence requirement: runs brainstorming ⇄ convergence ⇄ system/module design with the user, dispatches common-explorer for research, and sends one-way decisions to coder-reviewer for a design pre-mortem. Sole author of the decisions in design.md; the coder flips only its lifecycle line."
@@ -377,8 +377,8 @@ export function buildCoderRuntimeBindings(
 ): string {
   const modelLine = `- Coder model: \`${resolveRoleModel(pluginConfig, "coder")}\``
   const coderLiteLine = pluginConfig.coder_lite_enabled
-    ? `- Mechanical lane: \`${pluginConfig.coder_lite_agent}\` (\`${resolveRoleModel(pluginConfig, "coder-lite")}\`) for spec-complete coding, unit tests, and batch mechanical file tasks`
-    : "- Mechanical lane: coder-lite DISABLED by configuration"
+    ? `- Junior/mid engineer lane: \`${pluginConfig.coder_lite_agent}\` (\`${resolveRoleModel(pluginConfig, "coder-lite")}\`) for planned milestones, spec-complete coding, unit tests, and batch mechanical file tasks`
+    : "- Junior/mid engineer lane: coder-lite DISABLED by configuration"
   const deepModel = resolveRoleModel(pluginConfig, "coder", { tier: "deep" })
   const deepLine = `- L3 model uplift: dispatch with \`tier: "deep"\` to use \`${deepModel}\`; configure \`tier_models.deep.coder\` to change it`
   const explorerLine = pluginConfig.common_explorer_enabled
@@ -453,16 +453,56 @@ export async function registerCoder(
 }
 
 /**
+ * coder-lite's bash guardrails (speed bumps, not a sandbox). Denying VCS
+ * write/restore commands across git/svn/hg, destructive recursive deletes,
+ * sudo, and the provider-key CLI keeps a dispatched milestone from rewriting
+ * history or touching credentials; they are spread after the `"*": "allow"`
+ * catch-all so the last matching rule wins. They do not defend against a
+ * hostile sub-shell or redirected writes — workspace integrity is
+ * backstopped by the coder-side baseline reconciliation.
+ */
+export const CODER_LITE_BASH_DENY_RULES: Record<string, "deny"> = {
+  "git add*": "deny",
+  "git commit*": "deny",
+  "git push*": "deny",
+  "git reset*": "deny",
+  "git checkout*": "deny",
+  "git restore*": "deny",
+  "git clean*": "deny",
+  "git stash*": "deny",
+  "git rm*": "deny",
+  "git mv*": "deny",
+  "git switch*": "deny",
+  "git rebase*": "deny",
+  "git merge*": "deny",
+  "git pull*": "deny",
+  "git apply*": "deny",
+  "git am*": "deny",
+  "git cherry-pick*": "deny",
+  "git revert*": "deny",
+  "svn commit*": "deny",
+  "svn revert*": "deny",
+  "hg commit*": "deny",
+  "hg push*": "deny",
+  "hg revert*": "deny",
+  "rm -rf *": "deny",
+  "sudo *": "deny",
+  "janus-keys*": "deny",
+  "*/janus-keys*": "deny",
+}
+
+/**
  * coder-lite's permissions: workspace edits allowed without asking (the edit
  * resource is location-relative for workspace paths, so "*" matches them and
  * the later "/*" rule only matches external absolute paths), external edits
- * ask, read-only bash allowed, everything else asks, and further subagent
- * dispatch is denied (leaf node).
+ * ask, project-native toolchain commands (compile/typecheck/lint/test, any
+ * language) allowed with the VCS-write/destructive guardrails above, and
+ * further subagent dispatch denied (leaf node).
  */
 export function buildCoderLitePermission(): Record<string, unknown> {
   return {
     edit: { "*": "allow", "/*": "ask" },
-    bash: { "*": "ask", ...READONLY_BASH_RULES },
+    bash: { "*": "allow", ...CODER_LITE_BASH_DENY_RULES },
     webfetch: "allow",
     websearch: "allow",
     task: "deny",
@@ -471,10 +511,11 @@ export function buildCoderLitePermission(): Record<string, unknown> {
 }
 
 /**
- * Register the `coder-lite` mechanical coding lane: mode "subagent", a static
- * prompt (leaf node — never dispatches, so no runtime bindings block), a
- * step cap of 50 with report-up, and the workspace-allow permission set.
- * A pre-existing user-defined entry under the same name is left untouched.
+ * Register the `coder-lite` junior/mid engineer coding lane: mode
+ * "subagent", a static prompt (leaf node — never dispatches, so no runtime
+ * bindings block), a step cap of 80 with report-up, and the workspace-allow
+ * permission set. A pre-existing user-defined entry under the same name is
+ * left untouched.
  */
 export async function registerCoderLite(
   config: MutableConfig,
@@ -492,7 +533,7 @@ export async function registerCoderLite(
     description: CODER_LITE_DESCRIPTION,
     prompt,
     model: resolveRoleModel(pluginConfig, "coder-lite"),
-    steps: 50,
+    steps: 80,
     permission: buildCoderLitePermission(),
   }
 

@@ -37,7 +37,7 @@ export { splitModel, errorText, isRetryableModelError }
  * The eleven dispatch roles: the shared research floor, the four consultation /
  * R&D specialists, the documentation executor and its independent reviewer,
  * the two entry delegates (consultant, coder), the economical leaf (simple),
- * and the mechanical lane (coder-lite). `janus`, `architect`, and `author`
+ * and the junior/mid engineer lane (coder-lite). `janus`, `architect`, and `author`
  * are primary entries and are intentionally not dispatchable.
  */
 export { DISPATCH_ROLES }

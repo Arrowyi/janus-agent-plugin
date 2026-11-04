@@ -35,7 +35,7 @@ User arguments: $ARGUMENTS
 - `退出` / `exit` / `0`: exit.
 - Any other free text: map it to the above by meaning. Examples: `关掉 author-writer` → set `author_writer_enabled` false; `coder 用 acme/x` → set `coder_model` `acme/x`; `深度档的反证者开 3 个` → set `tier_role_caps.deep.consultant_critic` 3. Ask one question only when it is genuinely ambiguous.
 
-Role names accept Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `审计`=consultant-auditor, `机械`=coder-lite, `写作`=author-writer, `审稿`=author-reviewer. A role's fields use its name with `-` turned into `_`: `<role>_enabled`, `<role>_agent`, `<role>_model`. `consultant` has no `_enabled` field.
+Role names accept Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `审计`=consultant-auditor, `轻量`/`初级`/`机械`=coder-lite, `写作`=author-writer, `审稿`=author-reviewer. A role's fields use its name with `-` turned into `_`: `<role>_enabled`, `<role>_agent`, `<role>_model`. `consultant` has no `_enabled` field.
 
 ## Main menu
 

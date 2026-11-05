@@ -1,12 +1,12 @@
 # Janus Agent Plugin 架构
 
-本文档是 janus-agent 插件的现行架构规范，描述当前实现与机制。宿主：OpenCode。核心与宿主无关；Codex、Senpi 及其他宿主通过薄适配器接入。变更历史由 git 承载，不在本文档中。
+本文档是 janus-agent 插件的现行架构规范，描述当前实现与机制。宿主：OpenCode。核心与宿主无关，其他宿主通过薄适配器接入。变更历史由 git 承载，不在本文档中。
 
 ## 1. 总体决策
 
-构建一个独立的 Janus agent 插件：宿主无关的咨询核心、宿主无关的记忆核心、本地 SQLite 存储、本地 MCP 接口，以及一个薄的 OpenCode 适配器。
+构建一个独立的 Janus agent 插件：宿主无关的咨询核心、宿主无关的记忆核心、本地 SQLite 存储、本地 MCP（Model Context Protocol，本地工具服务协议）接口，以及一个薄的 OpenCode 适配器。
 
-对外体验是三团队之上的 14 角色家族，外加两个独立入口：`janus`（默认前台/路由）与 `simple`（经济型快答）。**咨询团队**是 `consultant` 加 `common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`；它以五种模式——`select`、`verify`、`roadmap`、`research`、`guide`——负责证据驱动的建议。**研发团队**是 `architect` 加 `coder` 与 `coder-reviewer`/`coder-lite` 车道；`architect` 负责系统设计与 `design.md` 记录，`coder` 以自适应 L0-L3 过程权重负责实现，`coder-reviewer` 对单向门设计做事前验尸并审查 coder 的计划/diff。**文档团队**是 `author` 加 `author-writer` 与 `author-reviewer`，构成跨模型家族的三方闭环（Google 主编、Anthropic 主笔、Moonshot 审稿）；`author` 负责接单、证据、大纲审批、作者简报、验证与发布，不写读者可见正文；`author-writer` 是读者可见正文的唯一执笔者，且在限定写入模式下是 `writer_docs_roots` 之下已批准文件的唯一写入者；`author-reviewer` 是只读独立审稿人，在 `architecture` 文档或 `targeted`/`strict` 验证级别下于主笔成稿后把关事实、简报对齐与阅读友好度。`consultant`、`architect`、`author` 之间移交工作，而不是吞并其他团队的领地。
+对外体验是一个 14 角色的 agent 家族：6 个主入口——`janus`（默认前台/路由）、`simple`（经济型快答），以及三个团队的四个入口 `consultant`、`architect`、`coder`、`author`——加 8 个子 agent（`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`、`coder-reviewer`、`coder-lite`、`author-writer`、`author-reviewer`）。其中 12 个角色可经 `janus_dispatch` 派发（8 个子 agent 加 `consultant`、`coder`、`simple`、`author`）；`janus` 与 `architect` 是用户选择的主入口，不可派发。`author` 既可由用户直接选用，也可由 `janus`、`architect`、`coder` 派发，但已被派发的子会话不能再派发它。**咨询团队**是 `consultant` 加 `common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`；它以五种模式——`select`、`verify`、`roadmap`、`research`、`guide`——负责证据驱动的建议。**研发团队**是 `architect` 加 `coder` 与 `coder-reviewer`/`coder-lite` 车道；`architect` 负责系统设计与 `design.md` 记录，`coder` 以自适应 L0-L3 过程权重负责实现，`coder-reviewer` 对单向门设计做事前验尸并审查 coder 的计划/diff。**文档团队**是 `author` 加 `author-writer` 与 `author-reviewer`，构成三方闭环（出厂默认模型下跨三个模型家族：Google 主编、Anthropic 主笔、Moonshot 审稿）；`author` 负责接单、证据、大纲审批、作者简报、验证与发布，不写读者可见正文；`author-writer` 是读者可见正文的唯一执笔者，且在限定写入模式下是 `writer_docs_roots` 之下已批准文件的唯一写入者；`author-reviewer` 是只读独立审稿人，在 `architecture` 文档或 `targeted`/`strict` 验证级别下于主笔成稿后把关事实、简报对齐与阅读友好度。`consultant`、`architect`、`author` 之间移交工作，而不是吞并其他团队的领地。
 
 记忆系统只存储用户批准过的经验包。它不自动保存完整对话。权威经验记录独立于分类方案、摘要模型、embedding 模型与存储索引。每个派生视图都可重建。
 
@@ -31,61 +31,61 @@
 - 保存完整对话记录（只保存咨询记录的归纳式摘要）；
 - 把旧建议当作独立证据；
 - 提供专业的医疗、法律、金融或安全决策；
-- 发布或要求独立的 `research-director` agent——深度研究是 consultant 的 `research` 模式；
+- 提供独立的深度研究 agent 或外部深度研究提供商——深度研究是 consultant 的 `research` 模式；
 - 让每次咨询都用多个子 agent。
 
 ## 4. 架构总览
 
 ```mermaid
 flowchart TB
-    U[用户] --> OA[OpenCode 适配器]
-    OA --> A[Consultant Agent]
-    A --> S[咨询 Skill]
-    S --> CC[咨询核心]
-    CC --> MR[记忆端口]
-    MR --> MCP[记忆 MCP]
-    MCP --> MC[记忆核心]
-    MC --> DB[(SQLite 权威账本)]
-    MC --> IDX[可重建索引]
-    CC --> SP[搜索与来源端口]
+    U[用户] --> OA["opencode-adapter"]
+    OA --> AG["14 个 agent<br/>6 主入口 + 8 子 agent"]
+    OA --> TL["工具: janus_dispatch / _wait / _cancel / _continue<br/>janus_config / janus_provider_keys"]
+    OA --> CMD["命令: /janus-memory /janus-models /janus-handoff /janus-config"]
+    AG --> SK["三个 skill: consultation / design / doc"]
+    AG --> MCP["memory-mcp"]
+    MCP --> SQ["memory-sqlite"]
+    MCP --> MC["memory-core"]
+    SQ --> MC
+    SQ --> DB[(SQLite 权威账本)]
+    SQ --> IDX[可重建索引]
+    CC["consultation-core: 契约与策略"] -.-> T["evals/ 与 script/ 测试"]
 ```
 
 ### 4.1 仓库形态
 
 ```text
 janus-agent-plugin/
-├── packages/
-│   ├── consultation-core/
-│   ├── memory-core/
-│   ├── memory-sqlite/
-│   ├── memory-mcp/
-│   └── opencode-adapter/
-├── skill-src/consultation/    # skill 源（绝不随包发布）
+├── packages/{consultation-core,memory-core,memory-sqlite,memory-mcp,opencode-adapter}/
+├── script/                  # build、install-local、gen-skill、集成证明与仓库级测试
+├── skill-src/{consultation,consultation-design,consultation-doc}/   # skill 源（绝不随包发布）
 ├── assets/
-│   ├── agents/consultant.md
-│   ├── principles/*.md        # 公共基线/写入门 + 共享提示词片段
-│   └── skills/consultation/SKILL.md   # 由 skill-src/ 生成
+│   ├── agents/*.md          # 14 个 agent 提示词
+│   ├── model-prompts/*.md   # 10 个模型适配块
+│   ├── principles/*.md      # 公共基线/写入门 + 共享提示词片段
+│   ├── protocols/*.md       # 五张方法论卡片
+│   ├── commands/*.md        # janus-models / janus-handoff / janus-config
+│   └── skills/{consultation,consultation-design,consultation-doc}/SKILL.md   # 由 skill-src/ 生成
 ├── evals/
 ├── docs/
 └── package.json
 ```
 
-这是一个带内部包边界的单一可安装产品，不是一组分别配置的用户项目。
+`/janus-memory` 由适配器的 `installMemoryCommands` 安装，不在 `assets/commands/` 中。这是一个带内部包边界的单一可安装产品，不是一组分别配置的用户项目。
 
 ### 4.2 依赖方向
 
 ```text
-consultation-core  memory-core
-        ^              ^
-        |              |
-        +------ memory-sqlite
-        |              ^
-        +------ memory-mcp
-        |
-        +------ opencode-adapter
+consultation-core          memory-core
+(无工作区依赖)                  ^
+                                |
+                          memory-sqlite
+                                ^
+                                |
+                           memory-mcp （同时直接依赖 memory-core）
 ```
 
-核心包不得导入 OpenCode 或 MCP SDK。适配器把宿主与传输概念翻译为核心端口。
+`opencode-adapter` 不导入其他工作区包；它只按路径解析 `memory-mcp` 服务器入口（已安装形态为同目录的 `memory-mcp-server.js`）并注册为本地 MCP。`consultation-core` 与 `memory-core` 只依赖 `zod`，不导入 OpenCode 或 MCP SDK；MCP SDK 只出现在 `memory-mcp`，OpenCode 插件类型只出现在 `opencode-adapter`。`consultation-core` 由 `evals/` 与 `script/` 中的测试引用。
 
 ## 5. 组件职责
 
@@ -138,7 +138,7 @@ consultant 在其五个证据模式上共用一个会话：每一轮重新评估
 - 来源与记忆溯源要求；
 - 推理、搜索、记忆与时钟的端口。
 
-推理仍是模型驱动的。核心校验结构化的模型输出，并强制那些不能依赖提示词自觉遵守的规则。
+推理仍是模型驱动的。核心校验结构化的模型输出，并强制那些不能依赖提示词自觉遵守的规则。当前适配器不在运行时导入咨询核心；它的契约由 `evals/` 与 `script/` 中的测试消费（例如 `script/skill-consistency.test.ts` 用 `ConsultationModeSchema` 对照 skill 与提示词）。
 
 ### 5.4 记忆核心
 
@@ -163,7 +163,7 @@ SQLite 适配器负责：
 - 事务与幂等；
 - 多进程安全（WAL、busy timeout、写事务）；
 - 权威记录持久化；
-- FTS 索引；
+- FTS（SQLite 全文检索）索引；
 - 派生摘要与 embedding 记录；
 - 备份、恢复与重建支持。
 
@@ -175,16 +175,18 @@ SQLite 适配器负责：
 
 适配器：
 
-- 注册六个主入口——`janus`（前台）、`simple`（经济叶节点）、`consultant`（咨询团队）、`architect`（研发设计）、`coder`（研发实现）、`author`（文档）；
+- 注册 14 个 agent。6 个主入口：`janus`（前台，模式 `all`）、`simple`（模式 `all`）、`consultant`（`primary`）、`architect`（`primary`）、`coder`（`all`）、`author`（`primary`）；
 - 注册咨询子 agent——`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`（只读、禁 shell、禁派发）；
-- 注册研发子 agent `coder-reviewer`（只读审查）与 `coder-lite`（初中级工程师车道、叶节点、步数上限 80，bash 全允许加 VCS 写/还原与破坏性删除护栏），以及文档子 agent `author-writer`（仅允许编辑配置的 `writer_docs_roots` 之下，默认 `userdoc`；空根数组选择只读回退；禁 shell 与派发；步数上限 80）与 `author-reviewer`（默认 `opencode-go/kimi-k3.1-pro`；只读：`edit`/`bash`/`task`/`webfetch`/`websearch` 全拒，仅授予 author 与 design 状态目录的 `external_directory` 读权限；`architecture`/`targeted`/`strict` 门禁；不在 `tier_role_caps` 中）；
+- 注册研发子 agent `coder-reviewer`（只读审查；另获 design 状态目录的 `external_directory` 权限，用于只读比对 `design.md`）与 `coder-lite`（初中级工程师车道、叶节点、步数上限 80，bash 全允许加 VCS 写/还原与破坏性删除护栏），以及文档子 agent `author-writer`（仅允许编辑配置的 `writer_docs_roots` 之下，默认 `userdoc`；空根数组选择只读回退；禁 shell 与派发；步数上限 80）与 `author-reviewer`（默认 `opencode-go/kimi-k3.1-pro`；只读：`edit`/`bash`/`task`/`webfetch`/`websearch` 全拒，仅授予 author 与 design 状态目录的 `external_directory` 读权限；`architecture`/`targeted`/`strict` 门禁；不在 `tier_role_caps` 中）；
 - 创建固定的 author 状态目录（`$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报）、design 状态目录（`$XDG_DATA_HOME/janus-agent/design`，`architect` 在其中写 `design.md` 的决策内容），以及跨团队 handoff 状态目录（`$XDG_DATA_HOME/janus-agent/handoff`，五个主入口在其中追加 `handoff.md` 文档）；`author` 拥有 author 与 design 两目录权限，`architect` 拥有 design 目录权限，`coder` 拥有 design 目录权限（读 `design.md`、写 `plan.md` 与其生命周期行）；handoff 目录由 `janus`、`consultant`、`architect`、`coder`、`author` 五者共享，是 `consultant` 与 `janus` 唯一持有的业务态目录；
 - 提供核心咨询 skill 及其设计/文档子 skill；
 - 注册或启动内置的本地记忆 MCP；
 - 把 OpenCode 会话 ID 映射为带命名空间的核心 ID；
 - 暴露模型与提供商配置；
 - 安装 `/janus-memory` 浏览、`/janus-models` 模型轮换、`/janus-handoff` 交接管理、`/janus-config` 配置编辑四条命令（`/janus-config` 经 `janus_config` 工具读写配置：字段目录 `config-catalog.ts`、保留注释的校验写入 `config-editor.ts`；第 10 组经 `janus_provider_keys` 工具与终端 `janus-keys` 管理 OpenCode provider 的命名 key，候选库为 `provider-keys.json`，切换时写入 OpenCode `auth.json`）；
-- 按「角色 asset + 模型块 + 共享片段（`research-leaf`、`reasoning-failures`、`dispatch-hub`）+ 公共基线 + 公共写入门（只读角色跳过）+ 运行时绑定」组装每个提示词，每个角色配一份经评审的金样快照；
+- 暴露六个工具：`janus_dispatch`、`_wait`、`_cancel`、`_continue`（§6.4）与 `janus_config`、`janus_provider_keys`；所有叶节点在权限层一律拒绝。`janus_dispatch` 对 `author` 带调用方 DAG 守卫（有向无环图，即防循环调用规则；见 §6.4）；
+- 在注册时按「角色 asset → 共享原则片段 → 公共基线（`common-base`）→ 公共写入门（`common-write`，六个只读叶节点省略）→ 运行时绑定」静态组装每个提示词，每个角色配一份经评审的金样快照。片段分配：`research-leaf`（`common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`author-reviewer`）、`reasoning-failures`（analyst、critic）、`claim-types`（analyst）、`source-criteria`（explorer、critic）、`channel-policy`（consultant、author）、`mode-routing`（janus、consultant）、`dispatch-hub`（`janus`、`consultant`、`architect`、`coder`、`author`）、`engineering-principles`（architect、coder、coder-reviewer，以及 `consultation-design` skill）、`user-facing-style`（`janus`、`simple`、`consultant`、`architect`、`coder`、`author`、`author-writer`、`author-reviewer`）；
+- 经 `experimental.chat.system.transform` 钩子（`createSystemTransformHook`）在每次请求时按实际服务该轮的模型注入模型适配块（`assets/model-prompts/<key>.md` 或用户的 `model_prompts` 覆盖），作为独立 system 条目追加，不进入静态组装；
 - 不包含证据、建议或持久化逻辑。
 
 ## 6. 咨询工作流
@@ -227,7 +229,7 @@ flowchart TD
 -> 相称的验证 -> 跨文件检查 -> 最终 AuthorBrief -> 记忆摘要
 ```
 
-简报是文档的外部状态文件，位于 `<authorStateDir>/<projectId>/<docId>/brief.md`（固定的 author 状态目录、稳定的项目 ID）：`author` 在大纲审批门创建它，在结构性变更时更新它，并追加变更日志；`author-writer` 只读、绝不写。简报还记录 `writer_session_id`——本文档可复用的 author-writer 会话，取自第一次 author-writer 派发的 `return_handle` 完成信封（或 pending 信封的 `session_id`），在那之前不存在。第一次派发可能发生在批准前的蓝图阶段、简报尚不存在时：`author` 先在工作上下文中保留该 ID，待大纲审批门创建简报时写入。文档级的会话复用是叠加在通用续接机制上的策略：`author` 对该文档后续的有界任务续接同一个 author-writer 会话（`janus_dispatch_continue` 只带修改请求、受影响章节与新证据——不带整份简报），一篇文档一个会话、不跨文档复用、只在上一个 job 终态后续接；会话丢失、属他或忙时回退为携带完整简报的全新派发并更新 ID。该模式下对抗性角色按需出现，绝不是固定名册：`consultant-critic` 用于 `strict` 验证、相互冲突的证据、高风险材料、执行失败或它能够解决的实质性不确定；`consultant-auditor` 在影响或溯源相关或不明时审计用户生成、推广或自称独立的证据；来源独立性审计经 `consultant` 路由。大纲批准后，`author-writer` 可以从有界证据包产出完整的章节正文，并在检索预算内做定向网络检索、记录来源台账；宽泛或有争议的研究留在 `author`，由它路由给 `common-explorer`（author-writer 绝不派发）。`author` 对照 author-writer 的来源台账验证承重断言、检查跨文件一致性并请求有界修正——限定写入模式（`writer_docs_roots` 非空，默认 `["userdoc"]`）下它不编辑写手根目录下的文件；只读回退（`writer_docs_roots: []`）下它应用并发布 author-writer 返回的正文并披露该模式。代理 author-writer 的宿主权限是另一套，不在本插件的强制范围内。成稿后的独立审稿由 `author-reviewer` 承担：`architecture` 文档或 `targeted`/`strict` 验证级别下必经，返回 `AuthorReviewerReport`（`verdict` 与三类 issue 清单），`light` 非架构文档跳过，禁用或失败时披露而非冒领；主笔自身的 coherence/editorial 模式绝不替代它。保义微改走 `briefWaived` 绿色通道：无简报文档上 ≤2 处纯机械修改（错别字/标点/断链）免三选一盘问，直接单跳派发主笔并附精确新旧文本；主笔侧对数字、代码或语义越界必须拒绝并返回 `factual`/`needsConsultant`，总编按三项 diff 清单核对后免审稿收工（详见 consultation-doc skill）。
+简报是文档的外部状态文件，位于 `<authorStateDir>/<projectId>/<docId>/brief.md`（固定的 author 状态目录、稳定的项目 ID）：`author` 在大纲审批门创建它，在结构性变更时更新它，并追加变更日志；`author-writer` 只读、绝不写。简报还记录 `writer_session_id`——本文档可复用的 author-writer 会话，取自第一次 author-writer 派发的 `return_handle` 完成信封（或 pending 信封的 `session_id`），在那之前不存在。第一次派发可能发生在批准前的蓝图阶段、简报尚不存在时：`author` 先在工作上下文中保留该 ID，待大纲审批门创建简报时写入。文档级的会话复用是叠加在通用续接机制上的策略：`author` 对该文档后续的有界任务续接同一个 author-writer 会话（`janus_dispatch_continue` 只带修改请求、受影响章节与新证据——不带整份简报），一篇文档一个会话、不跨文档复用、只在上一个 job 终态后续接；会话丢失、属他或忙时回退为携带完整简报的全新派发并更新 ID。该模式下对抗性角色按需出现，绝不是固定名册：`consultant-critic` 用于 `strict` 验证、相互冲突的证据、高风险材料、执行失败或它能够解决的实质性不确定；`consultant-auditor` 在影响或溯源相关或不明时审计用户生成、推广或自称独立的证据；来源独立性审计经 `consultant` 路由。大纲批准后，`author-writer` 可以从有界证据包产出完整的章节正文，并在检索预算内做定向网络检索、记录来源台账；宽泛或有争议的研究留在 `author`，由它路由给 `common-explorer`（author-writer 绝不派发）。`author` 对照 author-writer 的来源台账验证承重断言、检查跨文件一致性并请求有界修正——限定写入模式（`writer_docs_roots` 非空，默认 `["userdoc"]`）下它不编辑写手根目录下的文件；只读回退（`writer_docs_roots: []`）下它应用并发布 author-writer 返回的正文并披露该模式。每个 `author-writer` 派发单元带单一 `writeMode`：目标路径全部位于 `writer_docs_roots` 之下为 `scoped`；任一路径在根目录之外（如默认根下的 `README.md`、`docs/*.md`）为 `read-only`，混合清单拆成多个单元。`read-only` 单元的顺序是：写手返回完整正文或补丁 → `author` 把文本逐字写入已确认的文件 → 对磁盘文件跑 `author-reviewer` 门禁 → 账本核对与审稿通过后，才在简报变更日志中标记 `published`。`AGENTS.md` 等维护文件路由给 `coder`。文档任务的分工阈值：`janus`、`architect`、`coder` 把新的读者文档与 ≥3 处编辑的重写派发给 `author`（`role: "author"`）；代码注释、`AGENTS.md` 与随代码变更的 ≤2 处文档同步留在 `coder` 或调用方自己的车道。被派发的 `author` 服务于派发方：带 `Confirmed paths` 的提示视为已过大纲与文件确认门，否则先返回大纲与文件清单。代理 author-writer 的宿主权限是另一套，不在本插件的强制范围内。成稿后的独立审稿由 `author-reviewer` 承担：`architecture` 文档或 `targeted`/`strict` 验证级别下必经，返回 `AuthorReviewerReport`（`verdict` 与三类 issue 清单），`light` 非架构文档跳过，禁用或失败时披露而非冒领；主笔自身的 coherence/editorial 模式绝不替代它。保义微改走 `briefWaived` 绿色通道：位于 `writer_docs_roots` 之下的无简报文档上 ≤2 处纯机械修改（错别字/标点/断链）免三选一盘问，直接单跳派发主笔并附精确新旧文本；主笔侧对数字、代码或语义越界必须拒绝并返回 `factual`/`needsConsultant`，总编按三项 diff 清单核对后免审稿收工（详见 consultation-doc skill）。
 
 ### 6.1 咨询档位
 
@@ -287,7 +289,7 @@ consultant 通过 `janus_dispatch` 领导四个咨询子 agent：`common-explore
 | `author-writer` | `doc` 的读者可见正文唯一执笔者——批准前蓝图、批准后章节正文与维护、一致性检查；带来源台账的定向网络检索。插件自有：禁 shell 与派发；仅允许编辑 `writer_docs_roots` 之下（空时只读回退） |
 | `author-reviewer` | 文档独立审稿人——`architecture`/`targeted`/`strict` 成稿后核对事实与来源台账、简报对齐、阅读友好度，返回 `AuthorReviewerReport`。插件自有：只读叶节点，禁 shell/联网/派发；是门禁而非名册席位，故不在 `TIER_ROLE_CAPS` 中 |
 
-每档位的实例**上限**（`TIER_ROLE_CAPS`，由适配器校验过的 `tier_role_caps` 配置镜像），绝不是下限、更不是必须凑齐的名册：
+每档位的实例**上限**（`consultation-core` 的 `TIER_ROLE_CAPS`；适配器在 `plugin-config.ts` 的 `TIER_ROLE_CAPS_DEFAULTS` 与 `tier_role_caps` 配置中镜像同一组数值），绝不是下限、更不是必须凑齐的名册：
 
 | 档位 | common-explorer | consultant-analyst | consultant-critic | coder-reviewer | consultant-auditor | author-writer |
 |---|---|---|---|---|---|---|
@@ -295,7 +297,7 @@ consultant 通过 `janus_dispatch` 领导四个咨询子 agent：`common-explore
 | standard | 5 | 1 | 1 | 1 | 1 | 1 |
 | deep | 5 | 3 | 2 | 2 | 2 | 2 |
 
-`doc` 从不在 fast 档运行。`author-writer` 是可选的（`author_writer_enabled`，默认 true）；当它被禁用或不可用时文档模式不可用——`author` 披露缺失了哪些 author-writer 工作，并提供启用 author-writer、配置代理、或用户明确接受的作者正写回退三个选项；它绝不静默亲写读者可见正文。上限作为配置传给 consultant，没有按轮次强制调度的运行时调度器；零表示该角色在该档位不可用，consultant 必须披露由此产生的实质缺口。
+`doc` 从不在 fast 档运行。`author-writer` 是可选的（`author_writer_enabled`，默认 true）；当它被禁用或不可用时文档模式不可用——`author` 披露缺失了哪些 author-writer 工作，并提供启用 author-writer、配置代理、或用户明确接受的回退方案三个选项；它绝不静默亲写读者可见正文。上限作为配置传给 consultant，没有按轮次强制调度的运行时调度器；零表示该角色在该档位不可用，consultant 必须披露由此产生的实质缺口。
 
 ### 6.4 可恢复派发 API
 
@@ -303,16 +305,18 @@ consultant 通过 `janus_dispatch` 领导四个咨询子 agent：`common-explore
 
 | 工具 | 参数 | 契约 |
 |---|---|---|
-| `janus_dispatch` | `{role, prompt, return_handle?, mode?, tier?, protocol?}`；role 取十一个派发角色之一（`common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`author-writer`、`author-reviewer`、`simple`、`coder-lite`、`coder`、`consultant`）；`mode`/`tier` 选择模型，`protocol` 在首轮前prepend五张方法论卡片之一 | 发起一个持久宿主会话 job 并在软等待窗口内观察；`return_handle: true` 时成功不再返回纯文本，而是返回已完成的 JSON 信封（`job_id`、`role`、`attempt`、`session_id`、`waited_ms`、`text`）；pending/失败形态不变 |
+| `janus_dispatch` | `{role, prompt, return_handle?, mode?, tier?, protocol?}`；role 取十二个派发角色之一（`common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`author-writer`、`author-reviewer`、`simple`、`coder-lite`、`coder`、`consultant`、`author`）；`mode`/`tier` 选择模型，`protocol` 在首轮前置入五张方法论卡片之一 | 发起一个持久宿主会话 job 并在软等待窗口内观察；`return_handle: true` 时成功不再返回纯文本，而是返回已完成的 JSON 信封（`job_id`、`role`、`attempt`、`session_id`、`waited_ms`、`text`）；pending/失败形态不变 |
 | `janus_dispatch_wait` | `{job_id, wait_ms?}` | 恢复/观察同一个 job；可选整数 `wait_ms` 为 0..1800000，默认 1800000；零做快照 |
 | `janus_dispatch_cancel` | `{job_id}` | 请求显式取消，并对持久完成/中止证据做对账 |
 | `janus_dispatch_continue` | `{session_id, prompt, role?}` | 向既有派发会话发送新提示（`session_id` 取自 `return_handle` 完成信封或 pending 信封）；role 从目标 job spec 推断、显式给出时校验。续接继承 spec 的 `agent_name` 与 `model_chain`，绝不切换模型。返回响应文本或以续接 job id 为键的可恢复 pending 信封 |
 
-模型选择遵循 `mode_models[mode][role] > tier_models[tier][role] > <role>_model > TIER_MODEL_DEFAULTS[tier][role] > MODEL_DEFAULTS[role]`；出厂仅带一个档位默认 `deep.coder`。按模型的适配块由 `experimental.chat.system.transform` 钩子按实际服务当轮的模型逐请求注入，因此模式/档位覆盖或续接都能保住匹配的块。续接继承原 job spec 的 `agent_name` 与 `model_chain`，绝不从当前配置重新解析。`protocol` 参数把五张方法论卡片（`counter_evidence`、`hypothesis_matrix`、`plan_robustness`、`design_premortem`、`code_plan_review`）之一prepend为第一轮任务消息的开头字节。
+`role` 恰为 12 个：8 个子 agent 加 `consultant`、`coder`、`simple`、`author`；`janus` 与 `architect` 是用户选择的主入口，不可派发（`DISPATCH_ROLES`，`dispatch-contract.ts`）。`author` 有调用方 DAG 守卫（`dispatch-tool.ts`）：调用方会话本身是被派发的子会话时，派发 `author` 在创建任何 job 之前就被拒绝，返回 `Error: dispatched session cannot dispatch author; return the documentation request to the primary caller`；其余角色不受此限。
+
+模型选择遵循 `mode_models[mode][role] > tier_models[tier][role] > <role>_model > TIER_MODEL_DEFAULTS[tier][role] > MODEL_DEFAULTS[role]`；出厂仅带一个档位默认 `deep.coder`。按模型的适配块由 `experimental.chat.system.transform` 钩子按实际服务当轮的模型逐请求注入，因此模式/档位覆盖或续接都能保住匹配的块。续接继承原 job spec 的 `agent_name` 与 `model_chain`，绝不从当前配置重新解析。`protocol` 参数把五张方法论卡片（`counter_evidence`、`hypothesis_matrix`、`plan_robustness`、`design_premortem`、`code_plan_review`）之一置于第一轮任务消息的开头。
 
 发起派发使用 1800000 毫秒的软观察窗口，而不是专家执行时限。完成且可用的报告保持纯文本，确认的失败用 `Error:` 文本。非终态 JSON 信封标识 `job_id`、`session_id`、`role`、`attempt`、`status`（`pending`、`unknown` 或 `cancelling`）与 `next: "janus_dispatch_wait"`。`cancelled` 信封要求确认的中止证据；正常完成与取消竞速时完成方胜出并保留原报告。`return_handle` 完成信封额外带 `text` 字段并去掉 `reason`/`next`——job 已终态——这是 `janus_dispatch` 可能产生的唯一形态变化。
 
-会话续接是通用、与角色无关的派发机制，不是 author-writer 专属：任何派发方（consultant、janus、coder）都可续接任何派发角色的会话。复用有刻意收紧的边界：同一调用方（目标 job 根的父必须是当前工具上下文的会话）、同一规范化工作区目录、带派发标记的目标会话（普通 job 根或其尝试子节点——绝不是续接 job 根，其 journal 记录着 `session_id`）、且目标空闲（`busy`/`retry` 目标以「先等待」错误拒绝）。续接创建一个新的 job 根，其持久 spec 记录 `session_id`（被复用目标）与 `continued_from`（原 job 根）；其第 0 次尝试提示被复用的目标会话，重试则照常创建新的尝试子节点。等待与取消通过同一套回执驱动机制作用于续接 job，因为 journal 绑定接受其会话等于 spec `session_id` 目标的回执。只有终态 job 可被续接；pending 的 job 先等待。解析目标会话、其派发 journal 或其状态时的瞬时读取失败返回可重试错误而非「不存在/不归属/非空闲」，因此一次传输抖动绝不会静默触发新会话。没有跨会话复用、没有注册表——会话 ID 由调用方持有（作者简报把它存为 `writer_session_id`）。
+会话续接是通用、与角色无关的派发机制，不是 author-writer 专属：任何持有派发工具的派发枢纽（`janus`、`consultant`、`architect`、`coder`、`author`）都可续接任何派发角色的会话。复用有刻意收紧的边界：同一调用方（目标 job 根的父必须是当前工具上下文的会话）、同一规范化工作区目录、带派发标记的目标会话（普通 job 根或其尝试子节点——绝不是续接 job 根，其 journal 记录着 `session_id`）、且目标空闲（`busy`/`retry` 目标以「先等待」错误拒绝）。续接创建一个新的 job 根，其持久 spec 记录 `session_id`（被复用目标）与 `continued_from`（原 job 根）；其第 0 次尝试提示被复用的目标会话，重试则照常创建新的尝试子节点。等待与取消通过同一套回执驱动机制作用于续接 job，因为 journal 绑定接受其会话等于 spec `session_id` 目标的回执。只有终态 job 可被续接；pending 的 job 先等待。解析目标会话、其派发 journal 或其状态时的瞬时读取失败返回可重试错误而非「不存在/不归属/非空闲」，因此一次传输抖动绝不会静默触发新会话。没有跨会话复用、没有注册表——会话 ID 由调用方持有（作者简报把它存为 `writer_session_id`）。
 
 超时或观察上下文中止只停止等待，不停止子 job。pending 表示工作仍在进行；unknown 表示既有宿主证据无法判定结果，而不是确认失败。保留同一个 job ID 供后续等待——包括协调者重启后——且不重复发起生成请求。等待/取消强制调用方的父会话与工作区归属。只有显式取消请求可以中止工作；取消在完成对账前保持 `cancelling`。
 
@@ -324,11 +328,11 @@ consultant 通过 `janus_dispatch` 领导四个咨询子 agent：`common-explore
 
 ### 6.5 设计模式与向编码的移交
 
-`design` 决定系统的未来结构——架构、模式、模块边界、外部接口——运行于 standard 或 deep 档，绝不用 fast。它只准入会改变未来结构、且不是一个明显可逆小改的决策；其余一切交给 coder 做 L1/L2。architect 先读仓库与 `AGENTS.md`（每轮至多五个问题），用目标、非目标与带优先级的六段式质量场景框定 L0，然后逐层决策（C4 作为缩放镜头）：L1 系统、L2 模块、L3 接口。
+`design` 决定系统的未来结构——架构、模式、模块边界、外部接口——运行于 standard 或 deep 档，绝不用 fast。它只准入会改变未来结构、且不是一个明显可逆小改的决策；其余一切交给 coder 做 L1/L2。architect 先读仓库与 `AGENTS.md`（每轮至多五个问题），用目标、非目标与带优先级的六段式质量场景框定 L0，然后逐层决策（用 C4——系统→模块→接口的分层缩放视角——作为缩放镜头）：L1 系统、L2 模块、L3 接口。
 
 每个决策至少带两个真正不同的选项、一个建议、什么会改变它、单向/双向可逆性标签，以及相关的推迟触发条件。单向门逐个批准并获得 coder-reviewer 事前验尸（coder-reviewer 的 `designReview`：事前验尸失败、未满足的质量场景、可逆性问题、缺失选项）；双向门获得默认值并每层一次批量批准。每次批准前与移交前各跑一次只读的跨层一致性检查，接受的结果写入 `design.md`。
 
-记录位于 `<designStateDir>/<projectId>/<designId>/design.md`（默认 `$XDG_DATA_HOME/janus-agent/design`）且自包含：MADR 形态的决策只有 proposed/accepted 两态、每个被拒选项一行、承重质量属性配适应度函数、开放问题带触发条件。它是现态文档，原地重写并维持在约 200-300 行。architect 写它的决策内容；coder 只读决策，并可在验证落地后翻转其生命周期行。
+记录位于 `<designStateDir>/<projectId>/<designId>/design.md`（默认 `$XDG_DATA_HOME/janus-agent/design`）且自包含：MADR（轻量架构决策记录格式）形态的决策只有 proposed/accepted 两态、每个被拒选项一行、承重质量属性配适应度函数、开放问题带触发条件。它是现态文档，原地重写并维持在约 200-300 行。architect 写它的决策内容；coder 只读决策，并可在验证落地后翻转其生命周期行。
 
 向编码的移交是显式的。被接受的 `design.md` 就是已批准的规格：coder 跳过头脑风暴的规格对话，把 L2 设计门收缩为记录未覆盖的实现细节加精确文件清单，并在 `design/<projectId>/<designId>/plan.md` 规划精简 ExecPlan（里程碑、验证/回滚、决策日志、意外与发现）。批准计划即确认其列出的文件；L2 时 coder 自检每个已接受决策都有任务、每个接口都有测试、顺序可回退（L3 追加独立计划评审），实现完成后 `coder-reviewer` 把 diff 与 `design.md` 对照。触及单向门决策的偏差退回 `architect`。有界设计轮次中，architect 只返回当前层的决策请求。
 
@@ -423,7 +427,7 @@ consultant 通过 `janus_dispatch` 领导四个咨询子 agent：`common-explore
 - 当你能说出一个会改变报告结论的反例或替代解释时，用 consultant-critic 环节挑战重大假设；
 - 综合成可读报告（结论先行、平实语言、证据与分歧收在 `证据与来源（可跳过）` 之下）。
 
-研究报告是经过校验的契约（`ResearchBriefSchema`）：一行结论、平实语言要点、一行对用户的意义与把握度；假设、分歧、残留不确定性与来源收在 `证据与来源（可跳过）` 之下。没有独立的深度研究提供商，也没有 `research-director` agent。
+研究报告是经过校验的契约（`ResearchBriefSchema`）：一行结论、平实语言要点、一行对用户的意义与把握度；假设、分歧、残留不确定性与来源收在 `证据与来源（可跳过）` 之下。深度研究由 consultant 自己的团队完成，不依赖独立的深度研究提供商或专用 agent。
 
 ## 9. 权威记忆模型
 
@@ -597,7 +601,7 @@ $XDG_CACHE_HOME/janus-agent/
 
 ### 13.2 SQLite 策略
 
-第一版使用 SQLite，因为它在无需独立服务的情况下提供本地事务、原子提交、schema 约束、FTS 与崩溃恢复。
+使用 SQLite，因为它在无需独立服务的情况下提供本地事务、原子提交、schema 约束、FTS 与崩溃恢复。
 
 必要规则：
 
@@ -737,44 +741,34 @@ $XDG_CACHE_HOME/janus-agent/
 
 ### 17.3 集成验证
 
-运行一个真实隔离的 OpenCode 实例并证明：
+`bun run integration`（`script/integration-opencode.ts`）在临时沙箱中启动隔离的真实 OpenCode 服务器，加载已安装的插件产物（无 `opencode` 时 SKIP 并以 0 退出），并断言：
 
-- 插件加载；
-- consultant agent 可选；
-- skill 指令生效；
-- 本地记忆 MCP 启动；
-- 预览不持久化；
-- 提交持久化并在重启后存活；
-- 重复提交更新同一个会话包；
-- 召回使用渐进式披露；
-- 没有任何数据写入插件安装目录；
-- architect/author/coder 的权限映射携带设计状态目录、author 携带作者状态目录、五个主入口携带 handoff 状态目录，且各自主提示词标注对应的项目目录。
+- `GET /config` 返回 200，含 `janus-memory` MCP 条目；
+- 14 个 agent 全部注册：`janus`、`simple`、`consultant`、`architect`、`coder`、`author` 与 8 个子 agent（含 `coder-reviewer`、`author-reviewer`）；`janus` 提示词含公共原则；
+- 权限与绑定：`architect`/`coder`/`author`、`coder-reviewer` 与 `author-reviewer` 的 design（及 author）状态目录访问；五个主入口的 handoff 目录访问与提示词标注；`simple`、`coder-lite`、`common-explorer`、`consultant-analyst` 不持有 handoff 权限；design、handoff 与 simple 工作区目录已创建；
+- 三个 skill 与 `janus-models`、`janus-handoff`、`janus-config` 三个命令文件已安装且含各自契约内容；
+- 已安装产物含 `dist/janus-keys.js` 与 `bin/janus-keys`；
+- 派发原语在真实宿主上成立（root/attempt 父子层级、工作区绑定、noReply 持久化、journal 的 ignored/synthetic 标记）；
+- 运行期间仓库的 `git status --porcelain` 前后一致。
+
+`author` 的派发与守卫由 `dispatch-tool.test.ts`（DAG 守卫拒绝被派发会话派发 `author`、放行其他角色）和 `dispatch-contract.test.ts`（12 个 `DISPATCH_ROLES`）断言；六个工具（四个派发工具、`janus_config`、`janus_provider_keys`）的注册由 `plugin.test.ts` 断言。记忆的预览/提交/召回语义属于 §17.2 的评估用例范围，集成脚本不覆盖。
 
 ## 18. 当前版本范围
 
 当前版本包含：
 
-- 独立插件打包，含七模式咨询 skill 集；
-- `janus` 默认入口、`consultant` 证据入口、`coder` 编码入口、`simple` 经济叶节点、`architect` 设计主入口、`author` 文档主入口；
-- 四个只读检索子 agent、限定写入的 author-writer、只读审稿的 author-reviewer、`coder-lite` 初中级工程师车道；
-- 可复用的核心咨询 skill 及其设计/文档子 skill；
-- 咨询与记忆核心包；
-- 带 FTS 的 SQLite 持久化；
-- 可配置的语义检索；
-- 五个记忆 MCP 操作；
-- 每会话一个经验包带课题条目；
-- 预览、提交、修订、停用与遗忘；
-- 跨团队 handoff 状态目录、纯函数契约库与 `/janus-handoff` 命令；
+- 独立插件打包：`bun run install:local` 装入自包含的 `dist/` 与 `assets/`，不携带 `node_modules`；
+- 14 个 agent：6 个主入口与 8 个子 agent（`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`、`coder-reviewer`、`coder-lite`、限定写入的 `author-writer`、只读审稿的 `author-reviewer`），其中 12 个可经 `janus_dispatch` 派发（含 `author`，带调用方 DAG 守卫）；`janus` 与 `architect` 不可派发；
+- 文档分工：`janus`/`architect`/`coder` 派发新读者文档与 ≥3 处编辑的重写给 `author`；`author` 按单元 `writeMode`（`scoped`/`read-only`）调度 `author-writer`，根目录外路径先写盘再过 `author-reviewer`；
+- 三个 skill（`consultation`、`consultation-design`、`consultation-doc`，由 `skill-src/**` 生成），覆盖七种模式；
+- 可恢复派发：四个派发工具与五张方法论卡片（`counter_evidence`、`hypothesis_matrix`、`plan_robustness`、`design_premortem`、`code_plan_review`）；
+- `janus_config`、`janus_provider_keys` 工具与终端命令 `janus-keys`（经 `bin/janus-keys` shim）；
+- 四条斜杠命令：`/janus-memory`、`/janus-models`、`/janus-handoff`、`/janus-config`；
+- 模型适配：10 个出厂块、`model_prompts` 覆盖与逐请求注入钩子；
+- 咨询与记忆核心包；带 FTS 的 SQLite 持久化；可配置的语义检索；五个记忆 MCP 操作；
+- 每会话一个经验包带课题条目；预览、提交、修订、停用与遗忘；
+- author、design、handoff 三个状态目录与 simple 工作区；handoff 契约库（`consultation-core/src/handoff.ts`）与 `/janus-handoff` 命令；
 - 评估用例与隔离的 OpenCode 集成测试。
-
-未来版本可能增加：
-
-- Codex 与 Senpi 适配器；
-- 安全的并发写入者；
-- 跨设备同步；
-- 可选的图数据库投影；
-- 定时的结果回访；
-- 远程共享记忆服务。
 
 ## 19. 行业与平台依据
 

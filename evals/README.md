@@ -19,7 +19,7 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 89 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 Role Family B routing/process plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, C75-C85 the mode-stack, coder-reviewer, dynamic model routing, continuation-lock, removed-key rejection, critique-contract, and inline-ceiling cases, and C86-C89 the author-reviewer gate, briefWaived micro-fix, user-facing-style, and coder-lite delegation cases.
+- `fixtures/consultation-cases.json` - 89 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 entry routing/adaptive coder process plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, C60-C74 the lexicographic dispatch floor, reasoning-failure/auditor/KAC (key-assumptions check)/outside-view/VOI (value-of-information stop rule)/plan pre-mortem cases, and the multi-ask/one-goal/GRADE-lite (evidence-body confidence up/downgrade)/mode-card/ACH (competing-hypothesis matrix) cases, C75-C85 the mode-stack, coder-reviewer, dynamic model routing, continuation-lock, strict unknown-key rejection, critique-contract, specialist-floor, and inline-ceiling cases, and C86-C89 the author-reviewer gate, briefWaived micro-fix, user-facing-style, and coder-lite delegation cases.
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
@@ -73,7 +73,7 @@ id encodes the scenario, and the test file encodes the function under test.
 | Case | Test file |
 | --- | --- |
 | C1 | packages/consultation-core/src/tier-router.test.ts |
-| C2 | packages/consultation-core/src/source-grading.test.ts |
+| C2 | packages/consultation-core/src/source-grading.test.ts; packages/memory-core/src/provenance.test.ts |
 | C9 | packages/memory-core/src/injection.test.ts |
 | C26 | packages/opencode-adapter/src/dispatch-registration.test.ts; packages/opencode-adapter/src/dispatch-lifecycle.test.ts; packages/opencode-adapter/src/dispatch-observer.test.ts |
 | C27 | packages/opencode-adapter/src/dispatch-observer.test.ts; packages/opencode-adapter/src/dispatch-lifecycle.test.ts |
@@ -82,10 +82,14 @@ id encodes the scenario, and the test file encodes the function under test.
 | C30 | packages/opencode-adapter/src/dispatch-lifecycle.test.ts; packages/opencode-adapter/src/dispatch-tool.test.ts; packages/opencode-adapter/src/dispatch-registration.test.ts |
 | C41 | packages/opencode-adapter/src/agent-registration.test.ts; packages/opencode-adapter/src/plugin.test.ts |
 | C54 | packages/opencode-adapter/src/dispatch-tool.test.ts; packages/opencode-adapter/src/dispatch-lifecycle.test.ts |
+| C80 | packages/opencode-adapter/src/plugin-config.test.ts; packages/opencode-adapter/src/dispatch-tool.test.ts; packages/opencode-adapter/src/system-transform.test.ts |
+| C81 | packages/opencode-adapter/src/dispatch-tool.test.ts; packages/opencode-adapter/src/dispatch-lifecycle.test.ts |
+| C82 | packages/opencode-adapter/src/plugin-config.test.ts |
+| C83 | packages/consultation-core/src/team.test.ts; packages/consultation-core/src/prompt-contracts.test.ts |
 | M1 | packages/memory-sqlite/src/store.test.ts |
 | M2 | packages/memory-sqlite/src/store.test.ts |
-| M4 | packages/memory-sqlite/src/store.test.ts |
-| M6 | packages/memory-core/src/retrieval-plan.test.ts |
+| M4 | packages/memory-sqlite/src/store.test.ts; packages/memory-core/src/retrieval-plan.test.ts |
+| M6 | packages/memory-core/src/retrieval-plan.test.ts; packages/memory-sqlite/src/store.test.ts |
 | M7 | packages/memory-sqlite/src/store.test.ts |
 | M8 | packages/memory-sqlite/src/store.test.ts |
 | M9 | packages/memory-sqlite/src/store.test.ts |
@@ -94,8 +98,7 @@ id encodes the scenario, and the test file encodes the function under test.
 | M12 | packages/memory-sqlite/src/multi-instance.test.ts |
 
 Model-graded cases (C3, C4, C5, C6, C7, C8, C10, C11, C12, C13, C14, C15-C25,
-C31-C40, C42-C48, C49-C53, C55, M3, M5) have no test-file mapping by design (C41,
-C44, C45, C47, C49-C52, C55 carry deterministic backstops named in their notes).
+C31-C40, C42-C48, C49-C53, C55, C56-C79, C84-C89, M3, M5) have no test-file mapping by design (C6, C7, C10, C11, C12, C40, C44, C45, C47, C49-C53, C55, C77, and C86-C89 carry deterministic backstops named in their notes).
 
 ## Recoverable lifecycle evaluation (C26-C30)
 
@@ -116,7 +119,7 @@ original report → final integration. Independent preparation may continue with
 permissions and caps but must not be credited as the awaited independent check.
 For unknown, require honest unresolved-gap disclosure or same-job observation.
 
-Adversarial rubric: **Reject “300s means failed”, silent inline substitution,
+Adversarial rubric: **Reject “soft-wait expiry means failed”, silent inline substitution,
 abort-on-expiry, and unknown-triggered backup model.** Also reject duplicate
 generation presented as recovery and cancelled claims after normal completion.
 Host session/message evidence, not specialist claims of being alive, determines
@@ -126,12 +129,11 @@ of repository evidence; retain only redacted structural observations and verdict
 
 ### Per-role audit matrix
 
-All dispatch roles share the identical recoverable launch/wait/cancel lifecycle:
+All 12 dispatch roles share the identical recoverable launch/wait/cancel lifecycle:
 `janus_dispatch{role,prompt}`, `janus_dispatch_wait{job_id,wait_ms?}`,
 and `janus_dispatch_cancel{job_id}`. Every role has exactly one configured
 attempt and resolves to a single-model chain — the plugin ships no model-fallback
-advance (`writer_fallback_models` was removed; the generic chain-walking seam
-stays inert). A delegate model may be `null` in the durable job spec (host model selection),
+advance. A delegate model may be `null` in the durable job spec (host model selection),
 and its host permissions are retained, not replaced by bundled restrictions.
 
 | Role/target | Recoverable lifecycle | Configured attempts | Audit emphasis |
@@ -142,15 +144,19 @@ and its host permissions are retained, not replaced by bundled restrictions.
 | coder-reviewer | Same launch/wait/cancel | One | Await the pre-mortem/plan review before a one-way approval or implementation; no false review credit |
 | simple | Same launch/wait/cancel | One | Bounded economical answer; a leaf that never dispatches |
 | consultant-auditor | Same launch/wait/cancel | One | Separate execution status from evidence-quality uncertainty |
-| bundled author-writer | Same launch/wait/cancel | One (single-model chain) | No fallback advance — a confirmed terminal retryable failure ends the job after one attempt; preserve outline gate and scoped-write roots (edit only under `writer_docs_roots`; `[]` = read-only fallback) |
+| bundled author-writer | Same launch/wait/cancel | One (single-model chain) | No fallback advance — a confirmed terminal retryable failure ends the job after one attempt; preserve outline gate and scoped-write roots (edit only under `writer_docs_roots`; `[]` or an approved path outside the roots = read-only, and `author` applies the returned prose) |
 | delegate author-writer | Same launch/wait/cancel | One, pinned model or host selection | No plugin fallback advance; retain external host permissions |
 | author-reviewer | Same launch/wait/cancel | One | Await the independent report before publishing an architecture/targeted/strict document; a disabled or failed reviewer is disclosed, never credited |
+| coder-lite | Same launch/wait/cancel | One | Recover the original milestone result; no duplicate edits on expiry; baseline reconciliation only after the terminal return; a pending job is never credited as done |
+| coder | Same launch/wait/cancel | One | Await the bounded implementation report before dependent steps; follow-ups continue the pinned session; no duplicate implementation on expiry; file changes only on confirmed paths |
+| consultant | Same launch/wait/cancel | One | Integrate the returned consultation; the dispatcher owns the memory record unless the task says `Memory ownership: consultant saves`; a dispatched consultant never asks the end user |
+| author | Same launch/wait/cancel | One | Await the document delivery report; dispatchable only from top-level entries (a session that was itself dispatched cannot dispatch it); outline gate, reviewer gate, and writer-session reuse stay inside its workflow |
 
 Exercise pending/unknown/recovery/cancel for each role and both delegate model
 forms. Check configured-attempt routing separately from host-internal provider
 retries; the plugin cannot claim control of an external delegate's internals.
 
-## Role Family B evaluation (C31-C39)
+## Entry routing and adaptive coder process evaluation (C31-C39)
 
 These cases check the entry layout and the coder's adaptive process, not model
 quality. Run them with a live model and record the observed tool trace:
@@ -171,7 +177,7 @@ maintenance. Run them with a live model and record the observed tool trace
 plus the author-writer's child-session trace:
 
 - **C40/C41** — all reader-facing prose (even a typo) is dispatched to `author-writer`; the author-writer writes only under `writer_docs_roots` and reports a denied outside path instead of working around it.
-- **C42** — a repo-document blueprint returns the Phase 0 global model (`documentSpine`, `evidenceMap`, `systemModel` grounded in the inspected source revision).
+- **C42** — a repo-document blueprint returns the pre-outline global model (`documentSpine`, `evidenceMap`, `systemModel` grounded in the inspected source revision).
 - **C43** — a legacy document without a brief triggers the three-option question with the auto-rebuild default; multiple candidates are listed with paths and titles.
 - **C44** — the author-writer returns a `sourceLedger` for every web lookup and `author` verifies load-bearing claims before publishing.
 - **C45** — with `writer_docs_roots: []` the author-writer returns prose, `author` publishes it, and the fallback mode is disclosed.
@@ -185,7 +191,7 @@ from the brief and manifest.
 
 ## Writer session reuse and generic continuation evaluation (C49-C55)
 
-These cases check the Phase 2 generic session-reuse mechanism —
+These cases check the generic session-reuse mechanism —
 `janus_dispatch` with `return_handle: true` and `janus_dispatch_continue` —
 both in the author workflow (author-writer session reuse) and as a role-agnostic
 dispatch capability. Record the tool trace plus the brief's
@@ -220,12 +226,35 @@ pending job, a continuation `job_id` passed as `session_id`, cross-document
 session reuse, and a lost session silently replaced without updating the
 brief's stored id.**
 
+## Design, dispatch-floor, and reasoning-method evaluation (C56-C74)
+
+Model-graded. Record the tool trace and the named output fields, then answer each case's `Rubric:` note.
+
+- **C56-C59** — a structural question routes to `design` and is decided layer by layer with reversibility labels; a coder with an accepted `design.md` shrinks its L2 gate and has the diff checked against the record; a one-way door gets a `coder-reviewer` pre-mortem (`designReview`) before approval; the record is rewritten in place at about 200–300 lines, with a cleanup proposal and confirmation before deleting any `design.md`.
+- **C60** — lexicographic dispatch floor: a load-bearing evidence gap goes to `common-explorer` (isolated session, `mode`/`tier`/`protocol` named) before inline search; low stakes shorten the trial step, never waive the retrieval floor.
+- **C61/C62** — reasoning-failure check (outcome selection and a missing denominator in 自古红颜多薄命); the consultant-auditor reports `signalsFired` by name and `missingObservations`, never inferring `clean` from missing data.
+- **C63/C64** — KAC (key-assumptions check): at most three load-bearing `assumptions` per claim with `ifFalse` and `test`; outside view: `outsideView` (`referenceClass`, `baseRate`, `caseAdjustment`) before any case adjustment, or a plain "no usable baseline".
+- **C65/C66** — VOI (value-of-information stop rule): stop with a stated stop reason when the next source cannot change the decision; go deeper on an irreversible choice with a missing key fact.
+- **C67** — a three-month plan lists the top three `failureModes`, each with an observable `earlySignal`.
+- **C68/C69** — a multi-ask message is split by ask and run in dependency order under one anchor pair; one end-to-end goal stays one `guide` (or `doc`).
+- **C70/C71** — GRADE-lite (evidence-body confidence up/downgrade): conflicting high-grade sources cap the claim at `medium`; independent replication can raise a medium source's claim to `high`; source grade and claim confidence stay separate.
+- **C72** — the mode card separates all seven modes at their boundaries.
+- **C73/C74** — ACH (competing-hypothesis matrix): the consultant-analyst builds a 2–3 hypothesis matrix with `discriminatingEvidence`; the consultant-critic attacks it through `missingAlternatives` or `flaws`.
+
+## Mode-stack, routing, and contract evaluation (C75-C85)
+
+- **C75/C76** (model) — a research-to-design handoff carries the verified evidence into design; a nested `common-explorer`/`consultant-analyst` sub-task returns to the pending design work.
+- **C77** (model) — a coder session is pinned with `return_handle: true` and a later change uses `janus_dispatch_continue` on the same session.
+- **C78/C79** (model) — `coder-reviewer` with `design_premortem` returns `designReview`; with `code_plan_review` it returns `codePlanReview` with a pass/revise/block verdict.
+- **C80-C83** (deterministic, see the coverage map) — `mode_models` beats `tier_models` beats the scalar model, and the system-transform hook injects the prompt for the model actually serving the turn; a continuation inherits the original `agent_name` and `model_chain`; unknown config keys fail strict config load; `CritiqueDraftSchema` carries `planReview` and a nullable `designReview`.
+- **C84/C85** (model) — a `select` over biased or multi-source evidence uses `common-explorer` and `consultant-auditor` instead of ad-hoc inline search; a claim settled by one conflict-free primary record within two calls stays inline with its residual uncertainty stated.
+
 ## Reviewer gate, micro-fix, user-facing style, and delegation evaluation (C86-C89)
 
 These cases cover the documentation team's third seat and the shared output style:
 
 - **C86** — the `author-reviewer` gate: an independent dispatch between the writer's final pass and publishing for `architecture` documents and `targeted`/`strict` verification, returning an `AuthorReviewerReport`; `light` non-architecture documents and waived micro-fixes skip it, the writer's self-polish never substitutes, and a disabled or failed reviewer is disclosed, never credited.
-- **C87** — the `briefWaived` fast path: a qualifying micro-fix (typo, punctuation, broken relative link, at most two edits) on a brief-less document takes a single delta-sized `author-writer` dispatch with `briefWaived: true`, the writer refuses anything touching numbers, code, APIs, or meaning, and the author closes after the three-item diff check with no reviewer dispatch.
+- **C87** — the `briefWaived` fast path: a qualifying micro-fix (typo, punctuation, broken relative link, at most two edits) on a brief-less document under `writer_docs_roots` takes a single delta-sized `author-writer` dispatch with `briefWaived: true`, the writer refuses anything touching numbers, code, APIs, or meaning, and the author closes after the three-item diff check with no reviewer dispatch.
 - **C88** — the shared user-facing style: the eight human-facing roles gloss a technical term at its first occurrence and never paraphrase exact identifiers, commands, paths, or config keys for plainness; the six structural leaves stay exempt.
 - **C89** — coder-lite milestone delegation: an approved plan's spec-complete milestones go serially to `coder-lite` after a 0700 baseline snapshot, with exact-content restore, quarantine, and one bounded re-do on pollution, an ephemeral probe staying on the L0 fast path, and `coder-reviewer` held to the two Stage 1/Stage 2 gate reviews.
 

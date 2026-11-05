@@ -16,7 +16,7 @@ A legacy document without a brief: unless the change qualifies as a `briefWaived
 
 ### Scoped write and read-only fallback
 
-The bundled author-writer runs in one of two modes, fixed by `writer_docs_roots` (reported under Runtime Bindings). **Scoped write** (non-empty, default `["userdoc"]`): it is the sole author-writer under the roots, and the author reviews diffs and requests bounded fixes instead of editing. **Read-only fallback** (`[]`): it returns full prose or a patch and the author applies and publishes it, disclosing the mode. A configured `writer_delegate_agent` replaces the bundled author-writer with host permissions; the author still owns the brief, approvals, and verification.
+The bundled author-writer runs one `writeMode` per dispatch unit, fixed by where that unit's target paths sit (the roots come from `writer_docs_roots`, reported under Runtime Bindings). **Scoped** (every target path under the roots, non-empty and defaulting to `["userdoc"]`): it is the sole writer under the roots, and the author reviews diffs and requests bounded fixes instead of editing. **Read-only** (any target path outside the roots — `README.md`, `docs/*.md`, or `evals/README.md` under the default roots — or `writer_docs_roots: []`): it returns full prose or a patch for that unit. The author writes the returned text into the confirmed file before any review, dispatches `author-reviewer` against the file on disk, and only after the ledger check and the review pass marks the change `published` in the brief's change log; a mixed path list splits into separate units, one per mode. A configured `writer_delegate_agent` replaces the bundled author-writer with host permissions; the author still owns the brief, approvals, and verification.
 
 ### Maintenance path
 

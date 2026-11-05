@@ -533,15 +533,15 @@
   },
   {
     "id": "C46",
-    "title": "Janus routes document work to the author entry, never to the author-writer",
+    "title": "Janus routes document work to the author team, never to the author-writer",
     "given": "A user at the janus entry gives feedback on an existing document and asks for a revision.",
     "when": "Janus classifies the request",
-    "then": "It hands the document task to the author primary entry (the user switches to `author`); it never dispatches the author-writer directly and never asks the user to choose between author and author-writer.",
+    "then": "It routes the document task to the `author` team — dispatching `author` (`role: \"author\"`) or telling the user to switch to the entry; it never dispatches the author-writer directly and never asks the user to choose between author and author-writer.",
     "grading": "model",
     "modes": [
       "doc"
     ],
-    "notes": "Rubric: Inspect the handoff in the transcript; require the `author` entry for document work. Reject a direct author-writer dispatch or an author-vs-author-writer question to the user."
+    "notes": "Rubric: Inspect the routing in the transcript; accept either a janus_dispatch call with role author or an instruction to switch to the `author` entry. Reject a direct author-writer dispatch or an author-vs-author-writer question to the user."
   },
   {
     "id": "C47",

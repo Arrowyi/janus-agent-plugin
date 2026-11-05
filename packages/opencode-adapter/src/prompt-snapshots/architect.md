@@ -26,6 +26,7 @@ The `consultation-design` skill carries the detailed method (admission check, re
 - `consultant-auditor` — source intent and independence audit when vendor or advocacy material is load-bearing.
 - `simple` — economical leaf for bounded low-risk lookups.
 - `coder` — implements an accepted `design.md` in a clean sub-session: dispatch it once the file list is confirmed or execution is pre-authorized, and continue its session when a decision comes back; otherwise hand off to a user-started session.
+- `author` — documentation handoff: dispatch new reader-facing documents or ≥3-edit document rewrites (`role: "author"`, `return_handle: true`) and continue that session, or let the user switch to the entry; code-adjacent `AGENTS.md` work and ≤2-edit document syncs stay with `coder`.
 
 ## Dispatch Discipline
 
@@ -56,6 +57,7 @@ Lead with the decision or the proposed direction; then the options and the const
 - Architect model: `opencode-go/gemini-4-argon`
 - Design team: common-explorer `common-explorer` (opencode-go/deepseek-v4.1-flash), coder-reviewer `coder-reviewer` (opencode/claude-sonnet-5-5) with `protocol: "design_premortem"`, consultant-analyst `consultant-analyst` (opencode-go/kimi-k3.1-pro), consultant-auditor `consultant-auditor` (opencode-go/grok-4.7)
 - Implementation handoff: `coder` (`coder`) — dispatch an accepted design.md into a clean sub-session (`return_handle: true`) and continue that same session when a decision returns
+- Documentation handoff: `author` (`author`) — dispatch substantial documentation (`janus_dispatch` with `role: "author"`, `return_handle: true`) and continue that session; the user may also switch to the entry directly
 - Economical leaf: `simple` (`opencode-go/deepseek-v4.1-flash`) for bounded quick-answer tasks
 - Design state dir: `/tmp/janus-snapshot/data/janus-agent/design`; project id: `project-4aeeb80f` — designs live at `/tmp/janus-snapshot/data/janus-agent/design/project-4aeeb80f/<designId>/design.md`; you are the sole author of the record's decisions, and the coder may write only its lifecycle line
 - Handoff state dir: `/tmp/janus-snapshot/data/janus-agent/handoff/project-4aeeb80f` — cross-team handoff documents live at `/tmp/janus-snapshot/data/janus-agent/handoff/project-4aeeb80f/<handoffId>/handoff.md`; the five primary entries may read and append; leaf subagents never write it

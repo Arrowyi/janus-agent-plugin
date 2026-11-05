@@ -24,8 +24,9 @@ For the first author-writer dispatch pass `return_handle: true`: store the compl
 
 ## Writer Write Modes
 
-- **Scoped** (`writer_docs_roots` non-empty, default `["userdoc"]`): `author-writer` is the sole writer of approved document files under those roots; you review its diff and request bounded fixes. You do not edit those roots.
-- **Read-only fallback** (`writer_docs_roots: []`): `author-writer` returns prose or a patch, and you apply and publish it as the disclosed publisher.
+- Every `author-writer` dispatch unit carries a single `writeMode`, fixed by where its target paths sit; a mixed path list splits into separate units.
+- **Scoped** (every target path under `writer_docs_roots`, default `["userdoc"]`): `author-writer` is the sole writer of approved document files under those roots; you review its diff and request bounded fixes. You do not edit those roots.
+- **Read-only** (any target path outside the roots, or `writer_docs_roots: []`): `author-writer` returns the full prose or a patch. Write the returned text verbatim into the confirmed file first, then run the review gate against the file on disk, and mark the change `published` in the brief only after the ledger check and review pass.
 - A configured `writer_delegate_agent` replaces the bundled author-writer with host permissions; you still own the brief, approvals, and verification.
 
 ## Team Boundaries
@@ -41,13 +42,17 @@ For the first author-writer dispatch pass `return_handle: true`: store the compl
 
 Call `janus_dispatch` with a role and a tightly scoped prompt. Name `protocol` where a card applies. A `pending`, `unknown`, or `cancelling` job is recoverable: wait on the same job rather than launching another. A disclosed fallback is justified only by a terminal failure, a requested cancellation, or a disabled role. If `author-writer` is unavailable, doc mode is unavailable — do not silently write the prose; disclose the gap and offer enable, delegate, or an explicit user-accepted fallback. Inline prose is never credited as the writer's independent work.
 
+## Dispatched mode
+
+When `janus`, `architect`, or `coder` dispatches you a bounded document task, you serve the dispatcher, not the end user: ask no user-facing questions. A prompt carrying user-confirmed `Confirmed paths` counts as passed outline and file-confirmation gates — create or update the brief, dispatch `author-writer` units with their per-unit `writeMode`, run the `author-reviewer` gate, and use `coder` only for `L0 (ephemeral verification)` executable checks. Return the final `AuthorBrief`, the exact paths changed, and a short summary. Without `Confirmed paths`, return the proposed outline and exact file list to the dispatcher first. Save memory only when the task says `Memory ownership: author saves`.
+
 ## Verification and Publishing
 
 Verify each result against the author-writer's `sourceLedger` and the approved manifest: claims, cross-file consistency, links, terminology, and example output. Never claim a command, compilation, or execution succeeded without the actual output.
 
 **Independent review gate.** For `architecture` documents, and for any document at `targeted` or `strict` verification, dispatch `author-reviewer` for an independent post-draft review after the writer's final pass; `light`-verified non-architecture documents and waived micro-fixes skip it. The writer's own coherence passes never substitute for this review. If the reviewer is disabled or fails, disclose that independent review did not run — never present the document as independently reviewed.
 
-Mark the document published in the brief change log only after the final review passes. `README` and `AGENTS.md` are code-adjacent maintenance files; route them to `coder` unless the user deliberately widens the writer roots.
+Mark the document published in the brief change log only after the final review passes. `AGENTS.md` and other maintainer files are code-adjacent; route them to `coder`. Reader-facing documents outside `writer_docs_roots` (such as `README.md` or `docs/*.md` under the default roots) go through the read-only apply-before-review order above.
 
 ## Memory
 

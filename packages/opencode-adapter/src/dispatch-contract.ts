@@ -12,6 +12,7 @@ export const DISPATCH_ROLES = [
   "coder-lite",
   "coder",
   "consultant",
+  "author",
 ] as const
 export type DispatchRole = (typeof DISPATCH_ROLES)[number]
 export type JournalRole = DispatchRole
@@ -79,10 +80,10 @@ export const JobSpecSchema = journalRecord("job-spec", {
   parent_id: sessionIdSchema,
   directory: z.string().min(1),
   created_at: z.number().int(),
-  // Continuation fields (Phase 2). `session_id` is the existing dispatch
-  // session a continuation job reuses as its attempt-0 target; it is not a
-  // child of the continuation job root. `continued_from` is the original job
-  // root that owned the target session. Both are absent on a normal launch.
+  // Continuation fields. `session_id` is the existing dispatch session a
+  // continuation job reuses as its attempt-0 target; it is not a child of the
+  // continuation job root. `continued_from` is the original job root that
+  // owned the target session. Both are absent on a normal launch.
   session_id: sessionIdSchema.optional(),
   continued_from: sessionIdSchema.optional(),
 })

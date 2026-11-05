@@ -7,8 +7,8 @@ import { ConsultationModeSchema } from "../packages/consultation-core/src/enums.
 /**
  * Cross-layer mode consistency: the Zod schema, the always-on consultant
  * prompt, and the generated skill must agree on the public mode list and on
- * each mode's output template. Eval-case coverage (`modes` arrays) is asserted
- * alongside the fixtures in a later phase.
+ * each mode's output template. Eval-case coverage (`modes` arrays) is
+ * asserted alongside the fixtures.
  */
 const REPO_ROOT = join(import.meta.dir, "..")
 const MODES = ["select", "verify", "roadmap", "research", "guide", "doc", "design"] as const

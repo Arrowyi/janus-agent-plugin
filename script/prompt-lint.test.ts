@@ -4,7 +4,7 @@ import { readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 /**
- * Lightweight prompt lint (DR8):
+ * Lightweight prompt lint:
  *  - per-layer word budgets, so a prompt cannot silently absorb workflow detail;
  *  - cross-file duplicate sentences, so the same rule is stated once except for
  *    a small allowlist of intentionally mirrored safety/style lines.
@@ -39,9 +39,7 @@ const FRAGMENT_BUDGET = 500
 // completely; the cross-file duplicate-sentence check still enforces one home
 // per rule.
 const SKILL_MODULE_BUDGET = 3000
-// Per-skill generated-body budgets, measured including front matter. The core
-// drops from the former 9,960-word monolith by moving the heavy design/doc
-// playbooks into their own on-demand skills.
+// Per-skill generated-body budgets, measured including front matter.
 const SKILL_TOTAL_BUDGETS: Record<string, number> = {
   consultation: 8500,
   "consultation-design": 2500,

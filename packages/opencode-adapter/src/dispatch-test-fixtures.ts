@@ -55,6 +55,7 @@ export const validRoleSpecs: Array<{ label: string; role: DispatchRole; record: 
   { label: "coder", role: "coder", record: makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3"] }) },
   { label: "coder-lite", role: "coder-lite", record: makeJobSpec({ role: "coder-lite", agent_name: "coder-lite", model_chain: ["opencode-go/glm-5.3-flash"] }) },
   { label: "consultant", role: "consultant", record: makeJobSpec({ role: "consultant", agent_name: "consultant", model_chain: ["opencode-go/glm-5.3"] }) },
+  { label: "author", role: "author", record: makeJobSpec({ role: "author", agent_name: "author", model_chain: ["opencode-go/gemini-4-argon"] }) },
 ]
 
 export function makeAttemptReservation(overrides: Partial<AttemptReservation> = {}): AttemptReservation {

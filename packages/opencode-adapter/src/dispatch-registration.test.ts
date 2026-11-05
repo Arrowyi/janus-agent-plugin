@@ -212,6 +212,7 @@ describe("unified dispatch registration", () => {
     { role: "common-explorer", field: "common_explorer", agent: "common-explorer", model: "opencode-go/deepseek-v4.1-flash" },
     { role: "coder-reviewer", field: "coder_reviewer", agent: "coder-reviewer", model: "opencode/claude-sonnet-5-5" },
     { role: "author-reviewer", field: "author_reviewer", agent: "author-reviewer", model: "opencode-go/kimi-k3.1-pro" },
+    { role: "author", field: "author", agent: "author", model: "opencode-go/gemini-4-argon" },
     { role: "simple", field: "simple", agent: "simple", model: "opencode-go/deepseek-v4.1-flash" },
   ] as const) {
     for (const custom of [false, true]) {

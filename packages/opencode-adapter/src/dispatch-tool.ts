@@ -34,11 +34,11 @@ import path from "node:path"
 export { splitModel, errorText, isRetryableModelError }
 
 /**
- * The eleven dispatch roles: the shared research floor, the four consultation /
+ * The twelve dispatch roles: the shared research floor, the four consultation /
  * R&D specialists, the documentation executor and its independent reviewer,
- * the two entry delegates (consultant, coder), the economical leaf (simple),
- * and the junior/mid engineer lane (coder-lite). `janus`, `architect`, and `author`
- * are primary entries and are intentionally not dispatchable.
+ * the three entry delegates (consultant, coder, author), the economical leaf
+ * (simple), and the junior/mid engineer lane (coder-lite). `janus` and
+ * `architect` are primary entries and are intentionally not dispatchable.
  */
 export { DISPATCH_ROLES }
 export type { DispatchRole }
@@ -88,6 +88,8 @@ export function resolveRoleTarget(
       return { agentName: config.coder_lite_agent, model: resolveRoleModel(config, "coder-lite", options) }
     case "consultant":
       return { agentName: config.consultant_agent, model: resolveRoleModel(config, "consultant", options) }
+    case "author":
+      return { agentName: config.author_agent, model: resolveRoleModel(config, "author", options) }
   }
 }
 
@@ -100,10 +102,10 @@ export interface DispatchToolDeps {
 /**
  * Build the four consultation job tools with one shared coordinator set.
  *
- * It dispatches ONLY to the eleven dispatchable roles (`consultant`, `coder`,
- * `simple`, `common-explorer`, `consultant-analyst`, `consultant-critic`,
- * `coder-reviewer`, `consultant-auditor`, `author-writer`, `author-reviewer`,
- * `coder-lite`)
+ * It dispatches ONLY to the twelve dispatchable roles (`consultant`, `coder`,
+ * `author`, `simple`, `common-explorer`, `consultant-analyst`,
+ * `consultant-critic`, `coder-reviewer`, `consultant-auditor`,
+ * `author-writer`, `author-reviewer`, `coder-lite`)
  * using the recoverable lifecycle coordinator. `janus_dispatch_continue`
  * reuses an existing dispatch session from the same caller. It is additive:
  * it neither shadows nor interferes with the built-in `task` tool or any
@@ -123,7 +125,7 @@ export function createJanusDispatchTools(
 
   const dispatch = tool({
     description:
-      "Dispatch ONLY to a dispatchable role (consultant, coder, simple, common-explorer, consultant-analyst, consultant-critic, coder-reviewer, consultant-auditor, author-writer, author-reviewer, coder-lite). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Optional mode, tier, and protocol select the model and prepend a methodology card to the first turn. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
+      "Dispatch ONLY to a dispatchable role (consultant, coder, author, simple, common-explorer, consultant-analyst, consultant-critic, coder-reviewer, consultant-auditor, author-writer, author-reviewer, coder-lite). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Optional mode, tier, and protocol select the model and prepend a methodology card to the first turn. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
     args: {
       role: tool.schema.string(),
       prompt: tool.schema.string(),
@@ -160,8 +162,26 @@ export function createJanusDispatchTools(
         coder: config.coder_enabled,
         "coder-lite": config.coder_lite_enabled,
         consultant: true,
+        author: config.author_enabled,
       }
       if (!enabled[role]) return `Error: ${role} is disabled by configuration`
+
+      // Caller DAG guard (author only): a session that is itself a dispatched
+      // sub-session must not dispatch the author team, so primary entries can
+      // delegate documents without author <-> coder recursion. The other
+      // eleven roles keep their existing call trace (no extra session.get).
+      if (role === "author") {
+        const callerResult = await sdk.session.get({
+          path: { id: context.sessionID },
+          query: { directory: context.directory },
+        })
+        if (callerResult.error !== undefined) {
+          return `Error: failed to read caller session: ${context.sessionID} in ${context.directory} (${errorText(callerResult.error)}); retry janus_dispatch`
+        }
+        if (callerResult.data?.title.startsWith(DISPATCH_MARKER)) {
+          return "Error: dispatched session cannot dispatch author; return the documentation request to the primary caller"
+        }
+      }
 
       const { agentName, model } = resolveRoleTarget(config, role, { mode, tier })
       const modelChain: Array<string | null> =
@@ -270,6 +290,7 @@ export function createJanusDispatchTools(
         coder: config.coder_enabled,
         "coder-lite": config.coder_lite_enabled,
         consultant: true,
+        author: config.author_enabled,
       }
       if (!enabled[role]) return `Error: ${role} is disabled by configuration`
 

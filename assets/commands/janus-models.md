@@ -35,7 +35,7 @@ User arguments: $ARGUMENTS
 - `退出` / `exit` / `0`: exit
 - Any other free text: map to the above modes by meaning; ask one question only when genuinely ambiguous
 
-Role names accept both English and Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `审计`=consultant-auditor, `轻量`/`初级`/`机械`=coder-lite, `写作`=author-writer, `审稿`=author-reviewer. The family has 14 registered agents and 11 dispatch roles; `janus`, `architect`, and `author` are primary entries and are not dispatchable.
+Role names accept both English and Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `审计`=consultant-auditor, `轻量`/`初级`/`机械`=coder-lite, `写作`=author-writer, `审稿`=author-reviewer. The family has 14 registered agents and 12 dispatch roles; `janus` and `architect` are primary entries and are not dispatchable, while `author` is a dispatchable primary entry.
 
 ## No-argument flow
 
@@ -127,7 +127,7 @@ Example:
 }
 ```
 
-A configured `writer_delegate_agent` keeps host model selection; mode/tier overrides apply to the bundled author-writer only. `janus`, `architect`, and `author` are primary entries: `mode_models` and `tier_models` apply to dispatched sessions, so set their model with `<role>_model`.
+A configured `writer_delegate_agent` keeps host model selection; mode/tier overrides apply to the bundled author-writer only. `janus` and `architect` are primary entries never reached by dispatch, so set their model with `<role>_model`; `author` stays a primary entry but is dispatchable, so `mode_models` and `tier_models` also apply to its dispatched sessions.
 
 ## Model evaluation
 

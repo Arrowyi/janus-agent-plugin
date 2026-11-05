@@ -39,6 +39,7 @@ describe("modelFailureHint", () => {
     expect(modelFailureHint("coder", "opencode-go/glm-5.3")).toContain('set "coder_model"')
     expect(modelFailureHint("simple", null)).toContain('set "simple_model"')
     expect(modelFailureHint("consultant", null)).toContain('set "consultant_model"')
+    expect(modelFailureHint("author", null)).toContain('set "author_model"')
   })
 
   it("omits the model label when the model is null", () => {

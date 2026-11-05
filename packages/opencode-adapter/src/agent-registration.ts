@@ -147,8 +147,7 @@ interface AllModeAgentEntry {
 /**
  * Resolve simple's pre-approved writable workspace directory:
  * `simple_workspace_dir` > `$XDG_DATA_HOME/janus-agent/lite` >
- * `$HOME/.local/share/janus-agent/lite`. The directory name stays `lite` so an
- * existing workspace directory survives the rename.
+ * `$HOME/.local/share/janus-agent/lite`.
  */
 export function resolveSimpleWorkspaceDir(
   pluginConfig: JanusPluginConfig,
@@ -388,6 +387,9 @@ export function buildCoderRuntimeBindings(
     ? `- Independent reviewer: \`${pluginConfig.coder_reviewer_agent}\` (\`${resolveRoleModel(pluginConfig, "coder-reviewer")}\`) with \`protocol: "code_plan_review"\` for the plan.md and the implemented git diff`
     : "- Independent reviewer: coder-reviewer DISABLED by configuration"
   const architectLine = `- Escalation path: if investigation or discussion shows the task needs new research or a cross-module architecture change, stop and hand it to the \`architect\` primary entry (user-facing handoff; architect is not dispatchable).`
+  const authorLine = pluginConfig.author_enabled
+    ? `- Documentation handoff: \`author\` (\`${pluginConfig.author_agent}\`) — delegate substantial documentation with \`janus_dispatch\` (\`role: "author"\`, \`return_handle: true\`); keep code-adjacent syncs (AGENTS.md, ≤2-edit doc updates) inline or in your own lane`
+    : "- Documentation handoff: author DISABLED by configuration"
   const designLine = `- Design record: \`${design.designStateDir}/${design.projectId}\` — read \`design.md\` and write \`plan.md\` there; you never edit its decision content — the one line you may write is its lifecycle line, flipped to \`implemented\` under the conditions in your prompt`
   const lines = [
     modelLine,
@@ -396,6 +398,7 @@ export function buildCoderRuntimeBindings(
     explorerLine,
     reviewerLine,
     architectLine,
+    authorLine,
     designLine,
     ...handoffBindingLines(handoff),
     DISPATCH_JOB_TOOLS_LINE,
@@ -568,7 +571,7 @@ export function buildJanusRuntimeBindings(
     ? `- \`architect\` (agent \`${pluginConfig.architect_agent}\`, \`${resolveRoleModel(pluginConfig, "architect")}\`) — architecture and system design from a one-sentence requirement; a primary entry the user selects (not dispatchable)`
     : "- Architecture entry: architect DISABLED by configuration"
   const authorLine = pluginConfig.author_enabled
-    ? `- \`author\` (agent \`${pluginConfig.author_agent}\`, \`${resolveRoleModel(pluginConfig, "author")}\`) — tutorials, courses, architecture write-ups, durable documents; a primary entry the user selects (not dispatchable)`
+    ? `- \`author\` (agent \`${pluginConfig.author_agent}\`, \`${resolveRoleModel(pluginConfig, "author")}\`) — tutorials, courses, architecture write-ups, durable documents; dispatch via \`janus_dispatch\` (role="author") or let the user switch to the entry directly`
     : "- Documentation entry: author DISABLED by configuration"
 
   const dispatchLine = DISPATCH_JOB_TOOLS_LINE
@@ -920,6 +923,8 @@ async function registerReadOnlySubagent(
     pluginConfig: JanusPluginConfig
     /** Extra principle fragments appended after the research-leaf fragment. */
     extraFragments?: readonly string[]
+    /** Extra permission rules merged after the read-only leaf denies. */
+    extraPermissions?: Record<string, unknown>
   },
 ): Promise<void> {
   if (config.agent?.[options.name]) return
@@ -935,7 +940,7 @@ async function registerReadOnlySubagent(
     description: options.description,
     prompt,
     model: options.model,
-    permission: { edit: "deny", bash: "deny", task: "deny", ...LEAF_DISPATCH_DENY },
+    permission: { edit: "deny", bash: "deny", task: "deny", ...LEAF_DISPATCH_DENY, ...(options.extraPermissions ?? {}) },
   }
 
   if (!config.agent) config.agent = {}
@@ -984,9 +989,17 @@ export async function registerConsultantCritic(
   })
 }
 
+/**
+ * Register the `coder-reviewer` read-only subagent. Beyond the shared
+ * read-only leaf permission it gains read access to the design state
+ * directory so background review sessions can open `design.md` and
+ * `plan.md` without tripping the host's external-directory permission
+ * prompt (which would hang an unattended dispatch).
+ */
 export async function registerCoderReviewer(
   config: MutableConfig,
   pluginConfig: JanusPluginConfig,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   await registerReadOnlySubagent(config, {
     name: pluginConfig.coder_reviewer_agent,
@@ -995,6 +1008,7 @@ export async function registerCoderReviewer(
     model: resolveRoleModel(pluginConfig, "coder-reviewer"),
     pluginConfig,
     extraFragments: [ENGINEERING_PRINCIPLES_ASSET],
+    extraPermissions: { external_directory: { [`${resolveDesignStateDir(env)}/**`]: "allow" } },
   })
 }
 
@@ -1101,12 +1115,12 @@ export function buildAuthorWriterRuntimeBindings(
 
   const modeLine =
     roots.length > 0
-      ? "- Write mode: `scoped` — write only exact approved document files under the writable roots; every other path is denied"
+      ? "- Write mode: `scoped` — write only exact approved document files under the writable roots (when a task packet sets `writeMode: \"read-only\"` for an approved path outside the roots, make no file writes and return the prose or patch for the author to publish)"
       : "- Write mode: `read-only` — no file writes; return the full prose or a patch; the author publishes it"
 
   const rootsLine =
     roots.length > 0
-      ? `- Writable roots (\`writer_docs_roots\`): ${roots.map((root) => `\`${root}\``).join(", ")} — only approved document files under these roots; never source, config, README, or AGENTS files`
+      ? `- Writable roots (\`writer_docs_roots\`): ${roots.map((root) => `\`${root}\``).join(", ")} — only approved document files under these roots; never source, config, or AGENTS files`
       : "- Writable roots (`writer_docs_roots`): none — the roots array is empty, so the writer is read-only and the author publishes"
 
   const authorLine = `- Author state dir: \`${authorStateDir}\` — read the brief at the supplied path; never write the brief, the manifest, or memory`
@@ -1276,6 +1290,10 @@ export function buildArchitectRuntimeBindings(
     ? `- Implementation handoff: \`coder\` (\`${pluginConfig.coder_agent}\`) — dispatch an accepted design.md into a clean sub-session (\`return_handle: true\`) and continue that same session when a decision returns`
     : "- Implementation handoff: coder DISABLED by configuration"
 
+  const authorLine = pluginConfig.author_enabled
+    ? `- Documentation handoff: \`author\` (\`${pluginConfig.author_agent}\`) — dispatch substantial documentation (\`janus_dispatch\` with \`role: "author"\`, \`return_handle: true\`) and continue that session; the user may also switch to the entry directly`
+    : "- Documentation handoff: author DISABLED by configuration"
+
   const simpleLine = pluginConfig.simple_enabled
     ? `- Economical leaf: \`${pluginConfig.simple_agent}\` (\`${resolveRoleModel(pluginConfig, "simple")}\`) for bounded quick-answer tasks`
     : "- Economical leaf: simple DISABLED by configuration"
@@ -1293,6 +1311,7 @@ export function buildArchitectRuntimeBindings(
     modelLine,
     teamLine,
     coderLine,
+    authorLine,
     simpleLine,
     designLine,
     ...handoffBindingLines(handoff),
@@ -1425,10 +1444,12 @@ export function buildAuthorRuntimeBindings(
 
 /**
  * Register the `author` primary agent: the documentation team's editor. It is
- * user-selectable and not dispatchable, owns the author-brief directory,
- * reads the design-record directory as reference, shares the handoff
- * directory with the other primary entries, and never writes reader-facing
- * prose itself. A pre-existing user-defined entry is left untouched.
+ * user-selectable and dispatchable as `role: "author"` (guarded so a
+ * dispatched sub-session cannot dispatch it), owns the author-brief
+ * directory, reads the design-record directory as reference, shares the
+ * handoff directory with the other primary entries, and never writes
+ * reader-facing prose itself. A pre-existing user-defined entry is left
+ * untouched.
  */
 export async function registerAuthor(
   config: MutableConfig,

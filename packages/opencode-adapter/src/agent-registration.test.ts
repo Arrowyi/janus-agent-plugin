@@ -287,6 +287,8 @@ describe("buildArchitectRuntimeBindings", () => {
     expect(block).toContain("consultant-analyst")
     expect(block).toContain("consultant-auditor")
     expect(block).toContain("Implementation handoff: `coder`")
+    expect(block).toContain("Documentation handoff: `author`")
+    expect(block).toContain('`role: "author"`')
     expect(block).toContain("dispatch an accepted design.md into a clean sub-session")
     expect(block).toContain("continue that same session when a decision returns")
     expect(block).toContain("Economical leaf: `simple`")
@@ -324,6 +326,17 @@ describe("buildArchitectRuntimeBindings", () => {
 
     // then
     expect(block).toContain("Implementation handoff: coder DISABLED by configuration")
+  })
+
+  it("says the documentation handoff is DISABLED when author is disabled", () => {
+    // given
+    const config = makeConfig({ author_enabled: false })
+
+    // when
+    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING, HANDOFF_BINDING)
+
+    // then
+    expect(block).toContain("Documentation handoff: author DISABLED by configuration")
   })
 
   it("reports the memory-disabled variant and namespace", () => {
@@ -424,6 +437,7 @@ describe("buildCoderRuntimeBindings", () => {
     )
     expect(block).toContain("Research floor: `common-explorer`")
     expect(block).toContain("Independent reviewer: `coder-reviewer`")
+    expect(block).toContain("Documentation handoff: `author`")
     expect(block).toContain('protocol: "code_plan_review"')
     expect(block).toContain("hand it to the `architect`")
     expect(block).toContain("Design record: `/xdg/data/janus-agent/design/my-project-a1b2c3d4`")
@@ -436,9 +450,9 @@ describe("buildCoderRuntimeBindings", () => {
     expect(block).not.toContain("Memory namespace")
   })
 
-  it("reports disabled research and review lanes", () => {
+  it("reports disabled research, review, and documentation lanes", () => {
     // given
-    const config = makeConfig({ common_explorer_enabled: false, coder_reviewer_enabled: false })
+    const config = makeConfig({ common_explorer_enabled: false, coder_reviewer_enabled: false, author_enabled: false })
 
     // when
     const block = buildCoderRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
@@ -446,6 +460,7 @@ describe("buildCoderRuntimeBindings", () => {
     // then
     expect(block).toContain("Research floor: common-explorer DISABLED by configuration")
     expect(block).toContain("Independent reviewer: coder-reviewer DISABLED by configuration")
+    expect(block).toContain("Documentation handoff: author DISABLED by configuration")
   })
 })
 
@@ -988,9 +1003,9 @@ describe("registerConsultantAnalyst", () => {
 })
 
 describe("registerCoderReviewer", () => {
-  it("registers the coder-reviewer subagent with a leaf permission", async () => {
+  it("registers the coder-reviewer subagent with a leaf permission plus design-dir read access", async () => {
     const config: { agent?: Record<string, unknown> } = {}
-    await registerCoderReviewer(config, makeConfig())
+    await registerCoderReviewer(config, makeConfig(), { HOME: "/home/test-user" } as NodeJS.ProcessEnv)
     expect(config.agent?.["coder-reviewer"]).toMatchObject({
       mode: "subagent",
       model: "opencode/claude-sonnet-5-5",
@@ -998,8 +1013,22 @@ describe("registerCoderReviewer", () => {
         edit: "deny", bash: "deny", task: "deny",
         janus_dispatch: "deny", janus_dispatch_wait: "deny",
         janus_dispatch_cancel: "deny", janus_dispatch_continue: "deny",
+        external_directory: { "/home/test-user/.local/share/janus-agent/design/**": "allow" },
       },
     })
+  })
+
+  it("keeps the other read-only subagents free of external_directory grants", async () => {
+    const config: { agent?: Record<string, unknown> } = {}
+    await registerCommonExplorer(config, makeConfig())
+    await registerConsultantAnalyst(config, makeConfig())
+    await registerConsultantCritic(config, makeConfig())
+    await registerConsultantAuditor(config, makeConfig())
+    for (const name of ["common-explorer", "consultant-analyst", "consultant-critic", "consultant-auditor"]) {
+      const permission = (config.agent?.[name] as { permission: Record<string, unknown> }).permission
+      expect(permission.external_directory).toBeUndefined()
+      expect(permission.edit).toBe("deny")
+    }
   })
 })
 
@@ -1115,6 +1144,10 @@ describe("buildAuthorWriterRuntimeBindings", () => {
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
     expect(block).toContain("Author-writer model: `opencode/claude-sonnet-5-5`")
     expect(block).toContain("Write mode: `scoped`")
+    expect(block).toContain('`writeMode: "read-only"`')
+    expect(block).toContain("return the prose or patch for the author to publish")
+    expect(block).toContain("never source, config, or AGENTS files")
+    expect(block).not.toContain("never source, config, README, or AGENTS files")
     expect(block).toContain("`docs/guides`")
     expect(block).toContain(`Author state dir: \`${authorDir}\``)
     expect(block).toContain("never write the brief")
@@ -2173,6 +2206,7 @@ describe("buildJanusRuntimeBindings", () => {
     expect(block).toContain("`coder` (agent `coder`, `opencode-go/glm-5.3`)")
     expect(block).toContain("`architect` (agent `architect`, `opencode-go/gemini-4-argon`)")
     expect(block).toContain("`author` (agent `author`, `opencode-go/gemini-4-argon`)")
+    expect(block).toContain('dispatch via `janus_dispatch` (role="author")')
     expect(block).toContain("not dispatchable")
     expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
     expect(block).toContain("Handoff discipline")
@@ -2740,7 +2774,8 @@ describe("model-prompt blocks are model-property only", () => {
     expect(janus).toContain("a system-design decision goes to `architect`")
     expect(janus).toContain("implementation goes to `coder`")
     expect(janus).toContain("a read-only question about an existing document")
-    expect(janus).toContain("`architect` and `author` are deliberately absent from this tool")
+    expect(janus).toContain("`architect` is deliberately absent from this tool")
+    expect(janus).toContain("`author` is the one primary entry you can dispatch")
     expect(lite).toContain("read-only document Q&A")
   })
 

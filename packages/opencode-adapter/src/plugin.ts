@@ -87,7 +87,7 @@ export function createJanusConfigHook(
     }
 
     if (pluginConfig.coder_reviewer_enabled) {
-      await registerCoderReviewer(config, pluginConfig)
+      await registerCoderReviewer(config, pluginConfig, env)
     }
 
     if (pluginConfig.consultant_auditor_enabled) {

@@ -205,6 +205,36 @@ describe("agent prompt contracts", () => {
     expect(author).not.toContain("coder-reviewer")
   })
 
+  it("author carries the dispatched-mode contract and the per-unit writeMode order", async () => {
+    const author = await readAgentPrompt("author.md")
+    const writer = await readAgentPrompt("author-writer.md")
+
+    // dispatched mode (design D2.3)
+    expect(author).toContain("## Dispatched mode")
+    expect(author).toContain("user-confirmed `Confirmed paths` counts as passed outline and file-confirmation gates")
+    expect(author).toContain("return the proposed outline and exact file list to the dispatcher first")
+    expect(author).toContain("`L0 (ephemeral verification)`")
+    expect(author).toContain("Memory ownership: author saves")
+    // per-unit writeMode and the apply-before-review order (design D2.1/D2.2)
+    expect(author).toContain("Every `author-writer` dispatch unit carries a single `writeMode`")
+    expect(author).toContain("Write the returned text verbatim into the confirmed file first")
+    expect(author).toContain("run the review gate against the file on disk")
+    expect(author).toContain("mark the change `published` in the brief only after the ledger check and review pass")
+    expect(writer).toContain("Each task packet carries one `writeMode`")
+    expect(writer).toContain("mixed lists split into separate packets")
+  })
+
+  it("architect and coder carry the documentation delegation threshold", async () => {
+    const architect = await readAgentPrompt("architect.md")
+    const coder = await readAgentPrompt("coder.md")
+
+    expect(architect).toContain("documentation handoff: dispatch new reader-facing documents or ≥3-edit document rewrites")
+    expect(architect).toContain("≤2-edit document syncs stay with `coder`")
+    expect(coder).toContain("documentation lane: hand new reader-facing documents and ≥3-edit document rewrites to the author team")
+    expect(coder).toContain("keep `AGENTS.md` edits and ≤2-edit document syncs")
+    expect(coder).toContain("never edit a document file concurrently with a running author dispatch")
+  })
+
   it("author-writer carries the code-graph navigation rule and the briefWaived guard without the moved term rule", async () => {
     const writer = await readAgentPrompt("author-writer.md")
 
@@ -232,6 +262,9 @@ describe("agent prompt contracts", () => {
     expect(docSkill).toContain("at most two edits")
     expect(docSkill).toContain("Diff checklist")
     expect(docSkill).not.toContain("coder-reviewer")
+    // the delegation-threshold SSOT lives here
+    expect(docSkill).toContain("Delegation threshold (authoritative here")
+    expect(docSkill).toContain("route to the `author` team, dispatchable as `role: \"author\"`")
     // the consultation core keeps the doc summary in sync with the gate
     expect(coreSkill).toContain("`author-reviewer` gate")
     // team orchestration names the reviewer handoff
@@ -534,11 +567,12 @@ describe("agent prompt contracts", () => {
     expect(skill).toContain("Every other line of the record stays the architect's")
   })
 
-  it("janus and writer route repository maintenance files to the coder", async () => {
+  it("janus and writer route code-adjacent maintenance to the coder", async () => {
     const janus = await readAgentPrompt("janus.md")
     const writer = await readAgentPrompt("author-writer.md")
 
-    expect(janus).toContain("README/AGENTS maintenance")
+    expect(janus).toContain("`AGENTS.md` maintenance")
+    expect(janus).toContain("≤2-edit document syncs")
     expect(writer).toContain("those changes route to `coder`")
     expect(writer).toContain("do not teach from survivors only")
   })

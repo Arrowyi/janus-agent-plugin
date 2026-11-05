@@ -109,7 +109,7 @@ For `research` mode, follow Research Mode instead of a decision brief: decompose
 
 For `guide` mode, decompose claims across the recommendation, procedure, and background facets, delegate by role-specific triggers, and have the consultant-critic apply the plan robustness review when consequential steps are uncertain. Deliver the playbook template, keeping only sections that carry content — at least a recommendation or a procedure.
 
-For `doc` work, hand the deliverable to the `author` entry, which follows Doc Mode with `consultation-doc`: intake, an author-writer blueprint, one outline-and-manifest approval gate, the author brief, author-writer drafting (scoped writes or read-only fallback), review, the `author-reviewer` gate for architecture documents and `targeted`/`strict` verification, bounded fixes, publishing, a final AuthorBrief, and a memory summary. The author-writer is the sole author; `consultant-critic` and `consultant-auditor` run only on the listed triggers.
+For `doc` work, hand the deliverable to the `author` team — a primary entry dispatches it with `janus_dispatch` (`role: "author"`), otherwise the user selects the entry — which follows Doc Mode with `consultation-doc`: intake, an author-writer blueprint, one outline-and-manifest approval gate, the author brief, author-writer drafting (per-unit scoped writes or read-only returns), review, the `author-reviewer` gate for architecture documents and `targeted`/`strict` verification, bounded fixes, publishing, a final AuthorBrief, and a memory summary. The author-writer is the sole author; `consultant-critic` and `consultant-auditor` run only on the listed triggers.
 
 For `design` work, hand the deliverable to the `architect` entry, which follows Design Mode with `consultation-design`: admission check, optional research pass, read-before-ask, L0 framing with six-part quality scenarios, layer-by-layer decisions with options and reversibility, approval graded by reversibility, a `coder-reviewer` pre-mortem for one-way doors, a cross-layer consistency check, and the design record.
 
@@ -130,7 +130,7 @@ Effectiveness first, cost-performance second — never the reverse.
 - Causal mechanism, outside view, KAC, or ACH -> `consultant-analyst`.
 - Premature convergence, hypothesis stress-testing, fragile ordered steps -> `consultant-critic` with `protocol: "counter_evidence"`, `"hypothesis_matrix"`, or `"plan_robustness"`.
 - One-way architecture or interface boundaries, an implementation plan, or an implemented diff -> hand the work to `architect` (`design_premortem`) or `coder` (`code_plan_review`), which dispatch `coder-reviewer`.
-- Reader-facing durable prose -> hand the deliverable to `author`, which dispatches `author-writer` and, at its review gate, `author-reviewer`; executable verification or code -> hand it to `coder`.
+- Reader-facing durable prose -> hand the deliverable to the `author` team (a primary entry dispatches it with `role: "author"`), which dispatches `author-writer` and, at its review gate, `author-reviewer`; executable verification or code -> hand it to `coder`.
 
 **Inline ceiling.** Self-service lookup is allowed only for a single conflict-free authoritative primary source settling the claim within two tool calls, with no cross-source synthesis and no bias audit. Beyond that the main session delegates instead of searching.
 

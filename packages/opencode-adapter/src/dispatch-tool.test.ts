@@ -124,6 +124,7 @@ describe("resolveRoleTarget", () => {
       simple: { agentName: "simple", model: "opencode-go/deepseek-v4.1-flash" },
       "coder-lite": { agentName: "coder-lite", model: "opencode-go/glm-5.3-flash" },
       consultant: { agentName: "consultant", model: "opencode-go/gemini-4-argon" },
+      author: { agentName: "author", model: "opencode-go/gemini-4-argon" },
     } as const
     for (const [role, target] of Object.entries(expected)) {
       expect(resolveRoleTarget(config(), role as keyof typeof expected)).toEqual(target)
@@ -534,6 +535,124 @@ describe("createJanusDispatchTool", () => {
     await dispatchTool.execute({ role: "author-writer", prompt: "draft", return_handle: true }, fakeContext())
 
     expect(captured[0]!.returnHandle).toBe(true)
+  })
+
+  it("blocks author dispatch from a dispatched sub-session with no launch", async () => {
+    // given — a caller session whose title marks it as a dispatched sub-session
+    const fake = createRespondingFake("author prose")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const marked = await fake.session.create({
+      body: { title: "[consultation-dispatch:v1] coder" },
+      query: { directory: "/tmp/project" },
+    })
+
+    // when — the dispatched sub-session tries to delegate documentation
+    const result = await tools.janus_dispatch.execute(
+      { role: "author", prompt: "write the tutorial" },
+      fakeContext({ sessionID: marked.data!.id }),
+    )
+
+    // then — the DAG guard rejects before any job session is created
+    expect(result).toBe("Error: dispatched session cannot dispatch author; return the documentation request to the primary caller")
+    expect(promptAsyncCount(fake)).toBe(0)
+    const creates = fake.calls.filter((c) => (c as { method: string }).method === "create")
+    expect(creates).toHaveLength(1) // only the seeded marked session
+  })
+
+  it("returns a retryable error when the caller session read fails", async () => {
+    // given — the guard's caller read fails at the transport layer
+    const fake = createRespondingFake("author prose")
+    fake.setGetResult({ error: { name: "APIError", data: { statusCode: 503 } } })
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute({ role: "author", prompt: "write the tutorial" }, fakeContext())
+
+    // then — a retryable error, no job session, no prompt
+    expect(result).toContain("failed to read caller session:")
+    expect(result).toContain("ses_parent")
+    expect(result).toContain("/tmp/project")
+    expect(result).toContain("APIError: 503")
+    expect(result).toContain("retry janus_dispatch")
+    expect(promptAsyncCount(fake)).toBe(0)
+    expect(fake.calls.filter((c) => (c as { method: string }).method === "create")).toHaveLength(0)
+  })
+
+  it("dispatches author from a top-level session with exactly one caller read", async () => {
+    // given — the caller session is unknown to the SDK: no error, no title
+    const fake = createRespondingFake("author prose")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute({ role: "author", prompt: "write the tutorial" }, fakeContext())
+
+    // then — the guard reads the caller once and the launch proceeds normally
+    expect(result).toBe("author prose")
+    expect(promptAsyncCount(fake)).toBe(1)
+    expect(fake.calls.filter((c) => (c as { method: string }).method === "get")).toHaveLength(1)
+    const prompt = lastPromptAsyncCall(fake)
+    expect(prompt.input.body.agent).toBe("author")
+    expect(prompt.input.body.model).toEqual({ providerID: "opencode-go", modelID: "gemini-4-argon" })
+  })
+
+  it("makes no caller session read for non-author roles", async () => {
+    // given
+    const fake = createRespondingFake("the analyst result")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute({ role: "consultant-analyst", prompt: "analyze claims" }, fakeContext())
+
+    // then — the existing call trace is unchanged: zero session.get calls
+    expect(result).toBe("the analyst result")
+    expect(fake.calls.filter((c) => (c as { method: string }).method === "get")).toHaveLength(0)
+  })
+
+  it("lets a dispatched sub-session dispatch non-author roles", async () => {
+    // given — the legal edges out of a marked session
+    const fake = createRespondingFake("specialist done")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const marked = await fake.session.create({
+      body: { title: "[consultation-dispatch:v1] coder" },
+      query: { directory: "/tmp/project" },
+    })
+
+    for (const role of ["coder", "author-writer", "author-reviewer"] as const) {
+      // when
+      const result = await tools.janus_dispatch.execute({ role, prompt: "bounded task" }, fakeContext({ sessionID: marked.data!.id }))
+
+      // then — only the author dispatch is guarded
+      expect(result).toBe("specialist done")
+    }
+    expect(promptAsyncCount(fake)).toBe(3)
+  })
+
+  it("rejects author dispatch and continuation when author is disabled", async () => {
+    // given — an enabled dispatch captures a reusable author session
+    const fake = createRespondingFake("author prose")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const launched = await tools.janus_dispatch.execute(
+      { role: "author", prompt: "write the tutorial", return_handle: true },
+      fakeContext(),
+    )
+    const parsed = parseOutcomeEnvelope(outputText(launched))
+    if (!parsed.ok || parsed.value.status !== "completed") {
+      throw new Error(`expected completed envelope: ${outputText(launched)}`)
+    }
+
+    // when — the user disables author afterwards
+    writeFileSync(configPath, JSON.stringify({ author_enabled: false }))
+    const before = promptAsyncCount(fake)
+    const dispatch = await tools.janus_dispatch.execute({ role: "author", prompt: "write another tutorial" }, fakeContext())
+    const continued = await tools.janus_dispatch_continue.execute(
+      { session_id: parsed.value.session_id, prompt: "revise the tutorial" },
+      fakeContext(),
+    )
+
+    // then — both surfaces reject with no new prompts
+    expect(dispatch).toBe("Error: author is disabled by configuration")
+    expect(continued).toBe("Error: author is disabled by configuration")
+    expect(promptAsyncCount(fake)).toBe(before)
   })
 })
 

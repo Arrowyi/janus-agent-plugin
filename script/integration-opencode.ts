@@ -271,6 +271,19 @@ async function main(): Promise<void> {
               reviewerPermission?.["websearch"] === "deny",
             detail: `author=${reviewerExternal?.[`${authorStateDir}/**`]} design=${reviewerExternal?.[`${designStateDir}/**`]} edit=${reviewerPermission?.["edit"]} bash=${reviewerPermission?.["bash"]}`,
           })
+          const coderReviewerExternal = readAgentPermission(json, "coder-reviewer")?.["external_directory"] as
+            | Record<string, string>
+            | undefined
+          const coderReviewerPermission = readAgentPermission(json, "coder-reviewer")
+          assertions.push({
+            name: "coder-reviewer grants read-only external access to the design state dir",
+            pass:
+              coderReviewerExternal?.[`${designStateDir}/**`] === "allow" &&
+              coderReviewerPermission?.["edit"] === "deny" &&
+              coderReviewerPermission?.["bash"] === "deny" &&
+              coderReviewerPermission?.["task"] === "deny",
+            detail: `design=${coderReviewerExternal?.[`${designStateDir}/**`]} edit=${coderReviewerPermission?.["edit"]} bash=${coderReviewerPermission?.["bash"]} task=${coderReviewerPermission?.["task"]}`,
+          })
           assertions.push({
             name: "design state directory created",
             pass: existsSync(designStateDir),

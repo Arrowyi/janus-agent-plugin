@@ -170,7 +170,7 @@ export const JanusPluginConfigSchema = z
 export type JanusPluginConfig = z.infer<typeof JanusPluginConfigSchema>
 
 // Shipped defaults, tuned for an OpenCode Go Plus subscription plus the small
-// Zen pay-per-use spend the review/audit seats need (2026-11-02).
+// Zen pay-per-use spend the review/audit seats need.
 //
 // Pool economics: `deepseek-v4.1-flash`, `glm-5.3`, `glm-5.3-flash`,
 // `gemini-4-argon`, `kimi-k3.1-pro`, and `grok-4.7` all route through
@@ -247,8 +247,7 @@ export interface RoleModelOptions {
 /**
  * The user's explicitly configured scalar model for a role, or undefined when
  * the user configured nothing. Architect and author also inherit an explicitly
- * configured consultant model so an upgrade does not silently downgrade the
- * users who tuned it.
+ * configured consultant model.
  */
 function resolveUserScalarRoleModel(
   config: JanusPluginConfig,

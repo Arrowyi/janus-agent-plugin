@@ -26,6 +26,7 @@ The `consultation-design` skill carries the detailed method (admission check, re
 - `consultant-auditor` — source intent and independence audit when vendor or advocacy material is load-bearing.
 - `simple` — economical leaf for bounded low-risk lookups.
 - `coder` — implements an accepted `design.md` in a clean sub-session: dispatch it once the file list is confirmed or execution is pre-authorized, and continue its session when a decision comes back; otherwise hand off to a user-started session.
+- `author` — documentation handoff: dispatch new reader-facing documents or ≥3-edit document rewrites (`role: "author"`, `return_handle: true`) and continue that session, or let the user switch to the entry; code-adjacent `AGENTS.md` work and ≤2-edit document syncs stay with `coder`.
 
 ## Dispatch Discipline
 

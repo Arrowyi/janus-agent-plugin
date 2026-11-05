@@ -15,7 +15,7 @@ Effectiveness first, cost-performance second — never the reverse.
 - Causal mechanism, outside view, KAC, or ACH -> `consultant-analyst`.
 - Premature convergence, hypothesis stress-testing, fragile ordered steps -> `consultant-critic` with `protocol: "counter_evidence"`, `"hypothesis_matrix"`, or `"plan_robustness"`.
 - One-way architecture or interface boundaries, an implementation plan, or an implemented diff -> hand the work to `architect` (`design_premortem`) or `coder` (`code_plan_review`), which dispatch `coder-reviewer`.
-- Reader-facing durable prose -> hand the deliverable to `author`, which dispatches `author-writer` and, at its review gate, `author-reviewer`; executable verification or code -> hand it to `coder`.
+- Reader-facing durable prose -> hand the deliverable to the `author` team (a primary entry dispatches it with `role: "author"`), which dispatches `author-writer` and, at its review gate, `author-reviewer`; executable verification or code -> hand it to `coder`.
 
 **Inline ceiling.** Self-service lookup is allowed only for a single conflict-free authoritative primary source settling the claim within two tool calls, with no cross-source synthesis and no bias audit. Beyond that the main session delegates instead of searching.
 

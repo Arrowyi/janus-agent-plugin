@@ -263,6 +263,38 @@ describe("createJanusConfigHook", () => {
     }
   })
 
+  it("registers the coder-reviewer with design-dir read access and the leaf denies intact", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    process.env.HOME = tmpHome
+    delete process.env.JANUS_CONFIG
+    delete process.env.XDG_CONFIG_HOME
+    delete process.env.XDG_DATA_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
+
+    try {
+      // when
+      await hook(config)
+
+      // then
+      const reviewer = config.agent?.["coder-reviewer"] as {
+        permission: Record<string, unknown>
+      }
+      expect(reviewer.permission.edit).toBe("deny")
+      expect(reviewer.permission.bash).toBe("deny")
+      expect(reviewer.permission.task).toBe("deny")
+      expect(reviewer.permission.janus_dispatch).toBe("deny")
+      const designDir = join(tmpHome, ".local", "share", "janus-agent", "design")
+      const external = reviewer.permission.external_directory as Record<string, string>
+      expect(external[`${designDir}/**`]).toBe("allow")
+    } finally {
+      delete process.env.XDG_DATA_HOME
+      rmSync(tmpHome, { recursive: true, force: true })
+    }
+  })
+
   it("scopes the author-writer permission to writer_docs_roots from the plugin config", async () => {
     // given
     const tmpHome = makeTempHome()

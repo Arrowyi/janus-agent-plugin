@@ -6,10 +6,12 @@ import {
   EpistemicStatusSchema,
   SourceGradeSchema,
   TierSchema,
+  type SourceGrade,
   type Tier,
 } from "./enums.ts"
 import { DecomposedClaimSchema } from "./research-contracts.ts"
-import { GradedSourceSchema } from "./research-contracts.ts"
+import { GradedSourceSchema, type GradedSource } from "./research-contracts.ts"
+import { gradeSource } from "./source-grading.ts"
 
 export const TeamRoleSchema = z.enum([
   "common_explorer",
@@ -59,26 +61,135 @@ export function tierRoleCaps(tier: Tier): RoleCaps {
 // Advisory only. The consultant watches usage and converges when approaching.
 export const COST_GUARD_PROVIDER_USD = 10
 
-export const ExplorerReportSchema = z.object({
-  claims: z
-    .array(
-      z.object({
-        claimId: z.string(),
-        findings: z.string(),
-        sources: z.array(GradedSourceSchema),
-        coverage: z
-          .object({
-            queries: z.array(z.string()).default([]),
-            channels: z.array(z.string()).default([]),
-            blocked: z.array(z.string()).default([]),
-            selectionFrame: z.array(z.string()).default([]),
-          })
-          .optional(),
-        gaps: z.array(z.string()).default([]),
-      }),
-    )
-    .min(1),
+export const ExplorerClaimReportSchema = z.object({
+  claimId: z.string(),
+  findings: z.string(),
+  sources: z.array(GradedSourceSchema),
+  coverage: z
+    .object({
+      queries: z.array(z.string()).default([]),
+      channels: z.array(z.string()).default([]),
+      blocked: z.array(z.string()).default([]),
+      selectionFrame: z.array(z.string()).default([]),
+    })
+    .optional(),
+  gaps: z.array(z.string()).default([]),
 })
+
+export const CandidateAttributeValueSchema = z
+  .object({
+    value: z.string().min(1),
+    sourceIds: z.array(z.string().min(1)).default([]),
+  })
+  .refine((attr) => attr.value === "unknown" || attr.sourceIds.length > 0, {
+    message: "non-unknown candidate attributes must cite at least one sourceId",
+    path: ["sourceIds"],
+  })
+
+export const CandidateTaxonomyBucketSchema = z.object({
+  bucketId: z.string().min(1),
+  label: z.string().min(1),
+  definingCriteria: z.string().min(1),
+  isEmergingOrNiche: z.boolean().default(false),
+  provisional: z.boolean().default(false),
+  sourceIds: z.array(z.string().min(1)).default([]),
+})
+
+export const DiscoveredCandidateSchema = z.object({
+  candidateId: z.string().min(1),
+  name: z.string().min(1),
+  bucketId: z.string().min(1),
+  attributes: z.record(z.string(), CandidateAttributeValueSchema).default({}),
+  discoveryChannels: z.array(z.string().min(1)).min(1),
+  sourceIds: z.array(z.string().min(1)).min(1),
+  evidenceSparse: z.boolean().default(false),
+  constraintCheck: z
+    .object({
+      passed: z.boolean(),
+      exclusionReason: z.string().optional(),
+      sourceIds: z.array(z.string().min(1)).default([]),
+    })
+    .optional(),
+  notes: z.string().optional(),
+})
+
+export const ExplorerReportBaseSchema = z.object({
+  claims: z.array(ExplorerClaimReportSchema).default([]),
+  sources: z.array(GradedSourceSchema).optional(),
+  candidateTaxonomy: z.array(CandidateTaxonomyBucketSchema).optional(),
+  emergingBucketStatus: z.string().optional(),
+  candidatePool: z.array(DiscoveredCandidateSchema).optional(),
+})
+
+export const ExplorerReportSchema = ExplorerReportBaseSchema.refine(
+  (report) => {
+    const taxonomy = report.candidateTaxonomy
+    const pool = report.candidatePool
+
+    // (a) The report carries claims, or a full discovery payload, or both.
+    const hasDiscovery = (taxonomy ?? []).length > 0 && (pool ?? []).length > 0
+    if (report.claims.length === 0 && !hasDiscovery) return false
+
+    // (b) Legacy claims-only reports carry no discovery contract to check.
+    if (taxonomy === undefined && pool === undefined) return true
+
+    // (c) Top-level sources own their ids; claim-level sources fill gaps only.
+    const sourceMap = new Map<string, GradedSource>()
+    for (const source of report.sources ?? []) sourceMap.set(source.id, source)
+    for (const claim of report.claims) {
+      for (const source of claim.sources) {
+        if (!sourceMap.has(source.id)) sourceMap.set(source.id, source)
+      }
+    }
+
+    // (d) The declared (display) grade may not over-claim the computed grade.
+    const gradeRank: Record<SourceGrade, number> = { lead_only: 0, low: 1, medium: 2, high: 3 }
+    const underCeiling = (id: string): boolean => {
+      const source = sourceMap.get(id)
+      return source !== undefined && gradeRank[source.grade] <= gradeRank[gradeSource(source)]
+    }
+    const referencesCheckOut = (ids: readonly string[]): boolean => ids.every(underCeiling)
+    for (const source of report.sources ?? []) {
+      if (gradeRank[source.grade] > gradeRank[gradeSource(source)]) return false
+    }
+
+    // (e) Taxonomy buckets cite real sources at the required strength.
+    for (const bucket of taxonomy ?? []) {
+      if (!referencesCheckOut(bucket.sourceIds)) return false
+      if (bucket.isEmergingOrNiche) continue
+      const grades = bucket.sourceIds.map((id) => sourceMap.get(id)?.grade)
+      if (!bucket.provisional) {
+        if (!grades.some((g) => g === "high" || g === "medium")) return false
+      } else if (!grades.some((g) => g !== undefined && g !== "lead_only")) {
+        return false
+      }
+    }
+
+    // (f) Pool candidates resolve to real buckets and real, graded sources.
+    const bucketIds = new Set((taxonomy ?? []).map((bucket) => bucket.bucketId))
+    for (const candidate of pool ?? []) {
+      if (!bucketIds.has(candidate.bucketId)) return false
+      if (!referencesCheckOut(candidate.sourceIds)) return false
+      for (const attribute of Object.values(candidate.attributes)) {
+        if (!referencesCheckOut(attribute.sourceIds)) return false
+      }
+      const check = candidate.constraintCheck
+      if (check !== undefined) {
+        if (!referencesCheckOut(check.sourceIds)) return false
+        if (!check.passed) {
+          if (check.exclusionReason === undefined || check.exclusionReason.trim().length === 0) return false
+          const grades = check.sourceIds.map((id) => sourceMap.get(id)?.grade)
+          if (!grades.some((g) => g === "high" || g === "medium")) return false
+        }
+      }
+    }
+    return true
+  },
+  {
+    message:
+      "explorer report must carry claims or a discovery payload with referentially complete, directionally graded sources",
+  },
+)
 export type ExplorerReport = z.infer<typeof ExplorerReportSchema>
 
 export const AnalysisDraftBaseSchema = z.object({

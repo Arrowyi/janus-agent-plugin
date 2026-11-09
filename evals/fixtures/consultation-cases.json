@@ -1059,5 +1059,56 @@
     "grading": "model",
     "modes": [],
     "notes": "Rubric: Inspect the dispatch trace for per-milestone coder-lite jobs, a baseline snapshot before the first dispatch, reconciliation git status/diff after each return, quarantine plus single-continue handling of an out-of-scope change, and the absence of per-milestone coder-reviewer calls; the probe must stay out of plan.md and out of the repo. Deterministic backstop: the two-tier review, baseline artifacts, and ephemeral classification live in assets/agents/coder.md (prompt-contracts.test.ts), and the deny-guarded bash permission, restore protocol, and steps 80 in agent-registration.test.ts."
+  },
+  {
+    "id": "C90",
+    "title": "An open-pool consultation never routes to fast",
+    "given": "A user asks an open-pool select, roadmap, guide, or research question — no small named candidate set, the ask is the best option, plan, guide, or survey — whose base routing inputs would otherwise yield fast (risk=low, hasAuthoritativePrimarySource=true, personalContextDependence=false, synthesisDominated=false, openPool=true).",
+    "when": "routeTier is called with openPool: true",
+    "then": "The returned tier is \"standard\" — the open-pool floor lifts fast and never lowers standard or deep — so the discovery funnel runs with at least the standard quotas.",
+    "grading": "deterministic",
+    "modes": [
+      "select",
+      "roadmap",
+      "guide",
+      "research"
+    ],
+    "notes": "Covered by packages/consultation-core/src/tier-router.test.ts (routeTier open-pool floor)."
+  },
+  {
+    "id": "C91",
+    "title": "An open-pool select runs the four-stage discovery funnel before deep verification",
+    "given": "A user asks which ski resort to choose — an open pool with no named shortlist — in a category where SEO listicles and seeded community posts dominate search results; the runtime caps allow the standard explorer and auditor quotas.",
+    "when": "The consultant runs the open-pool select",
+    "then": "Stage 1 anchors at least three orthogonal mainstream buckets plus one emerging/niche bucket on neutral standards, directories, or censuses (a taxonomy borrowed from an e-commerce category tree is provisional and marked （暂定分类） in the answer); promotional listicles are tagged lead_only and used only as existence leads, never for ranking or elimination; Stage 2 eliminates only on hard-constraint violations confirmed by high or medium sources, and a candidate with an unknown attribute survives to Stage 3 as a must-check; Stage 3 audits finalists that lean on reputation and calibrates negatives by volume; at synthesis any non-unknown attribute without sourceIds is downgraded to unknown.",
+    "grading": "model",
+    "modes": [
+      "select"
+    ],
+    "notes": "Rubric: Inspect the explorer dispatch prompts for taxonomy-plus-pool payloads, the lead_only tagging, and the evidence grades behind every Stage 2 elimination; reject a taxonomy anchored on the listicle itself, an elimination citing a lead_only source, or an unknown-attribute elimination. Deterministic backstop: ExplorerReportSchema's directional grade ceiling and referential integrity (team.test.ts) and the open/closed pool routing (tier-router.test.ts)."
+  },
+  {
+    "id": "C92",
+    "title": "A provisional platform taxonomy and a large pool trigger three-tier disclosure with the external ledger",
+    "given": "The category lacks neutral standards, so the consultant borrows an e-commerce platform's category tree (commercial conflict, transparent method) for provisional buckets; the surviving candidate pool holds more than six entries; the session is a direct user turn with the default host edit permission.",
+    "when": "The consultant synthesizes the answer",
+    "then": "The top anchor stays intact; the body carries the category panorama table (分类维度 | 扫描代表项 | 入围终选 | 排除/降级原因) with at most six bucket rows and （暂定分类） marks; the full ledger is written to <ledgerStateDir>/<projectId>/<consultation_id>.md with the untrusted-web-ledger first line and a generated consultation_id of the form <YYYY-MM-DD>-<topic-slug>-<4位标识>, and the path is linked under 证据与来源（可跳过） and the bottom anchor; ratios in the summary use natural counts (3 of 20), never NN% strings.",
+    "grading": "model",
+    "modes": [
+      "select"
+    ],
+    "notes": "Rubric: Inspect the ledger file's first line and id format, the table shape, and the ratio language; reject an NN% ratio, a ledger written into userdoc/ or the handoff dir, or an overwrite of a different consultation's file. Deterministic backstop: the brief validator rejects NN% in eliminationSummary and caps it at six buckets (decision-brief.test.ts)."
+  },
+  {
+    "id": "C93",
+    "title": "Low injected quotas degrade the funnel in the fixed order without skipping Stage 3",
+    "given": "An open-pool guide runs at standard, but the injected tier and caps lines allow only one common-explorer run and zero consultant-auditor runs; several finalists lean on experience posts and rankings.",
+    "when": "The consultant plans and runs the funnel under those caps",
+    "then": "Stage 3 verification is merged into fewer channel-clustered dispatches, or the Stage 1 session is reused via return_handle plus janus_dispatch_continue with the disclosure Stage 3 核实复用了 Stage 1 检索会话; the funnel shrinks to 2–3 mainstream buckets, a 6–8 pool, and a 3–4 finalist cap, with the constraint disclosed in the evidence strategy; the missing auditor run is disclosed as 独立水军/利益审计未运行（受限于 auditor 配额/开关） and no reputation-dependent finalist receives an unconditional 首选.",
+    "grading": "model",
+    "modes": [
+      "guide"
+    ],
+    "notes": "Rubric: Inspect the dispatch trace for session reuse or clustered verification (never a silent Stage 3 skip), the shrunk-quota disclosure, and the auditor-absence line; reject an unconditional 首选 for a ranking-dependent finalist. Deterministic backstop: the degrade order and its disclosures live in the consultation skill's team-orchestration module (prompt-contracts.test.ts)."
   }
 ]

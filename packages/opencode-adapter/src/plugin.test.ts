@@ -73,6 +73,7 @@ describe("createJanusConfigHook", () => {
       const designDir = join(tmpHome, ".local/share/janus-agent/design")
       const authorDir = join(tmpHome, ".local/share/janus-agent/author")
       const handoffDir = join(tmpHome, ".local/share/janus-agent/handoff")
+      const ledgerDir = join(tmpHome, ".local/share/janus-agent/ledger")
       const projectId = computeProjectId(projectDir)
       const consultant = config.agent?.["consultant"] as { prompt: string; permission: Record<string, unknown> }
       const architect = config.agent?.["architect"] as { prompt: string; permission: Record<string, unknown> }
@@ -89,10 +90,14 @@ describe("createJanusConfigHook", () => {
         expect(entry.prompt).toContain("Handoff wakeup")
       }
 
-      // Consultant keeps only the handoff dir; the other state dirs stay with
-      // their owning teams.
+      // Consultant holds the shared handoff dir plus its own project-scoped
+      // candidate-ledger dir; the other state dirs stay with their owning
+      // teams.
       expect(consultant.permission).toEqual({
-        external_directory: { [`${handoffDir}/**`]: "allow" },
+        external_directory: {
+          [`${handoffDir}/**`]: "allow",
+          [`${ledgerDir}/${projectId}/**`]: "allow",
+        },
       })
       expect(consultant.prompt).not.toContain("Design state dir")
       expect(consultant.prompt).not.toContain("Author state dir")
@@ -120,6 +125,7 @@ describe("createJanusConfigHook", () => {
       expect(existsSync(designDir)).toBe(true)
       expect(existsSync(authorDir)).toBe(true)
       expect(existsSync(handoffDir)).toBe(true)
+      expect(existsSync(join(ledgerDir, projectId))).toBe(true)
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
     }

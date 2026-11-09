@@ -2,7 +2,7 @@
 
 A guide packages an operational path; a future-structure decision is `design`.
 
-**Merged-Wave playbook.** A guide combines option selection, operational procedure, and background, so do not run one wave per facet. Wave 1 merges retrieval for candidate selection with the prerequisites of the procedure: one `common-explorer` pass, plus `consultant-auditor` in the same wave when the selection facet faces promotional or survivorship bias. Wave 2 runs `consultant-critic` with `protocol: "plan_robustness"` over the consequential procedural steps, adding `coder` when the guide needs non-trivial executable examples. Background claims ride along in Wave 1 when one source settles them, and otherwise stay `unverifiable` with the gap named.
+**Merged-Wave playbook.** A guide combines option selection, operational procedure, and background, so do not run one wave per facet. Wave 1 merges retrieval for candidate selection with the prerequisites of the procedure: one `common-explorer` pass, plus `consultant-auditor` in the same wave when the selection facet faces promotional or survivorship bias. When that selection facet is an open pool, the same Wave 1 pass carries candidate discovery — the taxonomy and pool ride along with the procedural prerequisites, under the funnel contract in `## Team Orchestration`. Wave 2 runs `consultant-critic` with `protocol: "plan_robustness"` over the consequential procedural steps, adding `coder` when the guide needs non-trivial executable examples. Background claims ride along in Wave 1 when one source settles them, and otherwise stay `unverifiable` with the gap named.
 
 Short:
 

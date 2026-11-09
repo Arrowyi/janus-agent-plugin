@@ -78,6 +78,7 @@ const DETERMINISTIC_TEST_MAP: Record<string, string[]> = {
     "packages/consultation-core/src/team.test.ts",
     "packages/consultation-core/src/prompt-contracts.test.ts",
   ],
+  C90: ["packages/consultation-core/src/tier-router.test.ts"],
   M1: ["packages/memory-sqlite/src/store.test.ts"],
   M2: ["packages/memory-sqlite/src/store.test.ts"],
   M4: [

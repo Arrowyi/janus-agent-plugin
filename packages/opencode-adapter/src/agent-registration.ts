@@ -207,6 +207,21 @@ export function resolveHandoffStateDir(env: NodeJS.ProcessEnv = process.env): st
 }
 
 /**
+ * Resolve the fixed candidate-ledger state directory:
+ * `$XDG_DATA_HOME/janus-agent/ledger` > `$HOME/.local/share/janus-agent/ledger`.
+ * The consultant writes open-pool candidate ledgers there, one file per
+ * consultation_id, scoped per project.
+ */
+export function resolveLedgerStateDir(env: NodeJS.ProcessEnv = process.env): string {
+  const home = env.HOME !== undefined && env.HOME.length > 0 ? env.HOME : homedir()
+  const dataHome =
+    env.XDG_DATA_HOME !== undefined && env.XDG_DATA_HOME.length > 0
+      ? env.XDG_DATA_HOME
+      : join(home, ".local", "share")
+  return join(dataHome, "janus-agent", "ledger")
+}
+
+/**
  * Compute the stable per-project id used in author brief and design record
  * paths: sanitized project basename + first 8 hex of a sha256 over the
  * resolved absolute directory, e.g. `my-project-a1b2c3d4`. Same directory
@@ -663,6 +678,15 @@ export interface HandoffBinding {
 }
 
 /**
+ * Candidate-ledger binding lines: the fixed ledger state dir and the project
+ * id whose directory holds this project's open-pool candidate ledgers.
+ */
+export interface LedgerBinding {
+  ledgerStateDir: string
+  projectId: string
+}
+
+/**
  * Build the runtime bindings block that the adapter injects into the
  * consultant agent prompt.
  *
@@ -670,13 +694,15 @@ export interface HandoffBinding {
  * MCP server (or DISABLED), its own model, its four team specialists, the
  * simple leaf, the cross-team handoff binding, the dispatch job-tool
  * discipline, the research caps, and the memory namespace. It has no author,
- * writer, coder, or design binding; its only business-state directory is the
- * shared handoff dir.
+ * writer, coder, or design binding; its business-state directories are the
+ * shared handoff dir plus the project-scoped candidate-ledger dir (reported
+ * by the optional `ledger` binding).
  */
 export function buildConsultantRuntimeBindings(
   pluginConfig: JanusPluginConfig,
   namespace: string,
   handoff: HandoffBinding,
+  ledger?: LedgerBinding,
 ): string {
   const memoryLine = pluginConfig.memory_enabled
     ? "- Memory MCP server name: `janus-memory` (tools: memory_recall, memory_expand, memory_prepare, memory_commit, memory_manage)"
@@ -722,6 +748,11 @@ export function buildConsultantRuntimeBindings(
     teamLine,
     simpleLine,
     ...handoffBindingLines(handoff),
+    ...(ledger === undefined
+      ? []
+      : [
+          `- Candidate ledger dir: \`${ledger.ledgerStateDir}/${ledger.projectId}\` — in direct mode this binding pre-confirms writes to \`${ledger.ledgerStateDir}/${ledger.projectId}/<consultation_id>.md\` (create or same-consultation_id overwrite only, never delete); the specific rule beats the general confirmation gate`,
+        ]),
     dispatchLine,
     capsLine,
     tierMatrixLine,
@@ -864,8 +895,9 @@ async function assemblePrompt(options: PromptAssembly): Promise<string> {
  *
  * The consultant owns the consultation team only. It reads
  * `assets/agents/consultant.md`, injects the consultation-team runtime
- * bindings, and holds only the shared handoff directory as business state
- * (author briefs belong to `author`, design records to `architect`). A
+ * bindings, and holds the shared handoff directory plus the project-scoped
+ * candidate-ledger directory as business state (author briefs belong to
+ * `author`, design records to `architect`). A
  * pre-existing user-defined consultant entry is left untouched.
  */
 export async function registerConsultantAgent(
@@ -883,22 +915,37 @@ export async function registerConsultantAgent(
   } catch {
     // Non-fatal: the permission still ships; the write may ask later.
   }
+  const projectId = computeProjectId(directory)
   const handoff: HandoffBinding = {
     handoffStateDir,
-    projectId: computeProjectId(directory),
+    projectId,
   }
+
+  const ledgerStateDir = resolveLedgerStateDir(env)
+  const ledgerProjectDir = join(ledgerStateDir, projectId)
+  try {
+    mkdirSync(ledgerProjectDir, { recursive: true })
+  } catch {
+    // Non-fatal: the permission still ships; the write may ask later.
+  }
+  const ledger: LedgerBinding = { ledgerStateDir, projectId }
 
   const assembledPrompt = await assemblePrompt({
     assetFile: "agents/consultant.md",
     fragments: [DISPATCH_HUB_ASSET, MODE_ROUTING_ASSET, CHANNEL_POLICY_ASSET, USER_FACING_STYLE_ASSET],
-    runtimeBlock: buildConsultantRuntimeBindings(pluginConfig, namespace, handoff),
+    runtimeBlock: buildConsultantRuntimeBindings(pluginConfig, namespace, handoff, ledger),
   })
 
   const entry: PrimaryAgentEntry = {
     mode: "primary",
     prompt: assembledPrompt,
     model: resolveRoleModel(pluginConfig, "consultant"),
-    permission: { external_directory: { [`${handoffStateDir}/**`]: "allow" } },
+    permission: {
+      external_directory: {
+        [`${handoffStateDir}/**`]: "allow",
+        [`${ledgerStateDir}/${projectId}/**`]: "allow",
+      },
+    },
   }
 
   if (!config.agent) config.agent = {}
@@ -958,6 +1005,7 @@ export async function registerCommonExplorer(
     model: resolveRoleModel(pluginConfig, "common-explorer"),
     pluginConfig,
     extraFragments: [SOURCE_CRITERIA_ASSET],
+    extraPermissions: { webfetch: "allow", websearch: "allow" },
   })
 }
 

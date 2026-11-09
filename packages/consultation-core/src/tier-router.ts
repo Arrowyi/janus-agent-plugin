@@ -8,6 +8,8 @@ export type TierRoutingInput = {
   readonly synthesisDominated: boolean
   /** Optional mode constraint: roadmap, guide, doc, and design never run at fast. */
   readonly mode?: ConsultationMode
+  /** Optional floor: open-pool consultations never run at fast. */
+  readonly openPool?: boolean
 }
 
 /** Modes whose deliverable is never valid at fast tier. */
@@ -50,8 +52,8 @@ function baseTier(input: TierRoutingInput): Tier {
 
 export function routeTier(input: TierRoutingInput): Tier {
   const tier = baseTier(input)
-  if (input.mode !== undefined && FAST_FORBIDDEN_MODES.has(input.mode) && tier === "fast") {
-    return "standard"
-  }
-  return tier
+  if (tier !== "fast") return tier
+  if (input.mode !== undefined && FAST_FORBIDDEN_MODES.has(input.mode)) return "standard"
+  if (input.openPool === true) return "standard"
+  return "fast"
 }

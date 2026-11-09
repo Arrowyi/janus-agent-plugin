@@ -17,6 +17,8 @@ export const SelectCandidateSchema = z.object({
   intent: SourceIntentSchema.default("unknown"),
   suitedFor: z.string().optional(),
   trialAdvice: z.string().optional(),
+  bucketId: z.string().min(1).optional(),
+  evidenceSparse: z.boolean().optional(),
 })
 export type SelectCandidate = z.infer<typeof SelectCandidateSchema>
 
@@ -163,6 +165,12 @@ function briefTexts(brief: DecisionBrief): string[] {
     brief.nextAction,
     ...brief.memoryDisclosure,
   ]
+  if (brief.eliminationSummary !== undefined) {
+    for (const bucket of brief.eliminationSummary) {
+      texts.push(bucket.bucket, ...bucket.scanned, ...bucket.finalists)
+      if (bucket.exclusionReason !== undefined) texts.push(bucket.exclusionReason)
+    }
+  }
   for (const source of brief.sources) {
     texts.push(source.title)
     if (source.url !== undefined) texts.push(source.url)

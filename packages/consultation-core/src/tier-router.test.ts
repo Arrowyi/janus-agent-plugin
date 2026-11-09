@@ -155,3 +155,25 @@ describe("routeTier", () => {
     ).toBe("deep")
   })
 })
+
+describe("routeTier open-pool floor", () => {
+  test("an open-pool consultation never routes to fast", () => {
+    expect(routeTier({ ...fastInput, openPool: true })).toBe("standard")
+  })
+
+  test("select, verify, and research open-pool consultations lift fast to standard", () => {
+    for (const mode of ["select", "verify", "research"] as const) {
+      expect(routeTier({ ...fastInput, mode, openPool: true })).toBe("standard")
+    }
+  })
+
+  test("openPool omitted or false keeps the fast branch", () => {
+    expect(routeTier(fastInput)).toBe("fast")
+    expect(routeTier({ ...fastInput, openPool: false })).toBe("fast")
+  })
+
+  test("the open-pool floor never lowers the tier", () => {
+    expect(routeTier({ ...fastInput, risk: "medium", openPool: true })).toBe("standard")
+    expect(routeTier({ ...fastInput, risk: "high", openPool: true })).toBe("deep")
+  })
+})

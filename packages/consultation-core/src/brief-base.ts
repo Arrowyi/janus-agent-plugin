@@ -8,6 +8,14 @@ export const BriefSourceSchema = z.object({
   grade: SourceGradeSchema,
 })
 
+export const EliminationBucketSummarySchema = z.object({
+  bucket: z.string().min(1),
+  provisional: z.boolean().optional(),
+  scanned: z.array(z.string().min(1)).default([]),
+  finalists: z.array(z.string().min(1)).default([]),
+  exclusionReason: z.string().optional(),
+})
+
 export const baseBriefShape = {
   conclusion: z.string().min(1),
   confidence: ConfidenceSchema,
@@ -17,6 +25,8 @@ export const baseBriefShape = {
   sources: z.array(BriefSourceSchema).min(1).max(5),
   nextAction: z.string().min(1),
   memoryDisclosure: z.array(z.string()).default([]),
+  ledgerPath: z.string().min(1).optional(),
+  eliminationSummary: z.array(EliminationBucketSummarySchema).max(6).optional(),
 } as const
 
 function requiresBasis(status: EpistemicStatus): boolean {

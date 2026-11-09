@@ -4,6 +4,8 @@
 
 `roadmap` never routes to `fast`. Dispatch `common-explorer` first when external prerequisites, rules, or outside-view base rates are unknown. Dispatch `consultant-critic` with `protocol: "plan_robustness"` whenever sequential steps carry `inferred`/`unverifiable` support or multi-stage dependencies; it repairs fragile steps and extracts the top three observable early warning signals.
 
+When the direction itself is an open choice among paths or methods, run the discovery funnel over those candidate paths first, then plan the steps on the survivors; the funnel contract sits in `## Team Orchestration`.
+
 Before the steps, check the planning fallacy and optimism bias (projects run longer and cost more than planned), sunk cost (past spending is not a reason to continue), and the base rate for similar projects. Pre-mortem: name the top three failure modes and each one's early signal.
 
 Short:

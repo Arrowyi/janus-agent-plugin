@@ -787,4 +787,104 @@ describe("agent prompt contracts", () => {
     expect(skill).toContain("No journal, reminders, or forms")
     expect(prompt).toContain("Calibration is passive")
   })
+
+  it("common-explorer exposes the candidate-discovery payload and the chain-id derivation", async () => {
+    const prompt = await readAgentPrompt("common-explorer.md")
+
+    expectFields(prompt, [
+      "candidateTaxonomy",
+      "candidatePool",
+      "emergingBucketStatus",
+      "isEmergingOrNiche",
+      "definingCriteria",
+      "discoveryChannels",
+      "evidenceSparse",
+      "constraintCheck",
+    ])
+    expect(prompt).toContain('grade: "lead_only"')
+    expect(prompt).toContain("registrable domain")
+    expect(prompt).toContain("never a free-text topic tag")
+  })
+
+  it("consultant declares the open-pool floor, the closed-pool exception, and the pre-authorized ledger", async () => {
+    const prompt = await readAgentPrompt("consultant.md")
+
+    expect(prompt).toContain("never runs at `fast`")
+    expect(prompt).toContain("at most four named candidates")
+    expect(prompt).toContain("Open-pool discovery funnel")
+    expect(prompt).toContain("existence leads")
+    expect(prompt).toContain("<consultation_id>.md")
+    expect(prompt).toContain("never delete")
+    expect(prompt).toContain("untrusted-data header")
+  })
+
+  it("consultant and the skill carry Stage 0 recon-map-gate, scenario-based elicitation, and causal-direction translation", async () => {
+    const consultant = await readAgentPrompt("consultant.md")
+    const skill = await readSkill("consultation")
+    const style = await readFile(
+      new URL("../../../assets/principles/user-facing-style.md", import.meta.url),
+      "utf8",
+    )
+
+    for (const text of [
+      "Recon-Map-Gate",
+      "never push domain-taxonomy work onto the user",
+      "plain meaning, cause, and directional impact",
+    ]) {
+      expect(consultant).toContain(text)
+    }
+    for (const text of [
+      "Recon-Map-Gate",
+      "Causal-direction translation",
+      "Scenario-based scope gate",
+      "userScopeExcluded",
+      "vagueness cap",
+    ]) {
+      expect(skill).toContain(text)
+    }
+    expect(style).toContain(
+      "why it matters in practice (the cause, cost, or risk) and which direction each user preference points toward",
+    )
+  })
+
+  it("the skill carries the funnel guardrails and the quota table in exactly one module", async () => {
+    const skill = await readSkill("consultation")
+    const orchestration = await readFile(
+      new URL("../../../skill-src/consultation/policies/team-orchestration.md", import.meta.url),
+      "utf8",
+    )
+
+    expect(skill).toContain("`fast` never runs an open pool")
+    expect(skill).toContain("分类全景未建立（缺中立标准与分类目录）")
+    expect(skill).toContain("（暂定分类）")
+    expect(skill).toContain('emergingBucketStatus: "none found after checking <channels>"')
+    expect(skill).toContain("never eliminated on it")
+    expect(skill).toContain("groupByChain")
+    expect(skill).toContain("Stage 3 核实复用了 Stage 1 检索会话")
+    expect(skill).toContain("failure ratios")
+    expect(skill).toContain("e1:")
+    expect(skill).toContain("untrusted-web-ledger: consultation_id=<id>")
+    expect(skill).toContain("2026-11-09-ski-resorts-a1b2")
+    expect(skill).toContain("分类维度 | 扫描代表项 | 入围终选 | 排除/降级原因")
+    expect(skill).toContain("现有证据不支持唯一首选（仅有条件试水候选）")
+    expect(skill).toContain("never gets an unconditional 首选")
+    expect(skill).toContain("超预算三成")
+    expect(skill).toContain("orthogonal sub-directions or schools of thought")
+    expect(skill).toContain("the taxonomy and pool ride along with the procedural prerequisites")
+
+    expect(orchestration).toContain("| standard | 3–4 | 1 | 8–15")
+    expect(orchestration).toContain("| deep | 4–5 | 1 | 15–30")
+    for (const file of [
+      "core.md",
+      "modes/select.md",
+      "modes/roadmap.md",
+      "modes/guide.md",
+      "modes/research.md",
+      "policies/output-and-memory.md",
+    ]) {
+      const text = await readFile(new URL(`../../../skill-src/consultation/${file}`, import.meta.url), "utf8")
+      expect(text).not.toContain("8–15")
+      expect(text).not.toContain("15–30")
+    }
+  })
 })

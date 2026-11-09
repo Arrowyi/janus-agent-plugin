@@ -1,11 +1,17 @@
 import { describe, expect, it } from "bun:test"
+import { z } from "zod"
 
 import {
   AnalysisDraftBaseSchema,
   AnalysisDraftSchema,
+  CandidateAttributeValueSchema,
+  CandidateTaxonomyBucketSchema,
   CodePlanReviewSchema,
   CritiqueDraftSchema,
   DEFAULT_TEAM_CAPS,
+  DiscoveredCandidateSchema,
+  ExplorerClaimReportSchema,
+  ExplorerReportBaseSchema,
   ExplorerReportSchema,
   TeamRoleSchema,
   initialState,
@@ -16,7 +22,7 @@ import {
   type ConsultationState,
   type CritiqueDraft,
 } from "./team.ts"
-import type { DecomposedClaim } from "./research-contracts.ts"
+import type { DecomposedClaim, GradedSource } from "./research-contracts.ts"
 
 const budget = { maxSearches: 10, maxFetches: 10, maxSubagents: 6, maxTokens: 10000 }
 const claims: DecomposedClaim[] = [
@@ -368,5 +374,356 @@ describe("DEFAULT_TEAM_CAPS", () => {
   it("caps rounds at 3, explorers at 5, critic searches at 5", () => {
     // given // when // then
     expect(DEFAULT_TEAM_CAPS).toEqual({ roundCap: 3, explorerCap: 5, criticSearchCap: 5 })
+  })
+})
+
+describe("ExplorerReportSchema discovery payloads", () => {
+  type AttributePayload = z.infer<typeof CandidateAttributeValueSchema>
+  type BucketPayload = z.infer<typeof CandidateTaxonomyBucketSchema>
+  type CandidatePayload = z.infer<typeof DiscoveredCandidateSchema>
+  type ClaimPayload = z.infer<typeof ExplorerClaimReportSchema>
+  type DiscoveryPayload = {
+    claims: ClaimPayload[]
+    sources: GradedSource[]
+    candidateTaxonomy: BucketPayload[]
+    emergingBucketStatus?: string
+    candidatePool: CandidatePayload[]
+  }
+
+  const highSource: GradedSource = {
+    id: "s1",
+    title: "Standards body spec page",
+    isPrimary: true,
+    accountable: true,
+    methodTransparent: true,
+    independenceChainId: "chain-a",
+    hasCommercialOrIdeologicalConflict: false,
+    recent: true,
+    applicable: true,
+    grade: "high",
+    accessedAt: "2026-11-09",
+  }
+  const mediumSource: GradedSource = {
+    id: "s2",
+    title: "Neutral product directory",
+    isPrimary: false,
+    accountable: true,
+    methodTransparent: true,
+    independenceChainId: "chain-b",
+    hasCommercialOrIdeologicalConflict: false,
+    recent: true,
+    applicable: true,
+    grade: "medium",
+    accessedAt: "2026-11-09",
+  }
+  const lowSource: GradedSource = {
+    id: "s3",
+    title: "Commercial platform directory",
+    isPrimary: false,
+    accountable: false,
+    methodTransparent: true,
+    independenceChainId: "chain-c",
+    hasCommercialOrIdeologicalConflict: true,
+    recent: true,
+    applicable: true,
+    grade: "low",
+    accessedAt: "2026-11-09",
+  }
+  const leadSource: GradedSource = {
+    id: "s4",
+    title: "Unverified forum lead",
+    isPrimary: false,
+    accountable: false,
+    methodTransparent: true,
+    independenceChainId: "chain-d",
+    hasCommercialOrIdeologicalConflict: false,
+    recent: false,
+    applicable: false,
+    grade: "lead_only",
+    accessedAt: "2026-11-09",
+  }
+
+  const discoveryBaseline: DiscoveryPayload = {
+    claims: [],
+    sources: [highSource, mediumSource, lowSource],
+    candidateTaxonomy: [
+      {
+        bucketId: "b1",
+        label: "Premium all-mountain boards",
+        definingCriteria: "Wider waist and heavier build than a trail board",
+        isEmergingOrNiche: false,
+        provisional: false,
+        sourceIds: ["s1"],
+      },
+      {
+        bucketId: "b2",
+        label: "Value boards",
+        definingCriteria: "Cheapest boards still carrying a verified spec sheet",
+        isEmergingOrNiche: false,
+        provisional: false,
+        sourceIds: ["s2"],
+      },
+      {
+        bucketId: "b3",
+        label: "Emerging niche boards",
+        definingCriteria: "New brands with thin public documentation",
+        isEmergingOrNiche: true,
+        provisional: false,
+        sourceIds: ["s3"],
+      },
+    ],
+    candidatePool: [
+      {
+        candidateId: "cand1",
+        name: "Candidate A",
+        bucketId: "b1",
+        attributes: { topSheet: { value: "carbon", sourceIds: ["s1"] } },
+        discoveryChannels: ["retail catalogue scan", "independent forum sweep"],
+        sourceIds: ["s1"],
+        evidenceSparse: false,
+      },
+      {
+        candidateId: "cand2",
+        name: "Candidate B",
+        bucketId: "b3",
+        attributes: {},
+        discoveryChannels: ["niche brand sites"],
+        sourceIds: ["s3"],
+        evidenceSparse: false,
+        constraintCheck: { passed: false, exclusionReason: "exceeds the hard budget cap", sourceIds: ["s2"] },
+      },
+    ],
+  }
+
+  function withReplaced<T>(items: readonly T[], index: number, update: (item: T) => T): T[] {
+    return items.map((item, i) => (i === index ? update(item) : item))
+  }
+
+  it("the baseline discovery payload parses", () => {
+    expect(ExplorerReportSchema.parse(discoveryBaseline)).toBeDefined()
+  })
+
+  it("parses a pure discovery payload with the claims key omitted", () => {
+    const payload = {
+      sources: discoveryBaseline.sources,
+      candidateTaxonomy: discoveryBaseline.candidateTaxonomy,
+      candidatePool: discoveryBaseline.candidatePool,
+    }
+    expect(ExplorerReportSchema.parse(payload)).toBeDefined()
+  })
+
+  it("parses a merged payload where a claim carries an unreferenced source", () => {
+    const claimSource: GradedSource = {
+      id: "s9",
+      title: "Claim-only lead",
+      isPrimary: false,
+      accountable: false,
+      methodTransparent: false,
+      independenceChainId: "chain-f",
+      hasCommercialOrIdeologicalConflict: false,
+      recent: false,
+      applicable: true,
+      grade: "lead_only",
+      accessedAt: "2026-11-09",
+    }
+    const payload = {
+      ...discoveryBaseline,
+      claims: [{ claimId: "c1", findings: "Merged-wave finding.", sources: [claimSource], gaps: [] }],
+    }
+    expect(ExplorerReportSchema.parse(payload)).toBeDefined()
+  })
+
+  it("lets a top-level source degrade below its computed grade", () => {
+    const payload = {
+      ...discoveryBaseline,
+      sources: [highSource, mediumSource, { ...lowSource, grade: "lead_only" }],
+    }
+    expect(ExplorerReportSchema.parse(payload)).toBeDefined()
+  })
+
+  it("rejects a top-level source declared high while the computed grade is low", () => {
+    const payload = {
+      ...discoveryBaseline,
+      sources: [highSource, mediumSource, { ...lowSource, grade: "high" }],
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects an unreferenced top-level source that over-claims its grade", () => {
+    const vendorSource: GradedSource = {
+      id: "s5",
+      title: "Vendor marketing directory",
+      isPrimary: false,
+      accountable: false,
+      methodTransparent: true,
+      independenceChainId: "chain-e",
+      hasCommercialOrIdeologicalConflict: true,
+      recent: true,
+      applicable: true,
+      grade: "high",
+      accessedAt: "2026-11-09",
+    }
+    const payload = {
+      ...discoveryBaseline,
+      sources: [...discoveryBaseline.sources, vendorSource],
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects a non-emerging non-provisional bucket citing only a lead_only source", () => {
+    const payload = {
+      ...discoveryBaseline,
+      sources: [...discoveryBaseline.sources, leadSource],
+      candidateTaxonomy: withReplaced(discoveryBaseline.candidateTaxonomy, 0, (b) => ({
+        ...b,
+        sourceIds: ["s4"],
+      })),
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects a provisional bucket citing only a lead_only source", () => {
+    const payload = {
+      ...discoveryBaseline,
+      sources: [...discoveryBaseline.sources, leadSource],
+      candidateTaxonomy: [
+        ...discoveryBaseline.candidateTaxonomy,
+        {
+          bucketId: "b4",
+          label: "Provisional newcomer picks",
+          definingCriteria: "Community-named boards without a verified spec",
+          isEmergingOrNiche: false,
+          provisional: true,
+          sourceIds: ["s4"],
+        },
+      ],
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("accepts a provisional bucket citing a low-grade source", () => {
+    const payload = {
+      ...discoveryBaseline,
+      candidateTaxonomy: [
+        ...discoveryBaseline.candidateTaxonomy,
+        {
+          bucketId: "b5",
+          label: "Provisional value picks",
+          definingCriteria: "Community-priced picks without a verified spec",
+          isEmergingOrNiche: false,
+          provisional: true,
+          sourceIds: ["s3"],
+        },
+      ],
+    }
+    expect(ExplorerReportSchema.parse(payload)).toBeDefined()
+  })
+
+  it("accepts an emerging bucket citing only a lead_only source", () => {
+    const payload = {
+      ...discoveryBaseline,
+      sources: [...discoveryBaseline.sources, leadSource],
+      candidateTaxonomy: withReplaced(discoveryBaseline.candidateTaxonomy, 2, (b) => ({
+        ...b,
+        sourceIds: ["s4"],
+      })),
+    }
+    expect(ExplorerReportSchema.parse(payload)).toBeDefined()
+  })
+
+  it("rejects a candidate whose bucketId is not in the taxonomy", () => {
+    const payload = {
+      ...discoveryBaseline,
+      candidatePool: withReplaced(discoveryBaseline.candidatePool, 0, (c) => ({
+        ...c,
+        bucketId: "b-unknown",
+      })),
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects a candidate pool without a candidate taxonomy, even with claims", () => {
+    const payload = {
+      claims: [{ claimId: "c1", findings: "Counter-evidence collected.", sources: [highSource], gaps: [] }],
+      sources: [highSource, mediumSource, lowSource],
+      candidatePool: discoveryBaseline.candidatePool,
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects a candidate citing an unknown sourceId", () => {
+    const payload = {
+      ...discoveryBaseline,
+      candidatePool: withReplaced(discoveryBaseline.candidatePool, 0, (c) => ({
+        ...c,
+        sourceIds: ["s-ghost-a"],
+      })),
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects an attribute citing an unknown sourceId", () => {
+    const payload = {
+      ...discoveryBaseline,
+      candidatePool: withReplaced(discoveryBaseline.candidatePool, 0, (c) => ({
+        ...c,
+        attributes: { topSheet: { value: "carbon", sourceIds: ["s-ghost-b"] } },
+      })),
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects a constraint check citing an unknown sourceId", () => {
+    const payload = {
+      ...discoveryBaseline,
+      candidatePool: withReplaced(discoveryBaseline.candidatePool, 1, (c) => ({
+        ...c,
+        constraintCheck: {
+          passed: false,
+          exclusionReason: "exceeds the hard budget cap",
+          sourceIds: ["s-ghost-c"],
+        },
+      })),
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects a failed constraint check without an exclusion reason", () => {
+    const payload = {
+      ...discoveryBaseline,
+      candidatePool: withReplaced(discoveryBaseline.candidatePool, 1, (c) => ({
+        ...c,
+        constraintCheck: { passed: false, sourceIds: ["s2"] },
+      })),
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects a failed constraint check citing only a low-grade source", () => {
+    const payload = {
+      ...discoveryBaseline,
+      candidatePool: withReplaced(discoveryBaseline.candidatePool, 1, (c) => ({
+        ...c,
+        constraintCheck: { passed: false, exclusionReason: "too stiff", sourceIds: ["s3"] },
+      })),
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects a non-unknown attribute with an empty sourceIds list", () => {
+    const payload = {
+      ...discoveryBaseline,
+      candidatePool: withReplaced(discoveryBaseline.candidatePool, 0, (c) => ({
+        ...c,
+        attributes: { topSheet: { value: "carbon", sourceIds: [] } },
+      })),
+    }
+    expect(() => ExplorerReportSchema.parse(payload)).toThrow()
+  })
+
+  it("rejects an empty report with no claims and no discovery fields", () => {
+    expect(() => ExplorerReportSchema.parse({})).toThrow()
+    expect(() => ExplorerReportSchema.parse(discoveryBaseline)).not.toThrow()
+    expect(() => ExplorerReportSchema.parse({ claims: [] })).toThrow()
   })
 })

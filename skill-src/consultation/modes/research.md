@@ -6,7 +6,7 @@ Research mode runs deep by default: a narrow, settled, single-source question ma
 
 Workflow:
 
-1. Decompose the question into 2-4 sub-directions.
+1. Decompose the question into 2-4 sub-directions. For an open-ended survey, the discovery funnel's buckets are the orthogonal sub-directions or schools of thought, and its pool holds the representative mechanisms or cases; quotas follow `## Team Orchestration`.
 2. Dispatch independent common-explorer instances for sub-directions whose evidence is missing or whose coverage is uncertain. Parallelize independent searches, not dependent analysis (source grading and the channel ladder still apply).
 3. Compare the evidence: consensus, disagreements, and gaps. Record disagreements; do not hide gaps.
 4. Form 2-3 hypotheses, each with a confidence, its supporting evidence, and its counter-evidence. Actively look for counterexamples and hidden variables.

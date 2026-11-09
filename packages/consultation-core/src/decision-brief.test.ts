@@ -488,3 +488,115 @@ describe("assertNoNumericConfidence", () => {
     expect(assert).toThrow("NUMERIC_CONFIDENCE")
   })
 })
+
+describe("validateDecisionBrief: elimination summary", () => {
+  const countingSummary = [
+    {
+      bucket: "premium all-mountain",
+      scanned: ["8 of 20 candidates had a verified spec"],
+      finalists: ["Candidate A"],
+      exclusionReason: "3 of 8 failed the hard budget cap on a medium-grade pricing page",
+    },
+  ]
+
+  test("accepts a counting-style elimination summary", () => {
+    const brief = validateDecisionBrief(briefWith(selectBrief, { eliminationSummary: countingSummary }))
+    if (brief.mode !== "select") throw new Error("expected select mode")
+    if (brief.eliminationSummary === undefined) throw new Error("expected an eliminationSummary")
+    expect(brief.eliminationSummary).toHaveLength(1)
+    expect(brief.eliminationSummary[0]?.scanned).toEqual(["8 of 20 candidates had a verified spec"])
+  })
+
+  test("rejects numeric confidence in a bucket label", () => {
+    const validate = (): void => {
+      validateDecisionBrief(
+        briefWith(selectBrief, {
+          eliminationSummary: [{ bucket: "premium all-mountain 85%", scanned: [], finalists: [] }],
+        }),
+      )
+    }
+    expect(validate).toThrow("NUMERIC_CONFIDENCE")
+  })
+
+  test("rejects numeric confidence in an exclusion reason", () => {
+    const validate = (): void => {
+      validateDecisionBrief(
+        briefWith(selectBrief, {
+          eliminationSummary: [
+            { bucket: "premium all-mountain", scanned: [], finalists: [], exclusionReason: "85% mispriced" },
+          ],
+        }),
+      )
+    }
+    expect(validate).toThrow("NUMERIC_CONFIDENCE")
+  })
+
+  test("rejects numeric confidence in a scanned note", () => {
+    const validate = (): void => {
+      validateDecisionBrief(
+        briefWith(selectBrief, {
+          eliminationSummary: [
+            { bucket: "premium all-mountain", scanned: ["85% of spec pages verified"], finalists: [] },
+          ],
+        }),
+      )
+    }
+    expect(validate).toThrow("NUMERIC_CONFIDENCE")
+  })
+
+  test("rejects more than six elimination buckets", () => {
+    const buckets = Array.from(
+      { length: 7 },
+      (_, i) => ({ bucket: `bucket ${i}`, scanned: [], finalists: [] }),
+    )
+    const validate = (): void => {
+      validateDecisionBrief(briefWith(selectBrief, { eliminationSummary: buckets }))
+    }
+    expect(validate).toThrow(ConsultationError)
+  })
+
+  test("accepts a select candidate with a bucketId and a sparse-evidence marker", () => {
+    const brief = validateDecisionBrief(
+      briefWith(selectBrief, {
+        candidates: [{ option: "Option A", evidenceGrade: "high", bucketId: "b1", evidenceSparse: true }],
+      }),
+    )
+    if (brief.mode !== "select") throw new Error("expected select mode")
+    expect(brief.candidates[0]?.bucketId).toBe("b1")
+    expect(brief.candidates[0]?.evidenceSparse).toBe(true)
+  })
+
+  test("accepts a select brief with a ledger path", () => {
+    const brief = validateDecisionBrief(
+      briefWith(selectBrief, {
+        ledgerPath: "/home/u/.local/share/janus-agent/ledger/proj/2026-11-09-ski-a1b2.md",
+      }),
+    )
+    if (brief.mode !== "select") throw new Error("expected select mode")
+    expect(brief.ledgerPath).toBe("/home/u/.local/share/janus-agent/ledger/proj/2026-11-09-ski-a1b2.md")
+  })
+
+  test("accepts an elimination summary on a guide brief through the shared base shape", () => {
+    const brief = validateDecisionBrief(briefWith(guideBrief, { eliminationSummary: countingSummary }))
+    if (brief.mode !== "guide") throw new Error("expected guide mode")
+    expect(brief.eliminationSummary).toHaveLength(1)
+  })
+
+  test("rejects numeric confidence in a guide elimination exclusion reason", () => {
+    const validate = (): void => {
+      validateDecisionBrief(
+        briefWith(guideBrief, {
+          eliminationSummary: [
+            {
+              bucket: "value boards",
+              scanned: [],
+              finalists: [],
+              exclusionReason: "85% of reports misprice them",
+            },
+          ],
+        }),
+      )
+    }
+    expect(validate).toThrow("NUMERIC_CONFIDENCE")
+  })
+})

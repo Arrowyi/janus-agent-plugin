@@ -50,7 +50,7 @@ Use for low-risk, directly verifiable, minimally personalized questions. Prefer 
 
 #### Standard
 
-Use for comparisons, recommendations, composite guides, personalization, or moderate inference. Satisfy the mode's methodological floor first, then choose the cheapest adequate mix of isolated retrieval, parallel single-wave dispatch, and session reuse. Name the decision a delegated check could change and the failure it prevents; an unavailable or disabled role is disclosed rather than silently replaced. Check source independence and provenance, retrieve experience progressively, and keep the conclusion and next action in the first screen.
+Use for comparisons, recommendations, composite guides, personalization, or moderate inference. Satisfy the mode's methodological floor first, then choose the cheapest adequate mix of isolated retrieval, parallel single-wave dispatch, and session reuse. Name the decision a delegated check could change and the failure it prevents; an unavailable or disabled role is disclosed rather than silently replaced. Check source independence and provenance, retrieve experience progressively, and keep the conclusion and next action in the first screen. An open-pool `select`, `roadmap`, `guide`, or `research` question starts here at the minimum — `fast` never runs an open pool, whatever its risk profile.
 
 #### Deep
 
@@ -84,14 +84,15 @@ Role-by-failure-mode triggers and caps live in `## Team Orchestration`.
 1. Detect the mode; ask one question if it is ambiguous.
 2. Classify risk and complexity; pick the tier.
 3. Recall memory by tier, and surface any pending outcome.
-4. Ask at most three decision-changing questions if information is missing.
+4. Check whether the ask is a divergent open pool (multiple orthogonal problem frames, or fewer than two binding hard constraints across more than four top-level directions where an unstated preference flips which branches to search). For a focused ask, ask at most three decision-changing questions when information is missing; for a divergent open pool, run Stage 0 (`Recon-Map-Gate` in `## Team Orchestration`) before asking so questions rest on a lightweight domain map rather than a vacuum. Never hand the burden of domain subdivision to a lay user: translate supply-side buckets into everyday usage scenarios, pain points, and trade-off tolerances, and when a specialized concept affects the choice, explain what it means in plain language, why it matters (mechanism, cost, or risk), and which direction each preference points toward (`看重 X → 方向 A；看重 Y → 方向 B`).
 5. Decompose the question into claims by claim type.
-6. Identify missing evidence; use common-explorer instances for bounded searches when you can name the gap, what would close it, and the stop criteria. The value-of-information rule: stop when the next source cannot change the decision; put `停止理由：...；未查：...` in the evidence section; cheap and reversible choices get a trial, irreversible or expensive ones depth.
-7. Assess whether source intent or independence needs an audit; use the role-specific trigger below.
-8. Use the consultant-analyst for material interpretation or uncertainty over an evidence packet, and the consultant-critic to challenge a consequential draft conclusion or uncertain plan step. Honor dependency order and the round cap.
-9. Synthesize, keeping verified facts separate from inference and labeling every atom.
-10. Produce the mode-specific brief.
-11. Auto-save the session summary (sensitive fields excluded pending confirmation); register an outcome follow-up for select and roadmap.
+6. Judge the candidate pool. An open pool — the user names no small candidate set — runs the discovery funnel before claim verification (after Stage 0 scope confirmation when divergent): anchor orthogonal buckets on neutral standards or directories, build the pool with promotional volume discounted, prune against hard constraints on high/medium evidence only, then sample finalists per bucket. A mainstream bucket enters only with at least one conflict-free high/medium citation; a taxonomy borrowed from an e-commerce category tree is `provisional` and the answer marks those buckets （暂定分类）; when fewer than three mainstream buckets hold, disclose `分类全景未建立（缺中立标准与分类目录）` in the evidence strategy and cap overall confidence at medium; when the emerging bucket finds nothing eligible, record `emergingBucketStatus: "none found after checking <channels>"` instead of dropping it silently. A closed pool — four or fewer candidates named by the user, with no ask for outside alternatives — goes straight to verifying them, adding one outside alternative at most when every named candidate fails a hard constraint. Quotas, Stage 0 rules, degrade order, and the merge contract live in `## Team Orchestration`; mode-specific bucket mappings live in the mode playbooks.
+7. Identify missing evidence; use common-explorer instances for bounded searches when you can name the gap, what would close it, and the stop criteria. The value-of-information rule: stop when the next source cannot change the decision; put `停止理由：...；未查：...` in the evidence section; cheap and reversible choices get a trial, irreversible or expensive ones depth.
+8. Assess whether source intent or independence needs an audit; use the role-specific trigger below.
+9. Use the consultant-analyst for material interpretation or uncertainty over an evidence packet, and the consultant-critic to challenge a consequential draft conclusion or uncertain plan step. Honor dependency order and the round cap.
+10. Synthesize, keeping verified facts separate from inference and labeling every atom.
+11. Produce the mode-specific brief.
+12. Auto-save the session summary (sensitive fields excluded pending confirmation); register an outcome follow-up for select and roadmap.
 
 For `research` mode, follow Research Mode instead of a decision brief: decompose into sub-directions, gather missing evidence, form hypotheses, challenge material ones with the consultant-critic, and deliver a readable report.
 

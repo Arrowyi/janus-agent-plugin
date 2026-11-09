@@ -4,6 +4,8 @@
 
 Three failure modes dominate it: unverified attributes or causal efficacy, survivorship/promotional/incentive bias in testimonials or rankings, and narrow candidate framing that hides a better option.
 
+When the ask is open — pick the best X without a named shortlist — run the discovery funnel first and show the category elimination table with the survivors; funnel stages, quotas, and the merge rules live in `## Team Orchestration`.
+
 Dispatch baseline:
 
 - `common-explorer` whenever candidate attributes, real-world outcomes, or base rates need external verification beyond one user-supplied or single-page authoritative spec.

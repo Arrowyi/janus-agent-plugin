@@ -34,6 +34,7 @@ import {
   resolveAuthorStateDir,
   resolveDesignStateDir,
   resolveHandoffStateDir,
+  resolveLedgerStateDir,
   resolveSimpleWorkspaceDir as resolveSimpleWorkspaceDirLocal,
   injectRuntimeBindings,
   injectCommonPrinciples,
@@ -268,6 +269,34 @@ describe("buildConsultantRuntimeBindings", () => {
     expect(block).not.toContain("Design state dir")
     expect(block).not.toContain("coder-reviewer")
     expect(block).not.toContain("author-writer")
+  })
+
+  it("appends the candidate-ledger line when a ledger binding is provided", () => {
+    // given
+    const config = makeConfig()
+
+    // when
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING, {
+      ledgerStateDir: "/xdg/data/janus-agent/ledger",
+      projectId: "my-project-a1b2c3d4",
+    })
+
+    // then
+    expect(block).toContain("Candidate ledger dir: `/xdg/data/janus-agent/ledger/my-project-a1b2c3d4`")
+    expect(block).toContain("<consultation_id>.md")
+    expect(block).toContain("in direct mode")
+    expect(block).toContain("never delete")
+  })
+
+  it("omits the candidate-ledger line when no ledger binding is provided", () => {
+    // given
+    const config = makeConfig()
+
+    // when
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+
+    // then
+    expect(block).not.toContain("Candidate ledger dir")
   })
 })
 
@@ -653,6 +682,17 @@ describe("resolveHandoffStateDir", () => {
   })
 })
 
+describe("resolveLedgerStateDir", () => {
+  it("resolves to $XDG_DATA_HOME/janus-agent/ledger with a HOME fallback", () => {
+    expect(resolveLedgerStateDir({ XDG_DATA_HOME: "/xdg-data" } as NodeJS.ProcessEnv)).toBe(
+      "/xdg-data/janus-agent/ledger",
+    )
+    expect(resolveLedgerStateDir({ HOME: "/home/test-user" } as NodeJS.ProcessEnv)).toBe(
+      "/home/test-user/.local/share/janus-agent/ledger",
+    )
+  })
+})
+
 describe("registerConsultantAgent", () => {
   it("registers config.agent.consultant with mode primary and a prompt containing the consultant.md body", async () => {
     // given
@@ -759,7 +799,7 @@ describe("registerConsultantAgent", () => {
     expect(consultant.prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
   })
 
-  it("holds only the handoff directory as business state and no author/design/writer bindings", async () => {
+  it("holds the handoff and project-scoped candidate-ledger directories as business state and no author/design/writer bindings", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
@@ -773,7 +813,10 @@ describe("registerConsultantAgent", () => {
       permission: Record<string, unknown>
     }
     expect(consultant.permission).toEqual({
-      external_directory: { "/tmp/home/.local/share/janus-agent/handoff/**": "allow" },
+      external_directory: {
+        "/tmp/home/.local/share/janus-agent/handoff/**": "allow",
+        [`/tmp/home/.local/share/janus-agent/ledger/${computeProjectId("/tmp/my-project")}/**`]: "allow",
+      },
     })
     expect(consultant.prompt).not.toContain("Author state dir")
     expect(consultant.prompt).not.toContain("Design state dir")
@@ -781,6 +824,9 @@ describe("registerConsultantAgent", () => {
     expect(consultant.prompt).not.toContain("Coding delegate")
     expect(consultant.prompt).toContain("Economical leaf: `simple`")
     expect(consultant.prompt).toContain("Handoff state dir: `/tmp/home/.local/share/janus-agent/handoff/")
+    expect(consultant.prompt).toContain("Candidate ledger dir: `/tmp/home/.local/share/janus-agent/ledger/")
+    expect(consultant.prompt).toContain("<consultation_id>.md")
+    expect(existsSync(join("/tmp/home/.local/share/janus-agent/ledger", computeProjectId("/tmp/my-project")))).toBe(true)
   })
 })
 
@@ -964,6 +1010,7 @@ describe("registerCommonExplorer", () => {
     expect(explorer.prompt).toContain("# Common-Explorer")
     expect(explorer.model).toBe("opencode-go/deepseek-v4.1-flash")
     expect(explorer.permission).toMatchObject({ edit: "deny", bash: "deny", task: "deny", janus_dispatch: "deny" })
+    expect(explorer.permission).toMatchObject({ webfetch: "allow", websearch: "allow" })
   })
 
   it("overrides the model from common_explorer_model", async () => {

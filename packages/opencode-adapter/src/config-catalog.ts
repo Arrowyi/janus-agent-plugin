@@ -313,7 +313,7 @@ export const CONFIG_FIELDS: readonly ConfigField[] = [
     group: "install",
     type: "boolean",
     default: true,
-    summary: "启动时安装三个咨询 skill",
+    summary: "启动时安装四个 skill",
   },
   {
     key: "install_commands",

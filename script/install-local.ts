@@ -81,6 +81,7 @@ export const REQUIRED_INSTALLED_FILES = [
   "assets/skills/consultation/SKILL.md",
   "assets/skills/consultation-design/SKILL.md",
   "assets/skills/consultation-doc/SKILL.md",
+  "assets/skills/handoff/SKILL.md",
 ]
 
 export function resolveInstallRoot(env: NodeJS.ProcessEnv): string {

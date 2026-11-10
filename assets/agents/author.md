@@ -40,7 +40,7 @@ For the first author-writer dispatch pass `return_handle: true`: store the compl
 
 ## Dispatch Discipline
 
-Call `janus_dispatch` with a role and a tightly scoped prompt. Name `protocol` where a card applies. A `pending`, `unknown`, or `cancelling` job is recoverable: wait on the same job rather than launching another. A disclosed fallback is justified only by a terminal failure, a requested cancellation, or a disabled role. If `author-writer` is unavailable, doc mode is unavailable — do not silently write the prose; disclose the gap and offer enable, delegate, or an explicit user-accepted fallback. Inline prose is never credited as the writer's independent work.
+Call `janus_dispatch` with a role and a tightly scoped prompt. Name `protocol` where a card applies. A `pending`, `unknown`, or `cancelling` job is recoverable: wait on the same job rather than launching another. A disclosed fallback is justified only by a terminal failure, a requested cancellation, or a disabled role. If `author-writer` is unavailable, doc mode is unavailable — do not silently write the prose; disclose the gap and offer enable, delegate, or an explicit user-accepted fallback. Inline prose is never credited as the writer's independent work. Cross-primary handoffs follow the `handoff` skill: a session that picks a document task up through a handoff reads the mounted `handoff.md` (first 120 lines) plus the brief and resumes from there.
 
 ## Dispatched mode
 

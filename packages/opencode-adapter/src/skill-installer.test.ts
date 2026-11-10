@@ -64,7 +64,7 @@ describe("installConsultationSkills", () => {
     return join(configDir, "skills", name, "SKILL.md")
   }
 
-  it("writes all three SKILL.md files when they are missing", async () => {
+  it("writes all four SKILL.md files when they are missing", async () => {
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "skill-missing-"))
     process.env.OPENCODE_CONFIG_DIR = tmpConfigDir
 

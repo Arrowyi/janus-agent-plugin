@@ -82,6 +82,7 @@ bun run install:local
   assets/skills/consultation/SKILL.md          生成的核心 skill
   assets/skills/consultation-design/SKILL.md   生成的设计子 skill
   assets/skills/consultation-doc/SKILL.md      生成的文档子 skill
+  assets/skills/handoff/SKILL.md               生成的无状态交接 skill
   assets/commands/janus-models.md
   assets/commands/janus-handoff.md
   assets/commands/janus-config.md
@@ -91,7 +92,7 @@ bun run install:local
   build-meta.json             版本 / git sha / 构建时间
 ```
 
-重跑 `bun run install:local` 会重新构建并替换已安装产物，之后重启 OpenCode 加载。安装内的三个 skill 文件由 `skill-src/**` 生成；只编辑源、绝不手改生成物。
+重跑 `bun run install:local` 会重新构建并替换已安装产物，之后重启 OpenCode 加载。安装内的四个 skill 文件由 `skill-src/**` 生成；只编辑源、绝不手改生成物。
 
 已安装插件自带其所需的全部提示词（含 `assets/agents/author-writer.md`），运行时不需要 OMO、外部 janus agent、`~/.config/opencode/agents/` 下的全局 agent 文件、外部 skill 或源码检出。author-writer 缺失会使文档模式不可用：此时会披露该情况，并提供启用 author-writer、配置 `writer_delegate_agent`、或用户明确接受的正文中写回退三个选项——绝不静默亲自书写读者可见正文。
 
@@ -105,11 +106,11 @@ bun run install:local
 
 1. 注册 `janus` 默认前台（模式 `all`）与 `consultant`、`architect`、`author` 主入口（模式 `primary`；名字可用 `janus_agent`、`consultant_agent`、`architect_agent`、`author_agent` 配置）；五个主入口 `janus`、`consultant`、`architect`、`coder`、`author` 都获得共享 handoff 状态目录的 `external_directory` 权限，可读写跨团队交接文档；
 2. 注册 `coder` 编码入口（模式 `all`：可选可派发）、`simple` 经济叶节点（模式 `all`，禁止派发）与 `coder-lite` 初中级工程师车道（模式 `subagent`，步数上限 80，工作区编辑免确认，项目原生构建/测试命令允许执行、VCS 写/还原与破坏性删除被 `CODER_LITE_BASH_DENY_RULES` 拒绝，禁止继续派发）；
-3. 注册 `simple` 的工作区目录（`$XDG_DATA_HOME/janus-agent/lite`，可用 `simple_workspace_dir` 配置）为免确认可写；其余写入一律先询问。同时创建设计状态目录 `$XDG_DATA_HOME/janus-agent/design`（由 `architect`、`author`、`coder` 访问：architect 写 `design.md` 的决策内容，coder 读它、写 `plan.md`，并可在验证落地后翻转其生命周期行）与 handoff 状态目录 `$XDG_DATA_HOME/janus-agent/handoff`（由五个主入口 `janus`、`consultant`、`architect`、`coder`、`author` 共享访问；叶节点子 agent 绝不写它）；
+3. 注册 `simple` 的工作区目录（`$XDG_DATA_HOME/janus-agent/lite`，可用 `simple_workspace_dir` 配置）为免确认可写；其余写入一律先询问。同时创建设计状态目录 `$XDG_DATA_HOME/janus-agent/design`（由 `architect`、`author`、`coder` 访问：architect 写 `design.md` 的决策内容，coder 对它 100% 只读、在同目录写 `plan.md`）与 handoff 状态目录 `$XDG_DATA_HOME/janus-agent/handoff`（由五个主入口 `janus`、`consultant`、`architect`、`coder`、`author` 共享访问；叶节点子 agent 绝不写它）；
 4. 注册检索/审查子 agent `common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`（各自只读、各用其配置模型、各自禁 shell 与派发；`coder-reviewer` 另获 design 状态目录的 `external_directory` 权限，用于只读比对 `design.md`），限定写入的执笔者 `author-writer`（仅允许编辑 `writer_docs_roots` 之下，默认 `userdoc/**`；禁 shell 与派发；允许带来源台账的定向网络检索；步数上限 80；`writer_docs_roots` 为空时转为只读，由 author 发布其返回的正文），以及文档团队独立审稿人 `author-reviewer`（默认 `opencode-go/kimi-k3.1-pro`，与主笔跨模型家族；只读：`edit`/`bash`/`task`/`webfetch`/`websearch` 全拒，仅授予 author 与 design 状态目录的 `external_directory` 读权限；门禁为 `architecture` 文档或 `targeted`/`strict` 验证级别，`light` 非架构文档与 `briefWaived` 微改跳过；不在 `tier_role_caps` 中）。同时创建 author 状态目录 `$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报；
 5. 注册 `janus-memory` 本地 MCP 服务器（记忆启用时，默认开启）；
 6. 注册 `janus_dispatch{role,prompt,return_handle?,mode?,tier?,protocol?}`、`janus_dispatch_wait{job_id,wait_ms?}`、`janus_dispatch_cancel{job_id}` 与 `janus_dispatch_continue{session_id,prompt,role?}`（不干扰内置 `task` 工具或其他插件）。`role` 取十二个派发角色之一——八个子 agent 加 `consultant`、`coder`、`simple`、`author`；`janus` 与 `architect` 是用户选择的主入口，不可派发。`author` 既可由用户直接选用，也可由 `janus`、`architect`、`coder` 派发；调用方会话本身若是被派发的子会话，派发 `author` 会被调用方 DAG 守卫（有向无环图，即防循环调用规则）拒绝（`Error: dispatched session cannot dispatch author; …`），其他角色不受此限。`mode`/`tier` 选择模型；`protocol` 在首轮前置入五张方法论卡片之一。另注册 `janus_config` 与 `janus_provider_keys` 两个工具，所有叶节点一律拒绝；
-7. 把 `consultation`、`consultation-design`、`consultation-doc` 三个 skill 与 `/janus-memory`、`/janus-models`、`/janus-handoff`、`/janus-config` 四条斜杠命令安装进你的 OpenCode 配置目录。
+7. 把 `consultation`、`consultation-design`、`consultation-doc`、`handoff` 四个 skill 与 `/janus-memory`、`/janus-models`、`/janus-handoff`、`/janus-config` 四条斜杠命令安装进你的 OpenCode 配置目录。
 
 ### 可恢复的团队任务
 
@@ -283,7 +284,7 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
 | `team_caps.round_cap` / `explorer_cap` / `critic_search_cap` | number | `3` / `5` / `5` | 团队循环与扇出上限 |
 | `tier_role_caps.*` | object | fast `5/0/0/0/0/0`，standard `5/1/1/1/1/1`，deep `5/3/2/2/2/2` | 每档位每角色的建议性实例上限（`common_explorer`/`consultant_analyst`/`consultant_critic`/`coder_reviewer`/`consultant_auditor`/`author_writer`） |
 | `cost_guard_provider_usd` | number | `10` | 每提供商的建议性止损线 |
-| `install_skill` | boolean | `true` | 安装三个咨询 skill |
+| `install_skill` | boolean | `true` | 安装四个 skill |
 | `install_commands` | boolean | `true` | 安装 `janus-memory`、`janus-models`、`janus-handoff`、`janus-config` 四条命令 |
 | `memory_enabled` | boolean | `true` | 注册并启动记忆 MCP 服务器 |
 | `embedding.*` | object（可选） | （无） | OpenAI 兼容 embedding 配置（全有或全无） |
@@ -298,7 +299,7 @@ consultant 把有界的证据工作路由给自己的团队：`common-explorer` 
 
 分工阈值：`janus`、`architect`、`coder` 把新的读者文档与 ≥3 处编辑的文档重写以 `janus_dispatch`（`role: "author"`，`return_handle: true`）交给 `author`；代码注释、`AGENTS.md`，以及随代码变更的 ≤2 处文档同步留在 `coder` 或调用方自己的车道。被派发的 `author` 服务于派发方而非终端用户：提示带用户确认的 `Confirmed paths` 时视为已通过大纲与文件确认门，否则先返回大纲与文件清单。
 
-`architect` 拥有 `design` 模式：逐层决定架构、模块边界与接口，把结果记入 `design.md`，并把记录移交给 `coder` 做实施计划。设计状态位于 `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`；`coder` 读它、在同目录写 `plan.md`，并可在验证落地后翻转其生命周期行。`architect` 与 `coder` 拥有 `<designStateDir>/**` 的预授权 `external_directory` 权限；两者都不把设计状态写进项目树。跨团队交接位于 `$XDG_DATA_HOME/janus-agent/handoff/<projectId>/<handoffId>/handoff.md`——五个主入口共享的唯一业务态目录（`consultant` 不持有其他）；交接文档在首次跨主入口交接时懒创建，由 ≤ 80 行的现态快照加倒序 Hop 账本构成，跨会话追加、没有自动完结，通过 `/janus-handoff` 命令管理。编码由 `coder` 负责：计划里程碑与完全指定的编码/单测工作交给 `coder-lite`（工作区编辑免确认、外部编辑先询问、项目原生命令允许执行、禁止继续派发——它的停下上报是合法的部分结果，由派发方整合）。`coder-lite` 的 bash 为 `"*": "allow"` 加 `CODER_LITE_BASH_DENY_RULES` 护栏，且只拒绝清单内的命令（git/svn/hg 写与还原、`rm -rf`、`sudo`、`janus-keys` CLI）。该护栏是防误操作的 Speed Bump，不是沙箱：它拦不住子 shell 或脚本重定向——包括直接读写外部文件、插件配置或密钥文件（`janus-keys*` 的拒绝只挡 CLI 调用，不挡对密钥文件的直接读写）；安装脚本与网络请求等工作区快照之外的不可逆副作用也无法由基线还原。工作区文件完整性由 `coder` 侧的基线对账兜底。判断密集型工作留在 `coder`，L3 工作可用 `tier: "deep"` 派发到更强的已配置模型。`coder` 按任务复杂度选择 L0/L1/L2/L3 过程权重，并在编辑前对 L2/L3 设置用户审批门。
+`architect` 拥有 `design` 模式：逐层决定架构、模块边界与接口，把结果记入 `design.md`，并把记录移交给 `coder` 做实施计划。设计状态位于 `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`；`coder` 对它 100% 只读、在同目录写 `plan.md`。`architect` 与 `coder` 拥有 `<designStateDir>/**` 的预授权 `external_directory` 权限；两者都不把设计状态写进项目树。跨团队交接位于 `$XDG_DATA_HOME/janus-agent/handoff/<projectId>/<handoffId>/handoff.md`——五个主入口共享的唯一业务态目录（`consultant` 不持有其他）；交接文档仅在回合末尾显式发起交接时创建或更新（接管纯只读），由 ≤ 80 行的背景与定论加最新一跳携带 `默认接力任务` 的倒序 Hop 账本构成，通过 `/janus-handoff` 命令管理。编码由 `coder` 负责：计划里程碑与完全指定的编码/单测工作交给 `coder-lite`（工作区编辑免确认、外部编辑先询问、项目原生命令允许执行、禁止继续派发——它的停下上报是合法的部分结果，由派发方整合）。`coder-lite` 的 bash 为 `"*": "allow"` 加 `CODER_LITE_BASH_DENY_RULES` 护栏，且只拒绝清单内的命令（git/svn/hg 写与还原、`rm -rf`、`sudo`、`janus-keys` CLI）。该护栏是防误操作的 Speed Bump，不是沙箱：它拦不住子 shell 或脚本重定向——包括直接读写外部文件、插件配置或密钥文件（`janus-keys*` 的拒绝只挡 CLI 调用，不挡对密钥文件的直接读写）；安装脚本与网络请求等工作区快照之外的不可逆副作用也无法由基线还原。工作区文件完整性由 `coder` 侧的基线对账兜底。判断密集型工作留在 `coder`，L3 工作可用 `tier: "deep"` 派发到更强的已配置模型。`coder` 按任务复杂度选择 L0/L1/L2/L3 过程权重，并在编辑前对 L2/L3 设置用户审批门。
 
 `janus` 是默认前台：处理一般问题与轻量任务，通过 `janus_dispatch` 把快答路由给 `simple`、证据工作给 `consultant`、编码给 `coder`；设计请求交给用户自选且不可派发的 `architect`；文档请求既可派发 `author`，也可让用户切换到该入口。派发 `consultant` 或 `author` 时 janus 附带 `Memory ownership: consultant saves` 或 `Memory ownership: author saves`，因为 janus 不持有咨询记忆。它自己不做深度研究、设计、文档或重编码。
 
@@ -355,9 +356,9 @@ consultant 把有界的证据工作路由给自己的团队：`common-explorer` 
 
 author 状态目录位于 `$XDG_DATA_HOME/janus-agent/author`（默认 `~/.local/share/janus-agent/author`）。它按 `author/<projectId>/<docId>/brief.md` 存放每篇文档一份的作者简报；`author-writer` 对其只读、绝不写。删除该目录即丢弃文档模式状态；`author` 可凭既有文档与清单重建简报。
 
-design 状态目录位于 `$XDG_DATA_HOME/janus-agent/design`（默认 `~/.local/share/janus-agent/design`）。它按 `design/<projectId>/<designId>/design.md` 存放每项目的设计记录与 coder 的 `plan.md`；没有设计记录的计划位于 `design/<projectId>/<planId>/plan.md`。`design.md` 是现态文档（原地重写，约 200-300 行）；删除它需要用户确认，删除已落地（有设计记录时生命周期行已翻转）的 `plan.md` 则不需要。删除该目录即丢弃设计状态。
+design 状态目录位于 `$XDG_DATA_HOME/janus-agent/design`（默认 `~/.local/share/janus-agent/design`）。它按 `design/<projectId>/<designId>/design.md` 存放每项目的设计记录与 coder 的 `plan.md`；没有设计记录的计划位于 `design/<projectId>/<planId>/plan.md`。`design.md` 是现态文档（原地重写，约 200-300 行，architect 是唯一写入者、coder 100% 只读）；删除它需要用户确认，删除已落地（全部里程碑验证、审查消解、终报交付）的 `plan.md` 则不需要。删除该目录即丢弃设计状态。
 
-handoff 状态目录位于 `$XDG_DATA_HOME/janus-agent/handoff`（默认 `~/.local/share/janus-agent/handoff`）。它按 `handoff/<projectId>/<handoffId>/handoff.md` 存放每个课题一份的跨团队交接文档：YAML frontmatter（`handoff_id`、`title`、`status`、`current_team`、`hop_state`、`hop_count`、`updated_at`）、至多 80 行的 `## 1. Current Truth Snapshot`（带标签与原地 `supersedes` 的事实、待解决问题、只存路径指针的产物区），以及最新 `### Hop N` 紧贴标题下方的 `## 2. Handoff Ledger (Newest First)`。交接在首次跨主入口交接时懒创建，跨会话保持打开，直到用户通过 `/janus-handoff` 归档或删除。删除该目录即丢弃全部交接状态；用 `/janus-handoff export` 保留副本。
+handoff 状态目录位于 `$XDG_DATA_HOME/janus-agent/handoff`（默认 `~/.local/share/janus-agent/handoff`）。它按 `handoff/<projectId>/<handoffId>/handoff.md` 存放每个课题一份的无状态交接文档：YAML frontmatter（`handoff_id`、`title`、`updated_at`、`last_hop`）、至多 80 行的 `## 1. 背景与当前定论`（拍板结论、未决问题、只存路径指针的产物区），以及最新 `### Hop N` 紧贴标题下方的 `## 2. 交接记录与下一跳指引`（仅最新一跳携带 `建议下一跳` 与 `默认接力任务`）。文档只在回合末尾、当 agent 或用户显式发起交接时创建或更新；接管只读前 120 行；每次写入以 `交接单: <handoff-id>` 回显结尾。删除该目录即丢弃全部交接状态；用 `/janus-handoff export` 保留副本。
 
 ## 第 5 步：验证安装
 
@@ -389,8 +390,8 @@ JANUS_PLUGIN_ENTRY=~/.local/share/janus-agent-plugin/dist/index.js bun run integ
 ```bash
 bun test                     # 全部单元测试（同目录 *.test.ts，bun:test）
 bun run typecheck            # 全工作区 tsc --noEmit
-bun run gen:skill            # 从 skill-src/ 重新生成三个 skill
-bun run build                # 先重新生成三个 skill，再把 adapter + memory-mcp 打包进 dist/
+bun run gen:skill            # 从 skill-src/ 重新生成四个 skill
+bun run build                # 先重新生成四个 skill，再把 adapter + memory-mcp 打包进 dist/
 bun run install:local        # 构建后把产物安装进安装前缀
 bun run integration          # 隔离的 OpenCode 集成证明（无 opencode 时跳过）
 bun run evals/run-evals.ts   # 打印评估清单（不调用真实模型）

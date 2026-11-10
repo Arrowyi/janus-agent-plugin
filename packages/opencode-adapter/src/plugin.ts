@@ -32,7 +32,7 @@ import { computeNamespace } from "./namespace.ts"
 
 /**
  * Create the config hook that registers the agent family, the
- * janus-memory MCP server, and the consultation skill.
+ * janus-memory MCP server, and the four skills.
  *
  * Exported separately from the plugin so tests can invoke the hook
  * without constructing a full `PluginInput`.
@@ -151,7 +151,7 @@ export function createSystemTransformHook(env: NodeJS.ProcessEnv = process.env) 
  * The janus-agent OpenCode plugin.
  *
  * Registers the agent family, the dispatch tools, the `janus-memory` MCP
- * server, the three consultation skills, and the model-adaptation system hook.
+ * server, the four skills, and the model-adaptation system hook.
  * Contains no evidence, recommendation, or persistence logic.
  */
 export const JanusAgentPlugin: Plugin = async (input) => ({

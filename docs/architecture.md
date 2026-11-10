@@ -42,7 +42,7 @@ flowchart TB
     OA --> AG["14 个 agent<br/>6 主入口 + 8 子 agent"]
     OA --> TL["工具: janus_dispatch / _wait / _cancel / _continue<br/>janus_config / janus_provider_keys"]
     OA --> CMD["命令: /janus-memory /janus-models /janus-handoff /janus-config"]
-    AG --> SK["三个 skill: consultation / design / doc"]
+    AG --> SK["四个 skill: consultation / design / doc / handoff"]
     AG --> MCP["memory-mcp"]
     MCP --> SQ["memory-sqlite"]
     MCP --> MC["memory-core"]
@@ -122,7 +122,7 @@ consultant 在其五个证据模式上共用一个会话：每一轮重新评估
 - 设计方法（准入、分层决策、质量场景、可逆性门、设计记录）；
 - 记忆预览与保存行为。
 
-这些 skill 可被 `consultant` 之外的 agent 复用。agent 提示词可以预载核心 skill，但 skill 始终是权威流程来源。`skill-src/{consultation,consultation-design,consultation-doc}/**` 是唯一事实源，`script/gen-skill.ts` 生成三个 `assets/skills/*/SKILL.md`（已接入构建）；过期测试会报错。`script/skill-consistency.test.ts` 检查七模式 schema 与 consultant 提示词、生成的 skill、eval 的 `modes` 元数据一致；`script/prompt-lint.test.ts` 强制每 skill 字数预算与重复句纪律。
+这些 skill 可被 `consultant` 之外的 agent 复用。agent 提示词可以预载核心 skill，但 skill 始终是权威流程来源。`skill-src/{consultation,consultation-design,consultation-doc,handoff}/**` 是唯一事实源，`script/gen-skill.ts` 生成四个 `assets/skills/*/SKILL.md`（已接入构建）；过期测试会报错。`script/skill-consistency.test.ts` 检查七模式 schema 与 consultant 提示词、生成的 skill、eval 的 `modes` 元数据一致；`script/prompt-lint.test.ts` 强制每 skill 字数预算与重复句纪律。
 
 ### 5.3 咨询核心
 
@@ -178,7 +178,7 @@ SQLite 适配器负责：
 - 注册 14 个 agent。6 个主入口：`janus`（前台，模式 `all`）、`simple`（模式 `all`）、`consultant`（`primary`）、`architect`（`primary`）、`coder`（`all`）、`author`（`primary`）；
 - 注册咨询子 agent——`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`（只读、禁 shell、禁派发）；
 - 注册研发子 agent `coder-reviewer`（只读审查；另获 design 状态目录的 `external_directory` 权限，用于只读比对 `design.md`）与 `coder-lite`（初中级工程师车道、叶节点、步数上限 80，bash 全允许加 VCS 写/还原与破坏性删除护栏），以及文档子 agent `author-writer`（仅允许编辑配置的 `writer_docs_roots` 之下，默认 `userdoc`；空根数组选择只读回退；禁 shell 与派发；步数上限 80）与 `author-reviewer`（默认 `opencode-go/kimi-k3.1-pro`；只读：`edit`/`bash`/`task`/`webfetch`/`websearch` 全拒，仅授予 author 与 design 状态目录的 `external_directory` 读权限；`architecture`/`targeted`/`strict` 门禁；不在 `tier_role_caps` 中）；
-- 创建固定的 author 状态目录（`$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报）、design 状态目录（`$XDG_DATA_HOME/janus-agent/design`，`architect` 在其中写 `design.md` 的决策内容），以及跨团队 handoff 状态目录（`$XDG_DATA_HOME/janus-agent/handoff`，五个主入口在其中追加 `handoff.md` 文档）；`author` 拥有 author 与 design 两目录权限，`architect` 拥有 design 目录权限，`coder` 拥有 design 目录权限（读 `design.md`、写 `plan.md` 与其生命周期行）；handoff 目录由 `janus`、`consultant`、`architect`、`coder`、`author` 五者共享，是 `consultant` 与 `janus` 唯一持有的业务态目录；
+- 创建固定的 author 状态目录（`$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报）、design 状态目录（`$XDG_DATA_HOME/janus-agent/design`，`architect` 在其中写 `design.md` 的决策内容），以及跨团队 handoff 状态目录（`$XDG_DATA_HOME/janus-agent/handoff`，五个主入口在其中创建与更新 `handoff.md` 文档）；`author` 拥有 author 与 design 两目录权限，`architect` 拥有 design 目录权限，`coder` 拥有 design 目录权限（只读 `design.md`、写 `plan.md`）；handoff 目录由 `janus`、`consultant`、`architect`、`coder`、`author` 五者共享，是 `consultant` 与 `janus` 唯一持有的业务态目录；
 - 提供核心咨询 skill 及其设计/文档子 skill；
 - 注册或启动内置的本地记忆 MCP；
 - 把 OpenCode 会话 ID 映射为带命名空间的核心 ID；
@@ -332,7 +332,7 @@ consultant 通过 `janus_dispatch` 领导四个咨询子 agent：`common-explore
 
 每个决策至少带两个真正不同的选项、一个建议、什么会改变它、单向/双向可逆性标签，以及相关的推迟触发条件。单向门逐个批准并获得 coder-reviewer 事前验尸（coder-reviewer 的 `designReview`：事前验尸失败、未满足的质量场景、可逆性问题、缺失选项）；双向门获得默认值并每层一次批量批准。每次批准前与移交前各跑一次只读的跨层一致性检查，接受的结果写入 `design.md`。
 
-记录位于 `<designStateDir>/<projectId>/<designId>/design.md`（默认 `$XDG_DATA_HOME/janus-agent/design`）且自包含：MADR（轻量架构决策记录格式）形态的决策只有 proposed/accepted 两态、每个被拒选项一行、承重质量属性配适应度函数、开放问题带触发条件。它是现态文档，原地重写并维持在约 200-300 行。architect 写它的决策内容；coder 只读决策，并可在验证落地后翻转其生命周期行。
+记录位于 `<designStateDir>/<projectId>/<designId>/design.md`（默认 `$XDG_DATA_HOME/janus-agent/design`）且自包含：MADR（轻量架构决策记录格式）形态的决策只有 proposed/accepted 两态、每个被拒选项一行、承重质量属性配适应度函数、开放问题带触发条件。它是现态文档，原地重写并维持在约 200-300 行。architect 是记录的唯一写入者；coder 对它 100% 只读、在同目录写 `plan.md`，记录不携带生命周期或状态行。
 
 向编码的移交是显式的。被接受的 `design.md` 就是已批准的规格：coder 跳过头脑风暴的规格对话，把 L2 设计门收缩为记录未覆盖的实现细节加精确文件清单，并在 `design/<projectId>/<designId>/plan.md` 规划精简 ExecPlan（里程碑、验证/回滚、决策日志、意外与发现）。批准计划即确认其列出的文件；L2 时 coder 自检每个已接受决策都有任务、每个接口都有测试、顺序可回退（L3 追加独立计划评审），实现完成后 `coder-reviewer` 把 diff 与 `design.md` 对照。触及单向门决策的偏差退回 `architect`。有界设计轮次中，architect 只返回当前层的决策请求。
 
@@ -746,7 +746,7 @@ $XDG_CACHE_HOME/janus-agent/
 - `GET /config` 返回 200，含 `janus-memory` MCP 条目；
 - 14 个 agent 全部注册：`janus`、`simple`、`consultant`、`architect`、`coder`、`author` 与 8 个子 agent（含 `coder-reviewer`、`author-reviewer`）；`janus` 提示词含公共原则；
 - 权限与绑定：`architect`/`coder`/`author`、`coder-reviewer` 与 `author-reviewer` 的 design（及 author）状态目录访问；五个主入口的 handoff 目录访问与提示词标注；`simple`、`coder-lite`、`common-explorer`、`consultant-analyst` 不持有 handoff 权限；design、handoff 与 simple 工作区目录已创建；
-- 三个 skill 与 `janus-models`、`janus-handoff`、`janus-config` 三个命令文件已安装且含各自契约内容；
+- 四个 skill（`consultation`、`consultation-design`、`consultation-doc`、`handoff`）与 `janus-models`、`janus-handoff`、`janus-config` 三个命令文件已安装且含各自契约内容；
 - 已安装产物含 `dist/janus-keys.js` 与 `bin/janus-keys`；
 - 派发原语在真实宿主上成立（root/attempt 父子层级、工作区绑定、noReply 持久化、journal 的 ignored/synthetic 标记）；
 - 运行期间仓库的 `git status --porcelain` 前后一致。
@@ -760,14 +760,14 @@ $XDG_CACHE_HOME/janus-agent/
 - 独立插件打包：`bun run install:local` 装入自包含的 `dist/` 与 `assets/`，不携带 `node_modules`；
 - 14 个 agent：6 个主入口与 8 个子 agent（`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`、`coder-reviewer`、`coder-lite`、限定写入的 `author-writer`、只读审稿的 `author-reviewer`），其中 12 个可经 `janus_dispatch` 派发（含 `author`，带调用方 DAG 守卫）；`janus` 与 `architect` 不可派发；
 - 文档分工：`janus`/`architect`/`coder` 派发新读者文档与 ≥3 处编辑的重写给 `author`；`author` 按单元 `writeMode`（`scoped`/`read-only`）调度 `author-writer`，根目录外路径先写盘再过 `author-reviewer`；
-- 三个 skill（`consultation`、`consultation-design`、`consultation-doc`，由 `skill-src/**` 生成），覆盖七种模式；
+- 四个 skill（`consultation`、`consultation-design`、`consultation-doc`、`handoff`，由 `skill-src/**` 生成），覆盖七种模式与跨主入口交接；
 - 可恢复派发：四个派发工具与五张方法论卡片（`counter_evidence`、`hypothesis_matrix`、`plan_robustness`、`design_premortem`、`code_plan_review`）；
 - `janus_config`、`janus_provider_keys` 工具与终端命令 `janus-keys`（经 `bin/janus-keys` shim）；
 - 四条斜杠命令：`/janus-memory`、`/janus-models`、`/janus-handoff`、`/janus-config`；
 - 模型适配：10 个出厂块、`model_prompts` 覆盖与逐请求注入钩子；
 - 咨询与记忆核心包；带 FTS 的 SQLite 持久化；可配置的语义检索；五个记忆 MCP 操作；
 - 每会话一个经验包带课题条目；预览、提交、修订、停用与遗忘；
-- author、design、handoff 三个状态目录与 simple 工作区；handoff 契约库（`consultation-core/src/handoff.ts`）与 `/janus-handoff` 命令；
+- author、design、handoff 三个状态目录与 simple 工作区；无状态 `handoff` skill 与 `/janus-handoff` 命令；
 - 评估用例与隔离的 OpenCode 集成测试。
 
 ## 19. 行业与平台依据

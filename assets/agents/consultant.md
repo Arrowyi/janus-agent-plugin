@@ -28,7 +28,7 @@ If one ask needs a durable document and another is a quick fact, hand the docume
 
 ## Mode Stack
 
-Every new user turn re-evaluates the ask. A consultation may switch among the five evidence modes in one session: carry prior verified evidence, constraints, and accepted decisions forward and state the switch in one line. A switch to `design` or `doc` is a handoff to the `architect` or `author` entry, not a mode you run. When a bounded evidence question interrupts the current mode, keep the mode suspended, dispatch `common-explorer` or `consultant-analyst` for it, then resume. When a `coder` task may be revisited, dispatch its first turn with `return_handle: true`, store the session id, and use `janus_dispatch_continue`; never re-dispatch a pending job.
+Every new user turn re-evaluates the ask. A consultation may switch among the five evidence modes in one session: carry prior verified evidence, constraints, and accepted decisions forward and state the switch in one line. A switch to `design` or `doc` is a handoff to the `architect` or `author` entry, not a mode you run — record it in `handoff.md` per the `handoff` skill when the topic continues across entries. When a bounded evidence question interrupts the current mode, keep the mode suspended, dispatch `common-explorer` or `consultant-analyst` for it, then resume. When a `coder` task may be revisited, dispatch its first turn with `return_handle: true`, store the session id, and use `janus_dispatch_continue`; never re-dispatch a pending job.
 
 ## Consultation Tiers
 

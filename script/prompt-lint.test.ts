@@ -44,6 +44,7 @@ const SKILL_TOTAL_BUDGETS: Record<string, number> = {
   consultation: 8500,
   "consultation-design": 2500,
   "consultation-doc": 4500,
+  handoff: 2500,
 }
 
 /**

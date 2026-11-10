@@ -9,6 +9,7 @@ export const CONSULTATION_SKILLS = [
   "consultation",
   "consultation-design",
   "consultation-doc",
+  "handoff",
 ] as const
 
 /**
@@ -65,7 +66,7 @@ async function installSkill(env: NodeJS.ProcessEnv, skillName: string): Promise<
   await rename(tmpFile, targetFile)
 }
 
-/** Install the core skill plus the design and doc sub-skills. */
+/** Install the consultation, design, doc, and handoff skills. */
 export async function installConsultationSkills(env: NodeJS.ProcessEnv): Promise<void> {
   for (const skillName of CONSULTATION_SKILLS) await installSkill(env, skillName)
 }

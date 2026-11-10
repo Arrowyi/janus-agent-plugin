@@ -706,14 +706,14 @@ describe("createJanusConfigHook", () => {
   })
 
 
-  it("skill install writes all three SKILL.md files when missing", async () => {
+  it("skill install writes all four SKILL.md files when missing", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
     delete process.env.JANUS_CONFIG
     delete process.env.XDG_CONFIG_HOME
     process.env.OPENCODE_CONFIG_DIR = tmpHome
-    const skills = ["consultation", "consultation-design", "consultation-doc"] as const
+    const skills = ["consultation", "consultation-design", "consultation-doc", "handoff"] as const
     for (const name of skills) expect(existsSync(join(tmpHome, "skills", name, "SKILL.md"))).toBe(false)
     const config: Config = {}
     const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")

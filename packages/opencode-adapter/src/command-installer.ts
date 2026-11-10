@@ -16,8 +16,8 @@ export const MEMORY_COMMAND_PREFIX = "janus-memory"
 export const MODELS_COMMAND_PREFIX = "janus-models"
 
 /**
- * The cross-team handoff management command: list, view, mount, archive,
- * delete, export, and import handoff documents.
+ * The cross-team handoff management command: list, view, use, delete,
+ * export, and import handoff documents.
  */
 export const HANDOFF_COMMAND_PREFIX = "janus-handoff"
 

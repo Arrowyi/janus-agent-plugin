@@ -505,7 +505,8 @@ describe("agent prompt contracts", () => {
     expect(architect).toContain('role: "coder"')
     expect(architect).toContain("/new")
     expect(architect).toContain("janus_dispatch_continue")
-    expect(architect).toContain("apply the record's lifecycle flip yourself")
+    expect(architect).toContain("records or updates `handoff.md` per the `handoff` skill")
+    expect(architect).toContain("交接单: <handoff-id>")
 
     // Stage 2 test-surface review (D3)
     expect(card).toContain("Review the test surface")
@@ -545,26 +546,24 @@ describe("agent prompt contracts", () => {
     }
   })
 
-  it("the design record lifecycle closes with the coder flipping only the lifecycle line", async () => {
+  it("design.md is architect-owned and 100% read-only for the coder; a landed plan.md deletes freely", async () => {
     const coder = await readAgentPrompt("coder.md")
     const architect = await readAgentPrompt("architect.md")
     const skill = await readSkill("consultation-design")
 
-    for (const text of ["lifecycle line", "evidence pointer"]) {
-      expect(coder).toContain(text)
-      expect(skill).toContain(text)
-    }
-    for (const text of [
-      "That line only",
-      "never rewrite the record to match the code",
-      "never create or reshape a lifecycle line",
-    ]) {
+    for (const text of ["100% read-only", "never edit any line of it"]) {
       expect(coder).toContain(text)
     }
-    expect(coder).not.toContain("fold the result back into `design.md`")
-    expect(architect).toContain("sole author of the decisions in `design.md`")
-    expect(architect).toContain("flipping its existing `in progress` lifecycle value")
-    expect(skill).toContain("Every other line of the record stays the architect's")
+    expect(coder).toContain("never rewrite it to match the code")
+    expect(coder).not.toContain("lifecycle")
+    expect(coder).toContain(
+      "Deleting that `plan.md` once the work lands — all milestones verified, review resolved, and the final report delivered — is the one persistent-file deletion that needs no confirmation",
+    )
+    expect(coder).toContain("follow the `handoff` skill")
+    expect(architect).toContain("sole author of `design.md`")
+    expect(architect).toContain("交接单: <handoff-id>")
+    expect(skill).toContain("The architect is the sole writer of the record")
+    expect(skill).toContain("no lifecycle or status line")
   })
 
   it("janus and writer route code-adjacent maintenance to the coder", async () => {

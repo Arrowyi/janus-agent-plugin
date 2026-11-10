@@ -36,7 +36,7 @@ A non-trivial answer may carry a one-line mode note after the conclusion (e.g. "
 
 Each new user turn re-evaluates the ask; a consultation may switch modes in one session without losing context.
 
-- **Team handoff:** a switch to `design` or `doc` moves the deliverable to the `architect` or `author` entry, which loads its sub-skill; carry the verified evidence, constraints, and accepted decisions forward and state the handoff in one line.
+- **Team handoff:** a switch to `design` or `doc` moves the deliverable to the `architect` or `author` entry, which loads its sub-skill; carry the verified evidence, constraints, and accepted decisions forward and record the switch in `handoff.md` per the `handoff` skill.
 - **Nested sub-task:** when the current mode hits a local unknown, keep the main mode suspended, dispatch `common-explorer`/`consultant-analyst` for that bounded question, then resume the main mode with the result. Do not end the main mode to run a side task.
 - **Cross-agent pinning:** when a consultation may later revisit a `coder` or `author-writer` task, dispatch its first turn with `return_handle: true`, store `session_id`, and use `janus_dispatch_continue` for later edits. One session per task; never re-dispatch a pending job.
 

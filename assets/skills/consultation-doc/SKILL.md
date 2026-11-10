@@ -162,7 +162,7 @@ The `author-writer` role is required for doc mode: if it is disabled, unavailabl
 
 ### Continuation and recovery
 
-If work is interrupted or spans sessions: read the brief, the approved map, and the existing chapters; compare them with the saved manifest and brief summary; resume at the first missing or incomplete chapter; re-run only verification affected by later source or version changes. A missing brief on a legacy document triggers the three-option question rather than guessing.
+If work is interrupted or spans sessions: read the brief, the approved map, and the existing chapters; compare them with the saved manifest and brief summary; resume at the first missing or incomplete chapter; re-run only verification affected by later source or version changes. A missing brief on a legacy document triggers the three-option question rather than guessing. A session that picks the work up through a cross-agent handoff reads the mounted `handoff.md` (first 120 lines) plus the brief and resumes from there.
 
 ### Failure handling
 

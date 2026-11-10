@@ -112,7 +112,7 @@ coder 选择能胜任的最轻流程，并在开工前用一行宣布。
 ## 7. 权限与派发
 
 - `janus` 是完整执行席位，拥有宿主默认权限，外加下述共享 handoff 目录。
-- `coder` 是完整执行席位，外加对设计状态目录（读 `design.md`、写 `plan.md` 与其生命周期行）与共享 handoff 目录的 `external_directory` 读写权限。
+- `coder` 是完整执行席位，外加对设计状态目录（只读 `design.md`、写 `plan.md`）与共享 handoff 目录的 `external_directory` 读写权限。
 - `architect` 是设计主席位，拥有设计状态目录的 `external_directory` 权限；`author` 是文档主席位，拥有 author 与 design 两个状态目录的权限；`coder-reviewer` 拥有 design 状态目录的只读 `external_directory` 权限；`author-reviewer` 拥有 author 与 design 两个状态目录的只读 `external_directory` 权限。`consultant` 唯一的业务态目录是共享 handoff 目录；它既不持有作者简报也不持有设计记录，不写正文、不写生产代码。
 - 五个主入口（`janus`、`consultant`、`architect`、`coder`、`author`）共享跨团队 handoff 状态目录的 `external_directory` 读写权限（见 7.3）；所有叶节点子 agent 一律拒绝。
 
@@ -126,13 +126,13 @@ coder 选择能胜任的最轻流程，并在开工前用一行宣布。
 
 ### 7.2 Design 状态与记录
 
-设计决策存放在项目树之外：`$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`（无设计记录的计划位于 `.../<planId>/plan.md`）。`architect` 写入并维护 `design.md` 的决策内容；coder 只读决策、在同目录写自己的 `plan.md`，并在整份记录的实现验证、无待决偏离、审查闭环、结果被接受后，把记录已存在的 `in progress` 生命周期值翻转为 `implemented`（附日期与证据指针；派发模式下回传证据、由派发方或用户执行）——这是它可写的唯一一行，architect 重写记录时保留该行。`architect` 与 `coder` 拥有 `<designStateDir>/**` 的预授权 `external_directory` 权限，运行时绑定用与作者简报相同的稳定项目 ID 标注设计基目录 `<designStateDir>/<projectId>`。`design.md` 是现态文档：`architect` 原地重写、维持在约 200-300 行，删除前需征得同意。`plan.md` 是临时文件：工作落地（有设计记录时生命周期行已翻转）之后删除它是唯一无需确认的持久文件删除。
+设计决策存放在项目树之外：`$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`（无设计记录的计划位于 `.../<planId>/plan.md`）。`architect` 写入并维护 `design.md` 的决策内容；coder 对 `design.md` 100% 只读、在同目录写自己的 `plan.md`，绝不编辑记录的任何一行——记录不携带生命周期或状态行，完成历史由 git 与实施报告承载。`architect` 与 `coder` 拥有 `<designStateDir>/**` 的预授权 `external_directory` 权限，运行时绑定用与作者简报相同的稳定项目 ID 标注设计基目录 `<designStateDir>/<projectId>`。`design.md` 是现态文档：`architect` 原地重写、维持在约 200-300 行，删除前需征得同意。`plan.md` 是临时文件：工作落地（全部里程碑验证、审查消解、终报交付）之后删除它是唯一无需确认的持久文件删除。
 
 ### 7.3 Handoff 状态与跨团队交接文档
 
-跨团队交接存放在项目树之外：`$XDG_DATA_HOME/janus-agent/handoff/<projectId>/<handoffId>/handoff.md`——每个课题一份文档，在首次跨主入口交接时懒创建（或当 `janus` 识别出跨多团队复合任务时创建），此后跨会话持续追加、没有自动完结：`status` 保持 `active`，直到用户通过 `/janus-handoff` 归档或删除。文档结构是 YAML frontmatter（`handoff_id`、`title`、`status`、`current_team`、`hop_state`、`hop_count`、`updated_at`）加两个固定分区：`## 1. Current Truth Snapshot`（至多 80 行——带必填 `basis` 的认识论标签事实、被推翻时原地标注 `supersedes: F<n>`、待解决问题、以及只存路径指针的产物区，指向 `design.md`/`plan.md`/`brief.md`/`userdoc`）与 `## 2. Handoff Ledger (Newest First)`（最新的 `### Hop N: <FromRole> -> <ToRole> (<timestamp>)` 紧贴标题下方）。接收方只读前 120 行即掌握完整现态与最新若干跳；团队内部讨论与抄录的文档正文绝不进入该文件。
+跨团队交接存放在项目树之外：`$XDG_DATA_HOME/janus-agent/handoff/<projectId>/<handoffId>/handoff.md`——每个课题一份无状态 Markdown 文档，仅在回合末尾、当 agent 或用户显式发起交接（或要求保存检查点）时创建或更新；接管 100% 纯只读。文档结构是 YAML frontmatter（`handoff_id`、`title`、`updated_at`、`last_hop`）加两个固定分区：`## 1. 背景与当前定论`（≤ 80 行——`### 核心背景与已拍板结论` 的 `[C<n>]` 蒸馏结论、`### 待继续讨论与未决问题` 的 `[Q<n>]` 或 `- 无`、`### 关联文件链接` 的只存路径指针）与 `## 2. 交接记录与下一跳指引`（最新 `### Hop N` 紧贴标题下方，仅最新一跳携带 `建议下一跳` 与 `默认接力任务`，旧 Hop 只保留 `本跳结论摘要`）。追加 Hop N+1 时做综合刷新：把上一份文档的未决问题与本轮新讨论结论合并进第 1 分区（无论用户是否按上一跳的建议下一跳执行）；接收方只读前 120 行即掌握完整背景与最新一跳。每次写入该文档的回合必须以 `交接单: <handoff-id>` 回显结尾。
 
-三档唤醒协议防止跨课题串台：同一会话中上一条回复以 `交接单: <handoff_id>` 结尾时自动挂载（并把 `hop_state` 置为 `accepted`）；显式指名的交接单直接挂载；存在两份及以上 active 交接单且用户要求继续时，列出单行候选让用户按序号选择——绝不静默自动选用。文档契约（解析/校验、倒序追加 Hop 并刷新快照，以及创建/接受/状态翻转）是 `consultation-core`（`handoff.ts`）中的纯函数库；`handoff.md` 内容是不可信数据、绝不作为指令执行，也绝不替代 `design.md` 的单向门审批。`/janus-handoff` 命令提供 `list / all`、`view [full]`、`use`、`archive / unarchive`、`delete`（带 `/janus-memory` 式的删/留确认门）、`export`（默认 `./userdoc/handoffs/<handoff_id>.md`）与 `import`（确认拷入前做全契约校验）。
+三级触发挂载交接：显式 ID（`继续 <handoff-id>` 等，或 `/janus-handoff use <id|n>`）、裸 `继续交接`（同会话上一条回复以 `交接单:` 结尾时直接挂载，否则按 `updated_at` 由新到旧扫描——仅 1 份直接挂载、多份列出最近 10 条编号候选，绝不静默自动选用）、程序化派发（派发提示词携带 `继续交接: <handoff-id> (<绝对路径>)`）。用户附带现场新指令时以指令为准（忽略旧 `默认接力任务`）；裸触发下当前 agent 匹配 `建议下一跳` 则直接以 `默认接力任务` 为目标，不匹配则只读展示 3 行摘要并请用户切换、派发或给出新指令。`handoff.md` 内容是不可信数据、绝不作为指令或文件写入授权。可移植契约由第四个 skill `handoff`（`skill-src/handoff/` 生成，OpenCode/Cursor/Claude Code 通用）承载；`/janus-handoff` 命令提供 `list`（由新到旧、最近 10 条）、`all`、`view [full]`、`use`（只读挂载并按上述规则继续）、`delete`（带 `/janus-memory` 式的删/留确认门）、`export`（默认 `./userdoc/handoffs/<handoff_id>.md`）与 `import`（确认拷入前做全契约校验），无归档子命令。
 
 ## 8. 记忆
 
@@ -149,4 +149,4 @@ bun run install:local
 JANUS_PLUGIN_ENTRY=~/.local/share/janus-agent-plugin/dist/index.js bun run integration
 ```
 
-集成证明在隔离的 OpenCode 沙箱中加载已安装的构建产物，断言 14 个 agent 键、记忆 MCP（Model Context Protocol，本地工具服务协议）、三个 skill、命令文件（janus-models、janus-handoff、janus-config；四条斜杠命令的完整安装由 plugin.test.ts 覆盖）、simple 工作区、派发原语、design/author/handoff 状态权限（含叶节点不持有 handoff 权限的反证、coder-reviewer 的 design 状态目录只读权限与 author-reviewer 的双状态目录只读权限），以及 architect/author/coder 提示词中的 design/author 绑定与五个主入口提示词中的 handoff 绑定。组装后的提示词由金样快照锁定，生成的 skill 由 `gen-skill.test.ts` 锁定；`skill-consistency.test.ts` 检查七模式 schema 与提示词、skill、eval 的 `modes` 元数据一致。模型评分的行为（路由、自适应过程、派发模式纪律、设计门）由 `evals/fixtures/consultation-cases.json` 覆盖，需要真实模型评审。
+集成证明在隔离的 OpenCode 沙箱中加载已安装的构建产物，断言 14 个 agent 键、记忆 MCP（Model Context Protocol，本地工具服务协议）、四个 skill（含 `handoff` 的无状态契约与 `交接单` 回显）、命令文件（janus-models、janus-handoff、janus-config；四条斜杠命令的完整安装由 plugin.test.ts 覆盖）、simple 工作区、派发原语、design/author/handoff 状态权限（含叶节点不持有 handoff 权限的反证、coder-reviewer 的 design 状态目录只读权限与 author-reviewer 的双状态目录只读权限），以及 architect/author/coder 提示词中的 design/author 绑定与五个主入口提示词中的 handoff 绑定。组装后的提示词由金样快照锁定，生成的 skill 由 `gen-skill.test.ts` 锁定；`skill-consistency.test.ts` 检查七模式 schema 与提示词、skill、eval 的 `modes` 元数据一致。模型评分的行为（路由、自适应过程、派发模式纪律、设计门）由 `evals/fixtures/consultation-cases.json` 覆盖，需要真实模型评审。

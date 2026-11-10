@@ -656,24 +656,24 @@
     "title": "A structural design question routes to design with per-layer gates",
     "given": "The user asks how to structure a new service: module boundaries, ownership, and the interface between two components. Existing code and AGENTS.md are available, and the decision changes future structure.",
     "when": "The architect classifies the mode and runs the design method",
-    "then": "It routes to `design` (never `select`, `doc` architecture, or `roadmap`), runs at standard or deep, frames L0 with prioritised six-part quality scenarios, and decides layer by layer. Each decision offers at least two genuinely different options with a recommendation, what would change it, and a reversibility label; one-way doors are approved individually while two-way doors get a default and one batch approval per layer. It writes design.md and, in a bounded design turn, returns only the current layer's decision requests.",
+    "then": "It routes to `design` (never `select`, `doc` architecture, or `roadmap`), runs at standard or deep, frames L0 with prioritised six-part quality scenarios, and decides layer by layer. Each decision offers at least two genuinely different options with a recommendation, what would change it, and a reversibility label; one-way doors are approved individually while two-way doors get a default and one batch approval per layer. It writes design.md and, in a bounded design turn, returns only the current layer's decision requests. Handing the record to `coder` follows the `handoff` skill: `handoff.md` links `design.md` under `关联文件链接` and the handing turn ends with `交接单: <handoff-id>`.",
     "grading": "model",
     "modes": [
       "design"
     ],
-    "notes": "Rubric: Reject a single-shot answer, a select-style candidate list, or a batch approval of one-way doors. Require the layer-by-layer decision requests, reversibility labels, and the design record path."
+    "notes": "Rubric: Reject a single-shot answer, a select-style candidate list, or a batch approval of one-way doors. Require the layer-by-layer decision requests, reversibility labels, the design record path, and the handoff-skill handoff record."
   },
   {
     "id": "C57",
     "title": "A coder with a design record shrinks the design gate and checks the plan against it",
     "given": "An accepted design.md exists for the task, and the coder receives a bounded L2 implementation request.",
     "when": "The coder classifies the task and plans",
-    "then": "It reads design.md, skips brainstorming's spec conversation, and shrinks the L2 design gate to the implementation details the record does not cover plus the exact file list. It writes a lean ExecPlan (milestones, verification/rollback, decision log, unexpected and findings) at design/<projectId>/<designId>/plan.md, self-checks every accepted decision has a task, every interface has a test, and the order is revertible, and after implementation has a fresh-context subagent compare the diff with design.md.",
+    "then": "It reads design.md, skips brainstorming's spec conversation, and shrinks the L2 design gate to the implementation details the record does not cover plus the exact file list. It writes a lean ExecPlan (milestones, verification/rollback, decision log, unexpected and findings) at design/<projectId>/<designId>/plan.md, self-checks every accepted decision has a task, every interface has a test, and the order is revertible, and after implementation has a fresh-context subagent compare the diff with design.md. It treats `design.md` as 100% read-only (never edits any line of it) and deletes the temporary `plan.md` without confirmation once the work has landed (all milestones verified, review resolved, final report delivered).",
     "grading": "model",
     "modes": [
       "design"
     ],
-    "notes": "Rubric: Reject re-litigating the accepted design or a plan without the design cross-check. Require the reduced gate, the exact file list, the plan path, and the post-implementation diff review."
+    "notes": "Rubric: Reject re-litigating the accepted design, any edit to `design.md`, or a plan without the design cross-check. Require the reduced gate, the exact file list, the plan path, the post-implementation diff review, and the landed-`plan.md` deletion rule."
   },
   {
     "id": "C58",
@@ -692,12 +692,12 @@
     "title": "The design record is rewritten in place, not appended",
     "given": "An existing design.md is under 300 lines, one accepted decision is superseded in a new session, and older designs exist in the design directory.",
     "when": "The architect updates the record and starts the new design",
-    "then": "It rewrites the record in place (no dated changelog), deletes the superseded content, merges resolved open questions into the decision they settled, keeps the record within roughly 200–300 lines and each decision within about 10 lines, and lists the older designs with a cleanup proposal before asking for confirmation to delete any design.md.",
+    "then": "It rewrites the record in place (no dated changelog), deletes the superseded content, merges resolved open questions into the decision they settled, keeps the record within roughly 200–300 lines and each decision within about 10 lines, carries no lifecycle or status line (the architect is the record's sole writer), and lists the older designs with a cleanup proposal before asking for confirmation to delete any design.md.",
     "grading": "model",
     "modes": [
       "design"
     ],
-    "notes": "Rubric: Reject an appended changelog, struck-through superseded sections, or silent deletion. Require the in-place rewrite, the size discipline, and the cleanup proposal with confirmation."
+    "notes": "Rubric: Reject an appended changelog, struck-through superseded sections, silent deletion, or introducing a lifecycle/status line. Require the in-place rewrite, the size discipline, and the cleanup proposal with confirmation."
   },
   {
     "id": "C60",

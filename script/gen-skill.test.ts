@@ -88,5 +88,13 @@ describe("gen-skill", () => {
     expect(doc).toContain("## Doc Mode")
     expect(doc).toContain("### doc: delivery brief")
     expect(doc).not.toContain("## Design Mode")
+
+    const handoff = await renderSkill(SKILLS[3]!)
+    expect(handoff).toContain("## Handoff")
+    expect(handoff).toContain("交接单: <handoff-id>")
+    expect(handoff).toContain("继续 <handoff-id>")
+    expect(handoff).toContain("first 120 lines")
+    expect(handoff).not.toContain("hop_state")
+    expect(handoff).not.toContain("hop_count")
   })
 })

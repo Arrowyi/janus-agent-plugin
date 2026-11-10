@@ -24,7 +24,7 @@ Full detail: the "部署规则" section of [docs/deployment.md](docs/deployment.
 
 ## Generated artifacts and prompt mutations
 
-- `skill-src/{consultation,consultation-design,consultation-doc}/**` is the source of truth for the three skills. Generate `assets/skills/{consultation,consultation-design,consultation-doc}/SKILL.md` with `bun run gen:skill` (wired into `bun run build`); never hand-edit the generated files. `script/gen-skill.test.ts` fails when any is stale.
+- `skill-src/{consultation,consultation-design,consultation-doc,handoff}/**` is the source of truth for the four skills. Generate `assets/skills/{consultation,consultation-design,consultation-doc,handoff}/SKILL.md` with `bun run gen:skill` (wired into `bun run build`); never hand-edit the generated files. `script/gen-skill.test.ts` fails when any is stale.
 - Every assembled role prompt has a reviewed golden under `packages/opencode-adapter/src/prompt-snapshots/`. After an intentional prompt change, review the diff and refresh with `UPDATE_PROMPTS=1 bun test packages/opencode-adapter/src/prompt-snapshots.test.ts`.
 - Shared prompt fragments live in `assets/principles/`: `common-base.md` (all roles), `common-write.md` (write-capable roles), `research-leaf.md` (common-explorer/consultant-analyst/consultant-critic/coder-reviewer/consultant-auditor/author-reviewer), `dispatch-hub.md` (janus/consultant/architect/coder/author), `user-facing-style.md` (the eight human-facing roles: janus/simple/consultant/architect/coder/author/author-writer/author-reviewer — never the six structural leaves), and the mode/claim/source/channel/engineering fragments. The five methodology cards live in `assets/protocols/` and are prepended to a dispatch turn by `dispatch-protocol.ts`. They are injected by the adapter, not duplicated into role assets; `script/prompt-lint.test.ts` enforces budgets and duplicate-sentence discipline.
 
@@ -63,7 +63,7 @@ The current family has 14 registered agents and 12 dispatch roles. Primary entri
 
 ## Design mode (architect → coder handoff)
 
-`architect` owns the `design` mode: it decides future structure layer by layer, records accepted decisions in a self-contained `design.md` under `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/`, and hands that record to `coder`, which implements with a reduced L2 gate and writes `plan.md` beside it. The architect writes the record's decision content; the coder reads it, writes `plan.md` beside it, and after verified, accepted implementation may flip only its lifecycle line to `implemented` (with the date and an evidence pointer). When changing design mode, update together:
+`architect` owns the `design` mode: it decides future structure layer by layer, records accepted decisions in a self-contained `design.md` under `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/`, and hands that record to `coder`, which implements with a reduced L2 gate and writes `plan.md` beside it. The architect is the sole writer of the record; the coder treats `design.md` as 100% read-only and never edits any line of it. When changing design mode, update together:
 
 - `skill-src/consultation-design/core.md`, `skill-src/consultation/core.md`, `skill-src/consultation/policies/team-orchestration.md`, `skill-src/consultation-doc/policies/current-state-docs.md`;
 - `assets/agents/{consultant,architect,coder,author,janus,consultant-critic,coder-reviewer}.md`;
@@ -72,7 +72,7 @@ The current family has 14 registered agents and 12 dispatch roles. Primary entri
 - `script/skill-consistency.test.ts`, `script/prompt-lint.test.ts`, and the affected prompt goldens;
 - `evals/fixtures/consultation-cases.json` (design cases C56+ and each case's `modes` array).
 
-The design directory is created non-fatally at registration. Deleting `design.md` needs user confirmation; deleting a landed `plan.md` (with the record's lifecycle line flipped, when a design record exists) is the one persistent-file deletion exempt from the confirmation gate, and writes/updates to it are still listed for confirmation.
+The design directory is created non-fatally at registration. Deleting `design.md` needs user confirmation; deleting a landed `plan.md` (all milestones verified, review resolved, and the final report delivered) is the one persistent-file deletion exempt from the confirmation gate, and writes/updates to it are still listed for confirmation.
 
 ## Current-state discipline
 

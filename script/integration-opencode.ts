@@ -367,6 +367,7 @@ async function main(): Promise<void> {
         consultation: join(sandboxConfig, "opencode", "skills", "consultation", "SKILL.md"),
         "consultation-design": join(sandboxConfig, "opencode", "skills", "consultation-design", "SKILL.md"),
         "consultation-doc": join(sandboxConfig, "opencode", "skills", "consultation-doc", "SKILL.md"),
+        handoff: join(sandboxConfig, "opencode", "skills", "handoff", "SKILL.md"),
       }
       for (const [name, skillPath] of Object.entries(skillPaths)) {
         const installed = existsSync(skillPath)
@@ -398,6 +399,12 @@ async function main(): Promise<void> {
         name: "installed doc skill contains the doc workflow and template",
         pass: docSkill.includes("## Doc Mode") && docSkill.includes("### doc: delivery brief"),
         detail: docSkill.includes("## Doc Mode") ? "doc skill present" : "doc skill MISSING doc mode",
+      })
+      const handoffSkill = existsSync(skillPaths.handoff) ? readFileSync(skillPaths.handoff, "utf8") : ""
+      assertions.push({
+        name: "installed handoff skill contains the stateless contract and echo",
+        pass: handoffSkill.includes("## Handoff") && handoffSkill.includes("交接单: <handoff-id>") && handoffSkill.includes("first 120 lines"),
+        detail: handoffSkill.includes("## Handoff") ? "handoff skill present" : "handoff skill MISSING the stateless contract",
       })
       for (const name of ["janus_dispatch_wait", "janus_dispatch_cancel", "janus_dispatch_continue"]) {
         assertions.push({
@@ -437,14 +444,14 @@ async function main(): Promise<void> {
       if (handoffCommandExists) {
         const handoffCommandText = readFileSync(handoffCommandPath, "utf8")
         const hasContract =
-          handoffCommandText.includes("## 1. Current Truth Snapshot") &&
-          handoffCommandText.includes("## 2. Handoff Ledger (Newest First)")
+          handoffCommandText.includes("## 1. 背景与当前定论") &&
+          handoffCommandText.includes("## 2. 交接记录与下一跳指引")
         const hasSubcommands =
           handoffCommandText.includes("`use <id|n>`") &&
-          handoffCommandText.includes("`archive <n|range>`") &&
           handoffCommandText.includes("`delete`") &&
           handoffCommandText.includes("`export <n> [path]`") &&
-          handoffCommandText.includes("`import <path>`")
+          handoffCommandText.includes("`import <path>`") &&
+          !handoffCommandText.includes("archive")
         assertions.push({
           name: "installed janus-handoff command contains the document contract and subcommand surface",
           pass: hasContract && hasSubcommands,

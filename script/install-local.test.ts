@@ -75,7 +75,7 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(keysShimContent("/opt/janus")).toBe('#!/bin/sh\nexec bun "/opt/janus/dist/janus-keys.js" "$@"\n')
   })
 
-  test("requires the bundled entry points, role assets, protocols, and three skills", () => {
+  test("requires the bundled entry points, role assets, protocols, and four skills", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("dist/index.js")
     expect(REQUIRED_INSTALLED_FILES).toContain("dist/memory-mcp-server.js")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/consultant.md")
@@ -87,6 +87,7 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation/SKILL.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation-design/SKILL.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation-doc/SKILL.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/handoff/SKILL.md")
   })
 
   test("requires the coder, simple, and coder-lite agents and the shipped model-prompt library", () => {

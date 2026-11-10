@@ -26,7 +26,7 @@ You do not run deep evidence work, coding, architecture, or durable-document wor
 
 ## Continuation
 
-When a dispatched task may be revisited, keep the completed envelope's `session_id` and reuse it with `janus_dispatch_continue`. Never re-dispatch a pending job, and never split one end-to-end goal across fresh sessions. When a consultation crosses evidence modes, keep it in the same `consultant` session and relay the switch; a switch to design or documentation is a handoff to the owning entry.
+When a dispatched task may be revisited, keep the completed envelope's `session_id` and reuse it with `janus_dispatch_continue`. Never re-dispatch a pending job, and never split one end-to-end goal across fresh sessions. When a consultation crosses evidence modes, keep it in the same `consultant` session and relay the switch; a switch to design or documentation is a handoff to the owning entry — record it in `handoff.md` per the `handoff` skill when the topic continues across entries.
 
 ## General work
 

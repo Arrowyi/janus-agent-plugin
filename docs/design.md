@@ -106,7 +106,7 @@ simple      -> 无（叶节点）
 | `author-writer` | `opencode/claude-sonnet-5-5` |
 | `author-reviewer` | `opencode-go/kimi-k3.1-pro` |
 
-出厂档位默认仅 fast 档两个：`fast.coder = opencode-go/glm-5.3-flash`（Junior 执行档）与 `fast.coder-reviewer = opencode-go/claude-haiku-5-5`（补丁审查档），二者同在 Go Plus 池；standard/deep 无档位默认，落回上表的角色标量默认（Senior `glm-5.3` coder 线）。
+出厂档位默认：fast 档两个 `fast.coder = opencode-go/glm-5.3-flash`（Junior 执行档）与 `fast.coder-reviewer = opencode-go/claude-haiku-5-5`（补丁审查档），二者同在 Go Plus 池；`standard.coder = opencode-go/deepseek-v4.1-flash`（Senior L3 执行档）；deep 档无档位默认，落回上表的角色标量默认（Senior `glm-5.3` coder 线）。
 
 每个角色解析到单一已配置模型，没有插件回退链。用户可在 `~/.config/janus-agent/config.jsonc` 用 `<role>_model` 覆盖任意角色，或用 `mode_models`/`tier_models` 按模式/档位路由。按模型的适配块由 system transform 钩子按实际服务当轮的模型注入。author-writer 的可写文档根由 `writer_docs_roots` 配置（默认 `["userdoc"]`，允许 `docs/guides` 这类项目相对路径；空数组选择全局只读）。已批准路径在根之内时 author-writer 直接写盘；路径在根之外（如 `README.md`、`docs/**`）或根为空时，它以只读模式返回正文/补丁，由 `author` 先应用到磁盘，再派发 `author-reviewer` 审计已落盘的文件。author-writer 绝不写源码、配置、构建文件或 `AGENTS.md`。
 

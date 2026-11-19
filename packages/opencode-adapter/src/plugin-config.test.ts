@@ -492,6 +492,7 @@ describe("resolveRoleModel precedence", () => {
     const cfg = config()
     expect(resolveRoleModel(cfg, "coder")).toBe("opencode-go/glm-5.3")
     expect(resolveRoleModel(cfg, "coder", { tier: "fast" })).toBe("opencode-go/glm-5.3-flash")
+    expect(resolveRoleModel(cfg, "coder", { tier: "standard" })).toBe("opencode-go/deepseek-v4.1-flash")
     expect(resolveRoleModel(cfg, "coder-reviewer", { tier: "fast" })).toBe("opencode-go/claude-haiku-5-5")
     expect(resolveRoleModel(cfg, "coder", { tier: "deep" })).toBe("opencode-go/glm-5.3")
   })
@@ -499,6 +500,7 @@ describe("resolveRoleModel precedence", () => {
   it("lets an explicit user model beat the shipped tier default", () => {
     const cfg = config({ coder_model: "scalar/coder" })
     expect(resolveRoleModel(cfg, "coder", { tier: "fast" })).toBe("scalar/coder")
+    expect(resolveRoleModel(cfg, "coder", { tier: "standard" })).toBe("scalar/coder")
     expect(resolveRoleModel(cfg, "coder", { tier: "deep" })).toBe("scalar/coder")
   })
 })

@@ -259,8 +259,9 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
   // 可选：按模式 / 按档位的模型路由。优先级：
   // mode_models[mode][role] > tier_models[tier][role] >
   // <role>_model > TIER_MODEL_DEFAULTS[tier][role] > MODEL_DEFAULTS[role].
-  // 出厂档位默认仅 fast 档两个：fast.coder = opencode-go/glm-5.3-flash、
-  // fast.coder-reviewer = opencode-go/claude-haiku-5-5。
+  // 出厂档位默认：fast 档两个 fast.coder = opencode-go/glm-5.3-flash、
+  // fast.coder-reviewer = opencode-go/claude-haiku-5-5，standard 档
+  // standard.coder = opencode-go/deepseek-v4.1-flash；deep 档无出厂默认。
   "mode_models": {
     "design": { "solution-reviewer": "provider/strong-reviewer", "common-explorer": "provider/fast-research" },
     "doc": { "author-writer": "provider/long-context-writer" }
@@ -309,7 +310,7 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
 | `consultant_agent` / `consultant_model` | string / string | `"consultant"` / `opencode-go/gemini-4-argon` | 咨询团队主入口，五种证据模式 |
 | `architect_agent` / `architect_model` / `architect_enabled` | string / string / boolean | `"architect"` / `opencode-go/gemini-4-argon` / `true` | 设计主入口；未设置时继承显式配置的 `consultant_model` |
 | `tech_lead_agent` / `tech_lead_model` / `tech_lead_enabled` | string / string / boolean | `"tech-lead"` / `opencode-go/glm-5.3` / `true` | 研发薄控制器（模式 `all`，可派发）：写 `plan.md`、按里程碑派发隔离子会话 |
-| `coder_agent` / `coder_model` / `coder_enabled` | string / string / boolean | `"coder"` / `opencode-go/glm-5.3` / `true` | 双档执行叶（subagent，步数 80，bash 全允许加 VCS 写/删除/janus-keys 护栏）；fast 档落到 `tier_models.fast.coder` 的出厂默认 `opencode-go/glm-5.3-flash` |
+| `coder_agent` / `coder_model` / `coder_enabled` | string / string / boolean | `"coder"` / `opencode-go/glm-5.3` / `true` | 双档执行叶（subagent，步数 80，bash 全允许加 VCS 写/删除/janus-keys 护栏）；fast 档落到 `tier_models.fast.coder` 的出厂默认 `opencode-go/glm-5.3-flash`，standard 档落到 `tier_models.standard.coder` 的出厂默认 `opencode-go/deepseek-v4.1-flash` |
 | `solution_reviewer_agent` / `solution_reviewer_model` / `solution_reviewer_enabled` | string / string / boolean | `"solution-reviewer"` / `opencode/claude-sonnet-5-5` / `true` | 独立审查席：设计事前验尸、Stage-1 计划评审与 Stage-2 终评 |
 | `author_agent` / `author_model` / `author_enabled` | string / string / boolean | `"author"` / `opencode-go/gemini-4-argon` / `true` | 文档主入口；未设置时继承显式配置的 `consultant_model` |
 | `simple_agent` / `simple_model` / `simple_enabled` | string / string / boolean | `"simple"` / `opencode-go/deepseek-v4.1-flash` / `true` | 经济型快答叶节点 |
@@ -324,7 +325,7 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
 | `writer_docs_roots` | string[] | `["userdoc"]` | author-writer 的项目相对写入根；`[]` = 只读回退 |
 | `writer_delegate_agent` / `writer_delegate_model` | string（可选）/ string（可选） | （无） | 宿主提供的 author-writer；设置后不再注册内置 author-writer |
 | `mode_models` | object（可选） | （无） | 按模式的角色→模型覆盖 |
-| `tier_models` | object（可选） | `fast.coder = opencode-go/glm-5.3-flash`、`fast.coder-reviewer = opencode-go/claude-haiku-5-5` | 按档位的角色→模型覆盖；出厂档位默认排在 `<role>_model` 之后 |
+| `tier_models` | object（可选） | `fast.coder = opencode-go/glm-5.3-flash`、`fast.coder-reviewer = opencode-go/claude-haiku-5-5`、`standard.coder = opencode-go/deepseek-v4.1-flash` | 按档位的角色→模型覆盖；出厂档位默认排在 `<role>_model` 之后 |
 | `model_prompts` | object（可选） | （无） | 按模型键的适配块；`""` 禁用该模型的块 |
 | `team_caps.round_cap` / `explorer_cap` / `critic_search_cap` | number | `3` / `5` / `5` | 团队循环与扇出上限 |
 | `tier_role_caps.*` | object | fast `5/0/0/0/0/0`，standard `5/1/1/1/1/1`，deep `5/3/2/2/2/2` | 每档位每角色的建议性实例上限（`common_explorer`/`consultant_analyst`/`consultant_critic`/`coder_reviewer`/`consultant_auditor`/`author_writer`） |
@@ -376,7 +377,7 @@ consultant 把有界的证据工作路由给自己的团队：`common-explorer` 
 
 出厂的 `assets/model-prompts/` 附带 11 个块，每个文件以规范化键命名。其中 8 个对应当前出厂默认模型：
 - `gemini4argon.md`：`consultant`、`architect`、`author`；`glm53.md`：`tech-lead`、`coder`（Senior 标量默认）；`glm53flash.md`：`janus` 与 `tier_models.fast.coder` 的出厂档位默认；
-- `deepseekv41flash.md`：`simple`、`common-explorer`；
+- `deepseekv41flash.md`：`simple`、`common-explorer`、`tier_models.standard.coder` 的出厂档位默认；
 - `kimik31pro.md`：`consultant-analyst`、`author-reviewer`、`coder-reviewer`（Senior 标量默认）；
 - `claudesonnet55.md`：`solution-reviewer`、`consultant-critic`、`author-writer`；`grok47.md`：`consultant-auditor`；
 - `claudehaiku55.md`：`tier_models.fast.coder-reviewer` 的出厂档位默认（补丁审查档）。

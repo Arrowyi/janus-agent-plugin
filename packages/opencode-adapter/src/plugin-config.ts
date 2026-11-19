@@ -208,8 +208,9 @@ export type JanusPluginConfig = z.infer<typeof JanusPluginConfigSchema>
 // senior line. The shipped fast tier runs the junior execution seat — `coder`
 // on `glm-5.3-flash` (TB4.0 37.4% Vals at $1.22 per run), the strongest small
 // junior/mid lane — with `coder-reviewer` on `opencode-go/claude-haiku-5-5`,
-// both in the Go Plus pool (see TIER_MODEL_DEFAULTS); the standard and deep
-// tiers fall back to the scalar defaults. `solution-reviewer` is the one gate
+// both in the Go Plus pool (see TIER_MODEL_DEFAULTS); the standard tier ships
+// the senior `coder` on `deepseek-v4.1-flash` (see TIER_MODEL_DEFAULTS) and
+// the deep tier falls back to the scalar defaults. `solution-reviewer` is the one gate
 // seat on Zen pay-per-use `claude-sonnet-5-5`, called only for the design
 // pre-mortem
 // and the plan / final-diff review gates. Entry/retrieval: `janus` is
@@ -248,14 +249,18 @@ export type RoleModelMap = Partial<Record<ModelRole, string>>
  * when the user has configured nothing. The fast tier ships the junior double
  * seat — `coder` on `glm-5.3-flash` and `coder-reviewer` on
  * `claude-haiku-5-5`, both in the Go Plus pool — for L1/L2 milestones and
- * their patch review. The standard and deep tiers ship no defaults and fall
- * back to the `MODEL_DEFAULTS` scalars (the senior `glm-5.3` coder line);
- * L3 work uses those scalars.
+ * their patch review. The standard tier ships the senior `coder` on
+ * `deepseek-v4.1-flash` for L3 core logic. The deep tier ships no defaults
+ * and falls back to the `MODEL_DEFAULTS` scalars (the senior `glm-5.3` coder
+ * line); L3 work uses those scalars.
  */
 export const TIER_MODEL_DEFAULTS: Partial<Record<ConfigTier, RoleModelMap>> = {
   fast: {
     coder: "opencode-go/glm-5.3-flash",
     "coder-reviewer": "opencode-go/claude-haiku-5-5",
+  },
+  standard: {
+    coder: "opencode-go/deepseek-v4.1-flash",
   },
 }
 

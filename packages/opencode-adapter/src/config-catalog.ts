@@ -174,7 +174,7 @@ export const CONFIG_FIELDS: readonly ConfigField[] = [
     group: "routing",
     type: "object",
     summary: "按深度档位（fast/standard/deep）为角色指定模型",
-    defaultNote: `出厂档位默认 fast.coder = ${TIER_MODEL_DEFAULTS.fast?.coder ?? "(无)"}、fast.coder-reviewer = ${TIER_MODEL_DEFAULTS.fast?.["coder-reviewer"] ?? "(无)"}，排在 <role>_model 之后；standard/deep 档无出厂默认，回落 <role>_model 的标量默认`,
+    defaultNote: `出厂档位默认 fast.coder = ${TIER_MODEL_DEFAULTS.fast?.coder ?? "(无)"}、fast.coder-reviewer = ${TIER_MODEL_DEFAULTS.fast?.["coder-reviewer"] ?? "(无)"}、standard.coder = ${TIER_MODEL_DEFAULTS.standard?.coder ?? "(无)"}，排在 <role>_model 之后；deep 档无出厂默认，回落 <role>_model 的标量默认`,
   },
   {
     key: "tier_models.<tier>.<role>",

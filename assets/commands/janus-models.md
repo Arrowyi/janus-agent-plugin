@@ -112,7 +112,7 @@ For example `opencode-go/deepseek-v4.1-flash` → `deepseekv41flash`, `opencode/
 
 Two optional nested maps let the user route a role differently per consultation mode and per depth tier. They apply to dispatched sessions (not to a direct agent selection), and precedence is:
 
-`mode_models[mode][role]` > `tier_models[tier][role]` > `<role>_model` > `TIER_MODEL_DEFAULTS[tier][role]` > plugin default. The plugin ships the fast-tier defaults (`fast.coder` = `glm-5.3-flash` and `fast.coder-reviewer` = `claude-haiku-5-5`); the standard and deep tiers ship no tier defaults and fall back to the plugin scalars, and an explicit `<role>_model` still beats any tier default.
+`mode_models[mode][role]` > `tier_models[tier][role]` > `<role>_model` > `TIER_MODEL_DEFAULTS[tier][role]` > plugin default. The plugin ships the fast-tier defaults (`fast.coder` = `glm-5.3-flash`, `fast.coder-reviewer` = `claude-haiku-5-5`) and the standard-tier default (`standard.coder` = `deepseek-v4.1-flash`); the deep tier ships no tier default and falls back to the plugin scalars, and an explicit `<role>_model` still beats any tier default.
 
 Example:
 

@@ -19,7 +19,7 @@
 
 - **Bun >= 1.1** —— 运行时与包管理器。从 <https://bun.sh> 安装。
 - **OpenCode** —— agent 宿主。从 <https://opencode.ai> 或你的包管理器安装，用 `opencode --version` 验证。
-- **模型提供商** —— 出厂默认假设你持有 **OpenCode Go（Go Plus）订阅**（覆盖 `opencode-go/*` 池内模型），外加 `opencode` 提供商（Zen 按量付费）供三个判断席位使用 `opencode/claude-sonnet-5-5`（`consultant-critic`、`coder-reviewer`、`author-writer`）。没有这些提供商时 agent 会注册成功，但在使用时于模型解析处失败。非 Go 用户：把下面的配置复制到 `~/.config/janus-agent/config.jsonc`，把每个 `*_model` 设为你机器上已配置的提供商。派发失败时会打印带精确字段名的修复提示。
+- **模型提供商** —— 出厂默认假设你持有 **OpenCode Go（Go Plus）订阅**（覆盖 `opencode-go/*` 池内模型），外加 `opencode` 提供商（Zen 按量付费）供三个判断席位使用 `opencode/claude-sonnet-5-5`（`consultant-critic`、`solution-reviewer`、`author-writer`）；Senior 补丁审查席 `coder-reviewer` 走 Go Plus 池的 `opencode-go/kimi-k3.1-pro`。没有这些提供商时 agent 会注册成功，但在使用时于模型解析处失败。非 Go 用户：把下面的配置复制到 `~/.config/janus-agent/config.jsonc`，把每个 `*_model` 设为你机器上已配置的提供商。派发失败时会打印带精确字段名的修复提示。
 
   ```jsonc
   {
@@ -30,13 +30,14 @@
     "common_explorer_model": "<你的提供商>/fast-cheap-model",
     "consultant_analyst_model": "<你的提供商>/reasoning-model",
     "consultant_critic_model": "<你的提供商>/different-family-model",
+    "solution_reviewer_model": "<你的提供商>/different-family-model",
     "coder_reviewer_model": "<你的提供商>/different-family-model",
     "consultant_auditor_model": "<你的提供商>/different-family-model",
     "author_writer_model": "<你的提供商>/writing-model",
     "author_reviewer_model": "<你的提供商>/different-family-model",
+    "tech_lead_model": "<你的提供商>/strong-coding-model",
     "coder_model": "<你的提供商>/strong-coding-model",
-    "simple_model": "<你的提供商>/fast-cheap-model",
-    "coder_lite_model": "<你的提供商>/junior-mid-coding-model"
+    "simple_model": "<你的提供商>/fast-cheap-model"
   }
   ```
 
@@ -102,14 +103,14 @@ bun run install:local
 
 ## 第 3 步：重启 OpenCode
 
-重启 OpenCode 使其加载新的插件条目。启动时插件的 `config` 钩子注册 14 个 agent——6 个主入口 `janus`、`simple`、`consultant`、`architect`、`coder`、`author`，以及 8 个子 agent `common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`、`coder-reviewer`、`author-writer`、`author-reviewer`、`coder-lite`——并完成以下工作：
+重启 OpenCode 使其加载新的插件条目。启动时插件的 `config` 钩子注册 15 个 agent——6 个主入口 `janus`、`simple`、`consultant`、`architect`、`tech-lead`、`author`，以及 9 个子 agent `common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`、`solution-reviewer`、`coder`、`coder-reviewer`、`author-writer`、`author-reviewer`——并完成以下工作：
 
-1. 注册 `janus` 默认前台（模式 `all`）与 `consultant`、`architect`、`author` 主入口（模式 `primary`；名字可用 `janus_agent`、`consultant_agent`、`architect_agent`、`author_agent` 配置）；五个主入口 `janus`、`consultant`、`architect`、`coder`、`author` 都获得共享 handoff 状态目录的 `external_directory` 权限，可读写跨团队交接文档；
-2. 注册 `coder` 编码入口（模式 `all`：可选可派发）、`simple` 经济叶节点（模式 `all`，禁止派发）与 `coder-lite` 初中级工程师车道（模式 `subagent`，步数上限 80，工作区编辑免确认，项目原生构建/测试命令允许执行、VCS 写/还原与破坏性删除被 `CODER_LITE_BASH_DENY_RULES` 拒绝，禁止继续派发）；
-3. 注册 `simple` 的工作区目录（`$XDG_DATA_HOME/janus-agent/lite`，可用 `simple_workspace_dir` 配置）为免确认可写；其余写入一律先询问。同时创建设计状态目录 `$XDG_DATA_HOME/janus-agent/design`（由 `architect`、`author`、`coder` 访问：architect 写 `design.md` 的决策内容，coder 对它 100% 只读、在同目录写 `plan.md`）与 handoff 状态目录 `$XDG_DATA_HOME/janus-agent/handoff`（由五个主入口 `janus`、`consultant`、`architect`、`coder`、`author` 共享访问；叶节点子 agent 绝不写它）；
-4. 注册检索/审查子 agent `common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`（各自只读、各用其配置模型、各自禁 shell 与派发；`coder-reviewer` 另获 design 状态目录的 `external_directory` 权限，用于只读比对 `design.md`），限定写入的执笔者 `author-writer`（仅允许编辑 `writer_docs_roots` 之下，默认 `userdoc/**`；禁 shell 与派发；允许带来源台账的定向网络检索；步数上限 80；`writer_docs_roots` 为空时转为只读，由 author 发布其返回的正文），以及文档团队独立审稿人 `author-reviewer`（默认 `opencode-go/kimi-k3.1-pro`，与主笔跨模型家族；只读：`edit`/`bash`/`task`/`webfetch`/`websearch` 全拒，仅授予 author 与 design 状态目录的 `external_directory` 读权限；门禁为 `architecture` 文档或 `targeted`/`strict` 验证级别，`light` 非架构文档与 `briefWaived` 微改跳过；不在 `tier_role_caps` 中）。同时创建 author 状态目录 `$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报；
+1. 注册 `janus` 默认前台（模式 `all`）与 `consultant`、`architect`、`author` 主入口（模式 `primary`）以及 `tech-lead` 薄控制器（模式 `all`：可选可派发；名字可用 `janus_agent`、`consultant_agent`、`architect_agent`、`tech_lead_agent`、`author_agent` 配置）；五个主入口 `janus`、`consultant`、`architect`、`tech-lead`、`author` 都获得共享 handoff 状态目录的 `external_directory` 权限，可读写跨团队交接文档；
+2. 注册 `tech-lead` 研发主控与 `coder` 双档执行叶：`tech-lead` 的 `edit` 为 `{"*": "deny"}` 打头，仅允许 design 与 handoff 两个状态目录，每个 allow 由 `editAllowTwins` 携带绝对、去斜杠、realpath 与按项目基目录（directory 与 worktree 各取 resolve 与 realpath 变体）计算的相对孪生——宿主 edit 权限按 `path.relative(worktree, file)` 相对路径求值（最后匹配的规则获胜），状态目录在 workspace 之外，没有相对孪生就会落到拒绝兜底（写 `plan.md`、更新账本与交接文档）、bash 全放、`external_directory` 含两目录与共享临时目录四条作用域；`coder` 为模式 `subagent`、步数上限 80 的执行叶，`edit` 为 `{"*": "allow", "../*": "ask", "/*": "ask"}` 加共享临时目录四作用域的孪生 `allow`——工作区编辑免确认，外部编辑无论以相对（`../*`）还是绝对（`/*`）形式提交都先询问，特许 tmp 写入由末位孪生 `allow` 免确认，bash 全允许加 `CODER_BASH_DENY_RULES`（VCS 写/还原与破坏性删除被拒），`external_directory` 仅共享临时目录四条作用域，禁继续派发。`coder` 注册时整项替换既有同名条目，因此用户残留的旧 `agent.coder` 主入口配置块会在注册时被替换，不会还原成无守卫的主入口；
+3. 注册 `simple` 的工作区目录（`$XDG_DATA_HOME/janus-agent/lite`，可用 `simple_workspace_dir` 配置）为免确认可写；其余写入一律先询问。同时创建设计状态目录 `$XDG_DATA_HOME/janus-agent/design`（由 `architect`、`author`、`tech-lead` 访问：architect 写 `design.md` 的决策内容，tech-lead 对它 100% 只读、在同目录写 `plan.md`）与 handoff 状态目录 `$XDG_DATA_HOME/janus-agent/handoff`（由五个主入口 `janus`、`consultant`、`architect`、`tech-lead`、`author` 共享访问；叶节点子 agent 绝不写它）；
+4. 注册检索/审查子 agent `common-explorer`、`consultant-analyst`、`consultant-critic`、`solution-reviewer`、`coder-reviewer`、`consultant-auditor`（各自只读、各用其配置模型、各自禁 shell 与派发；`solution-reviewer` 与 `coder-reviewer` 另获 design 状态目录的 `external_directory` 读权限，供无人值守会话打开 `design.md`/`plan.md`），限定写入的执笔者 `author-writer`（仅允许编辑 `writer_docs_roots` 之下，默认 `userdoc/**`；禁 shell 与派发；允许带来源台账的定向网络检索；步数上限 80；`writer_docs_roots` 为空时转为只读，由 author 发布其返回的正文），以及文档团队独立审稿人 `author-reviewer`（默认 `opencode-go/kimi-k3.1-pro`，与主笔跨模型家族；只读：`edit`/`bash`/`task`/`webfetch`/`websearch` 全拒，仅授予 author 与 design 状态目录的 `external_directory` 读权限；门禁为 `architecture` 文档或 `targeted`/`strict` 验证级别，`light` 非架构文档与 `briefWaived` 微改跳过；不在 `tier_role_caps` 中）。同时创建 author 状态目录 `$XDG_DATA_HOME/janus-agent/author`，`author` 在其中写每篇文档的简报；
 5. 注册 `janus-memory` 本地 MCP 服务器（记忆启用时，默认开启）；
-6. 注册 `janus_dispatch{role,prompt,return_handle?,mode?,tier?,protocol?}`、`janus_dispatch_wait{job_id,wait_ms?}`、`janus_dispatch_cancel{job_id}` 与 `janus_dispatch_continue{session_id,prompt,role?}`（不干扰内置 `task` 工具或其他插件）。`role` 取十二个派发角色之一——八个子 agent 加 `consultant`、`coder`、`simple`、`author`；`janus` 与 `architect` 是用户选择的主入口，不可派发。`author` 既可由用户直接选用，也可由 `janus`、`architect`、`coder` 派发；调用方会话本身若是被派发的子会话，派发 `author` 会被调用方 DAG 守卫（有向无环图，即防循环调用规则）拒绝（`Error: dispatched session cannot dispatch author; …`），其他角色不受此限。`mode`/`tier` 选择模型；`protocol` 在首轮前置入五张方法论卡片之一。另注册 `janus_config` 与 `janus_provider_keys` 两个工具，所有叶节点一律拒绝；
+6. 注册 `janus_dispatch{role,prompt,return_handle?,mode?,tier?,protocol?,reviews_job_ids?,stage?}`、`janus_dispatch_wait{job_id,wait_ms?}`、`janus_dispatch_cancel{job_id}` 与 `janus_dispatch_continue{session_id,prompt,role?,reviews_job_ids?}`（不干扰内置 `task` 工具或其他插件）。`role` 取十三个派发角色之一——九个子 agent 加 `consultant`、`tech-lead`、`simple`、`author`；`janus` 与 `architect` 是用户选择的主入口，不可派发。`consultant`、`tech-lead`、`author` 三个主协调角色受调用方 DAG 守卫（有向无环图，即防循环调用规则）保护：调用方会话本身是被派发的子会话时，派发它们会被拒绝（`Error: dispatched session cannot dispatch <role>; …`），其他角色不受此限。`mode`/`tier` 选择模型；`protocol` 在首轮前置入五张方法论卡片之一；`reviews_job_ids` 与 `stage` 由审查席守卫强制（见下节「审查席守卫」）。另注册 `janus_config` 与 `janus_provider_keys` 两个工具，所有叶节点一律拒绝；
 7. 把 `consultation`、`consultation-design`、`consultation-doc`、`handoff` 四个 skill 与 `/janus-memory`、`/janus-models`、`/janus-handoff`、`/janus-config` 四条斜杠命令安装进你的 OpenCode 配置目录。
 
 ### 可恢复的团队任务
@@ -118,9 +119,47 @@ bun run install:local
 
 `janus_dispatch` 的 `return_handle: true` 只改变成功结果的形态：不再返回纯文本，而是返回已完成的 JSON 信封（`job_id`、`role`、`attempt`、`session_id`、`waited_ms`、`text`），其 `session_id` 可复用；pending 与失败结果不变，默认成功结果仍是纯文本。
 
-`janus_dispatch_continue` 用新提示复用既有派发会话——对每个派发方与角色通用的机制（例如 author 复用 author-writer 会话、architect 与 coder 复用 coder-reviewer 或 coder 会话）。复用边界：同一调用方、同一工作区、目标是带派发标记的普通 job 根或其尝试子节点（绝不是续接 `job_id`——用原始 `session_id`）、且目标空闲（busy/retry 目标以「先等待」错误拒绝）；只有终态 job 可续接，pending 的 job 先等待。续接 job 的等待/取消沿用 `janus_dispatch_wait`/`janus_dispatch_cancel` 契约。续接没有新增配置——没有配置字段、没有注册表、也没有跨会话复用；文档模式下会话 ID 以 `writer_session_id` 存在该文档的简报中。
+`janus_dispatch_continue` 用新提示复用既有派发会话——对每个派发方与角色通用的机制（例如 author 复用 author-writer 会话、architect 与 tech-lead 复用 reviewer 或 coder 会话）。复用边界：同一调用方、同一工作区、目标是带派发标记的普通 job 根或其尝试子节点（绝不是续接 `job_id`——用原始 `session_id`）、且目标空闲（busy/retry 目标以「先等待」错误拒绝）；只有终态 job 可续接，pending 的 job 先等待。续接 job 的等待/取消沿用 `janus_dispatch_wait`/`janus_dispatch_cancel` 契约。续接没有新增配置——没有配置字段、没有注册表、也没有跨会话复用；文档模式下会话 ID 以 `writer_session_id` 存在该文档的简报中。
 
 取消是显式操作，在持久中止证据确认 `cancelled` 之前可能返回 `cancelling`；正常完成与取消竞速时完成方胜出并返回报告。非终态信封把 `janus_dispatch_wait` 标为其下一步动作。等待/取消以调用方的父会话与工作区判定归属，不接受路由覆盖。详见[架构文档](architecture.md)的「6.4 可恢复派发 API」一节。
+
+### 审查席守卫：`reviews_job_ids` 与 `stage`
+
+`janus_dispatch` 在创建任何 job 之前强制审查席守卫（`dispatch-guard.ts`），规则按目标角色与协议分层：
+
+- 派 `coder-reviewer` 必携 `reviews_job_ids`——每个被审 coder 任务的根 `job_id`（即该 coder 工作的 `janus_dispatch` job id）。缺省被拒：`Error: coder-reviewer requires reviews_job_ids: …`。
+- 派 `solution-reviewer` + 协议 `code_plan_review` 必携 `stage`；`stage` 在其他组合下直接拒绝（`stage is only valid for solution-reviewer with protocol code_plan_review; …`）。
+  - `stage: "plan"`（Stage-1，评审已批准的 `plan.md`）：仅校验审查席模型与 `tech-lead` 模型的独立性，**禁带** `reviews_job_ids`（带了被拒）。
+  - `stage: "final"`（Stage-2，评审集成终 diff）：**必带** `reviews_job_ids`，并与 `tech-lead` 模型及全部列出的 coder job 逐一校验。
+- `solution-reviewer` + 协议 `design_premortem`（设计事前验尸）：校验审查席与 `architect` 模型的独立性。
+- `solution-reviewer` 不带协议：守卫不触发；席位用法由注册与提示词约束。
+- 家族校验：审查席与被审方同模型或同模型家族即拒绝。模型 ID 规范化后按前缀映射家族——`glm`、`gemini`、`kimi`、`claude`、`gpt`/`o1`/`o3`/`o4`、`deepseek`、`grok`、`qwen`、`minimax`、`mimo`、`hy`、`step` 分别映射到 glm/gemini/kimi/anthropic/openai/deepseek/xai/qwen/minimax/mimo/hunyuan/stepfun；未匹配前缀的模型自成一个家族，两个未知模型绝不折叠进共享家族。冲突错误消息会点名两侧模型并给出可改的配置键（`solution_reviewer_model`/`coder_reviewer_model`/`tech_lead_model`/`coder_model` 或 `tier_models`）。
+
+`stage` 是调用方声明的并在 job spec 中持久留痕的值；谎报 stage 或谎报 ids 的完整性属于同一信任边界，由 Stage-2 报告契约与 `plan.md` 账本审计兜底。`janus_dispatch_continue` 对 coder-reviewer 会话与携带 `code_plan_review` 的 solution-reviewer 会话重新执行同一守卫（续接不切模型，校验目标是目标会话持久钉住的模型），Stage-1 的复评按规约走全新派发、续接不开 plan 阶段后门。
+
+`stage` 的必填语义（`stage: "plan"|"final"`）是 2026-11-17 用户批准实施计划时授权的计划级偏差，超出设计记录 §3 变更面；本节其余守卫规则均按设计原文实现。
+
+### 上下文水位与 coder 硬顶
+
+派发前插件读取调用方会话的最新 token 用量（读取失败静默放行，绝不阻塞派发）：
+
+- **软水位 250k**：调用方上下文 ≥ 250000 token 时，工具返回值追加一行 `[context-watermark: <t> tokens >= 250000; checkpoint at milestone boundary]`——成功报告、`Error:` 文本与非终态/完成 JSON 信封都会带上；JSON 信封以可选 `context_watermark` 字段承载，纯文本走追加行。该标记反映调用方自身的上下文水位，只是提醒调用方考虑检查点，不是失败，也绝不作为 tech-lead 续派触发；janus/architect 对 tech-lead 的自动续派按其返回携带的 `交接单: <handoff-id>` 行触发，且仅在交接单最新一跳的 `建议下一跳` 指回 tech-lead、`默认接力任务` 继续计划、且无停止/熔断/待用户裁决时执行。
+- **coder 硬顶 350k**：调用方上下文 ≥ 350000 token 且派发目标为 `coder` 时，派发直接拒绝：`Error: controller context exceeded 350000 tokens hard ceiling; checkpoint to plan.md and handoff.md before continuing. Recovery: update the plan.md ledger and write handoff.md, resume from a fresh controller session with 继续交接, or reduce context and retry.` 非 coder 目标（包括 `tech-lead` 与各审查席）在硬顶之上照常运行。**超集行为披露**：硬顶的实现是「派 `coder` 且调用方 ≥350k 即拒」，不区分调用方身份——因此 `author` 在 ≥350k 时派 `coder` 做临时目录验证也会被同一错误拒绝；此时 `author` 应披露该阻塞并请调用方先检查点。
+
+### `coder_*` 配置语义与本版迁移
+
+`coder` 从编码主入口变为双档执行叶（模式 `subagent`、步数上限 80、VCS 写禁令、叶节点禁继续派发），研发主控入口迁至 `tech-lead`（`tech_lead_agent` / `tech_lead_model` / `tech_lead_enabled`）。两点行为值得注意：
+
+- 用户残留的 `agent.coder` 配置块会在注册时被插件整项替换——`registerCoder` 无条件覆盖既有同名条目，防止旧配置把无守卫的主入口还原回来。
+- 定制出口随之收窄：改名用 `coder_agent`，换模型用 `coder_model`（或 `tier_models.fast.coder` 控制 Junior 档）。配置加载对已移除的 `coder_lite_*` 键给出精确迁移指引：`coder_lite_agent → coder_agent`、`coder_lite_model → tier_models.fast.coder`、`coder_lite_enabled → coder_enabled`，主控入口迁至 `tech_lead_*` 三键；`tier_models`/`mode_models` 下残留的 `"coder-lite"` 角色键同样被指名为 `"coder"`。
+
+### 已知边界
+
+- UI 手动切换模型不触发档位路由：档位模型只在 `janus_dispatch` 的 `mode`/`tier` 解析路径上生效。
+- 3 轮熔断与停机上报由 `tech-lead` 提示词 + `plan.md` 账本约束，没有运行时计数器。
+- 新守卫（`reviews_job_ids`/`stage`/水位）在 OpenCode 重启后的首次真实派发才生效。
+- `tier_role_caps` 仅作用于 consultant 团队；schema 键含 `coder_reviewer`/`author_writer` 属既有张力——该表不约束研发与文档席位。
+- `janus_dispatch_continue` 到 `coder` 会话不受 350k 硬顶：硬顶规格只覆盖 `janus_dispatch`。
 
 ## 第 4 步：可选插件配置
 
@@ -130,7 +169,7 @@ bun run install:local
 2. `$XDG_CONFIG_HOME/janus-agent/config.jsonc`
 3. `~/.config/janus-agent/config.jsonc`
 
-不想手写 JSON 时，在 OpenCode 里运行 `/janus-config`。它按九个分组列出全部可配置项，并显示每项的当前值、默认值和来源（用户设置、默认、继承）。选中某项后，命令会按类型给出编号选项：开关、数字、列表；模型字段从 `opencode models` 中列候选。写入前先展示预览 diff，经你确认后才写入。写入由插件的 `janus_config` 工具完成：按下面的 schema 全量校验，保留注释与格式，写前备份到 `<配置路径>.bak`，写后回读复核。只有五个主入口（`janus`/`consultant`/`architect`/`coder`/`author`）能调用该工具，叶节点一律拒绝。改动在重启 OpenCode 后生效；`model_prompts` 例外，下一轮对话即生效。常用快捷参数：`/janus-config 2`（直接打开第 2 组）、`/janus-config 设 <key> <value>`、`/janus-config 清除 <key>`、`/janus-config 已改`、`/janus-config 校验`、`/janus-config 重置`。
+不想手写 JSON 时，在 OpenCode 里运行 `/janus-config`。它按九个分组列出全部可配置项，并显示每项的当前值、默认值和来源（用户设置、默认、继承）。选中某项后，命令会按类型给出编号选项：开关、数字、列表；模型字段从 `opencode models` 中列候选。写入前先展示预览 diff，经你确认后才写入。写入由插件的 `janus_config` 工具完成：按下面的 schema 全量校验，保留注释与格式，写前备份到 `<配置路径>.bak`，写后回读复核。只有五个主入口（`janus`/`consultant`/`architect`/`tech-lead`/`author`）能调用该工具，叶节点一律拒绝。改动在重启 OpenCode 后生效；`model_prompts` 例外，下一轮对话即生效。常用快捷参数：`/janus-config 2`（直接打开第 2 组）、`/janus-config 设 <key> <value>`、`/janus-config 清除 <key>`、`/janus-config 已改`、`/janus-config 校验`、`/janus-config 重置`。
 
 `/janus-config` 的第 10 组（或 `/janus-config key`）管理 OpenCode 的 provider API key，由 `janus_provider_keys` 工具和终端命令 `janus-keys` 配合完成：
 
@@ -155,7 +194,7 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
 
 ```jsonc
 {
-  // 14 个已注册 agent、12 个派发角色。`janus`、`architect`
+  // 15 个已注册 agent、13 个派发角色。`janus`、`architect`
   // 是主入口，不可派发；`author` 是主入口且可由顶层主入口派发。
 
   "janus_agent": "janus",
@@ -169,9 +208,17 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
   "architect_model": "opencode-go/gemini-4-argon",
   "architect_enabled": true,
 
+  "tech_lead_agent": "tech-lead",
+  "tech_lead_model": "opencode-go/glm-5.3",
+  "tech_lead_enabled": true,
+
   "coder_agent": "coder",
   "coder_model": "opencode-go/glm-5.3",
   "coder_enabled": true,
+
+  "solution_reviewer_agent": "solution-reviewer",
+  "solution_reviewer_model": "opencode/claude-sonnet-5-5",
+  "solution_reviewer_enabled": true,
 
   "author_agent": "author",
   "author_model": "opencode-go/gemini-4-argon",
@@ -181,10 +228,6 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
   "simple_model": "opencode-go/deepseek-v4.1-flash",
   "simple_enabled": true,
   // "simple_workspace_dir": "~/.local/share/janus-agent/lite",
-
-  "coder_lite_agent": "coder-lite",
-  "coder_lite_model": "opencode-go/glm-5.3-flash",
-  "coder_lite_enabled": true,
 
   "common_explorer_agent": "common-explorer",
   "common_explorer_model": "opencode-go/deepseek-v4.1-flash",
@@ -196,7 +239,7 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
   "consultant_critic_model": "opencode/claude-sonnet-5-5",
   "consultant_critic_enabled": true,
   "coder_reviewer_agent": "coder-reviewer",
-  "coder_reviewer_model": "opencode/claude-sonnet-5-5",
+  "coder_reviewer_model": "opencode-go/kimi-k3.1-pro",
   "coder_reviewer_enabled": true,
   "consultant_auditor_agent": "consultant-auditor",
   "consultant_auditor_model": "opencode-go/grok-4.7",
@@ -216,13 +259,14 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
   // 可选：按模式 / 按档位的模型路由。优先级：
   // mode_models[mode][role] > tier_models[tier][role] >
   // <role>_model > TIER_MODEL_DEFAULTS[tier][role] > MODEL_DEFAULTS[role].
-  // 插件出厂仅带一个档位默认：deep.coder = opencode-go/kimi-k3.1-pro。
+  // 出厂档位默认仅 fast 档两个：fast.coder = opencode-go/glm-5.3-flash、
+  // fast.coder-reviewer = opencode-go/claude-haiku-5-5。
   "mode_models": {
-    "design": { "coder-reviewer": "provider/strong-reviewer", "common-explorer": "provider/fast-research" },
+    "design": { "solution-reviewer": "provider/strong-reviewer", "common-explorer": "provider/fast-research" },
     "doc": { "author-writer": "provider/long-context-writer" }
   },
   "tier_models": {
-    "deep": { "coder": "provider/strong-coding" }
+    "fast": { "coder": "provider/junior-coding", "coder-reviewer": "provider/fast-patch-reviewer" }
   },
 
   // 全局模型适配块，键为与提供商无关的规范化模型键。
@@ -264,22 +308,23 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
 | `janus_agent` / `janus_model` / `janus_enabled` | string / string / boolean | `"janus"` / `opencode-go/glm-5.3-flash` / `true` | 默认前台（模式 `all`，不可派发） |
 | `consultant_agent` / `consultant_model` | string / string | `"consultant"` / `opencode-go/gemini-4-argon` | 咨询团队主入口，五种证据模式 |
 | `architect_agent` / `architect_model` / `architect_enabled` | string / string / boolean | `"architect"` / `opencode-go/gemini-4-argon` / `true` | 设计主入口；未设置时继承显式配置的 `consultant_model` |
-| `coder_agent` / `coder_model` / `coder_enabled` | string / string / boolean | `"coder"` / `opencode-go/glm-5.3` / `true` | 编码主入口；L3 工作可用 deep 档覆盖 |
+| `tech_lead_agent` / `tech_lead_model` / `tech_lead_enabled` | string / string / boolean | `"tech-lead"` / `opencode-go/glm-5.3` / `true` | 研发薄控制器（模式 `all`，可派发）：写 `plan.md`、按里程碑派发隔离子会话 |
+| `coder_agent` / `coder_model` / `coder_enabled` | string / string / boolean | `"coder"` / `opencode-go/glm-5.3` / `true` | 双档执行叶（subagent，步数 80，bash 全允许加 VCS 写/删除/janus-keys 护栏）；fast 档落到 `tier_models.fast.coder` 的出厂默认 `opencode-go/glm-5.3-flash` |
+| `solution_reviewer_agent` / `solution_reviewer_model` / `solution_reviewer_enabled` | string / string / boolean | `"solution-reviewer"` / `opencode/claude-sonnet-5-5` / `true` | 独立审查席：设计事前验尸、Stage-1 计划评审与 Stage-2 终评 |
 | `author_agent` / `author_model` / `author_enabled` | string / string / boolean | `"author"` / `opencode-go/gemini-4-argon` / `true` | 文档主入口；未设置时继承显式配置的 `consultant_model` |
 | `simple_agent` / `simple_model` / `simple_enabled` | string / string / boolean | `"simple"` / `opencode-go/deepseek-v4.1-flash` / `true` | 经济型快答叶节点 |
 | `simple_workspace_dir` | string（可选） | `$XDG_DATA_HOME/janus-agent/lite` | simple 的预授权可写工作区 |
-| `coder_lite_agent` / `coder_lite_model` / `coder_lite_enabled` | string / string / boolean | `"coder-lite"` / `opencode-go/glm-5.3-flash` / `true` | 初中级工程师车道（subagent，步数 80，bash 全允许加 VCS 写/删除/janus-keys 护栏） |
 | `common_explorer_agent` / `common_explorer_model` / `common_explorer_enabled` | string / string / boolean | `"common-explorer"` / `opencode-go/deepseek-v4.1-flash` / `true` | 共享检索层（只读叶节点） |
 | `consultant_analyst_agent` / `consultant_analyst_model` / `consultant_analyst_enabled` | string / string / boolean | `"consultant-analyst"` / `opencode-go/kimi-k3.1-pro` / `true` | 咨询团队解读专家 |
 | `consultant_critic_agent` / `consultant_critic_model` / `consultant_critic_enabled` | string / string / boolean | `"consultant-critic"` / `opencode/claude-sonnet-5-5` / `true` | 反证与计划稳健性审查者 |
-| `coder_reviewer_agent` / `coder_reviewer_model` / `coder_reviewer_enabled` | string / string / boolean | `"coder-reviewer"` / `opencode/claude-sonnet-5-5` / `true` | 设计事前验尸与 coder 计划/diff 审查 |
+| `coder_reviewer_agent` / `coder_reviewer_model` / `coder_reviewer_enabled` | string / string / boolean | `"coder-reviewer"` / `opencode-go/kimi-k3.1-pro` / `true` | 逐里程碑 patch 审查（携 `reviews_job_ids`） |
 | `consultant_auditor_agent` / `consultant_auditor_model` / `consultant_auditor_enabled` | string / string / boolean | `"consultant-auditor"` / `opencode-go/grok-4.7` / `true` | 来源影响与独立性审计 |
 | `author_writer_agent` / `author_writer_model` / `author_writer_enabled` | string / string / boolean | `"author-writer"` / `opencode/claude-sonnet-5-5` / `true` | 限定写入执行者、正文唯一执笔人 |
 | `author_reviewer_agent` / `author_reviewer_model` / `author_reviewer_enabled` | string / string / boolean | `"author-reviewer"` / `opencode-go/kimi-k3.1-pro` / `true` | 文档独立审稿人（只读；`architecture`/`targeted`/`strict` 门禁；不在 `tier_role_caps` 中） |
 | `writer_docs_roots` | string[] | `["userdoc"]` | author-writer 的项目相对写入根；`[]` = 只读回退 |
 | `writer_delegate_agent` / `writer_delegate_model` | string（可选）/ string（可选） | （无） | 宿主提供的 author-writer；设置后不再注册内置 author-writer |
 | `mode_models` | object（可选） | （无） | 按模式的角色→模型覆盖 |
-| `tier_models` | object（可选） | `deep.coder = opencode-go/kimi-k3.1-pro` | 按档位的角色→模型覆盖；出厂档位默认排在 `<role>_model` 之后 |
+| `tier_models` | object（可选） | `fast.coder = opencode-go/glm-5.3-flash`、`fast.coder-reviewer = opencode-go/claude-haiku-5-5` | 按档位的角色→模型覆盖；出厂档位默认排在 `<role>_model` 之后 |
 | `model_prompts` | object（可选） | （无） | 按模型键的适配块；`""` 禁用该模型的块 |
 | `team_caps.round_cap` / `explorer_cap` / `critic_search_cap` | number | `3` / `5` / `5` | 团队循环与扇出上限 |
 | `tier_role_caps.*` | object | fast `5/0/0/0/0/0`，standard `5/1/1/1/1/1`，deep `5/3/2/2/2/2` | 每档位每角色的建议性实例上限（`common_explorer`/`consultant_analyst`/`consultant_critic`/`coder_reviewer`/`consultant_auditor`/`author_writer`） |
@@ -293,29 +338,29 @@ pbpaste | ~/.local/share/janus-agent-plugin/bin/janus-keys add deepseek work --s
 
 每个角色有一次已配置的尝试，每个 agent 解析到单一模型，插件不做预先回退。未带 `writer_delegate_model` 的代理使用宿主模型选择（持久 job spec 中为 `null`）；它保留宿主权限与宿主内部重试行为。等待超时或状态未知都不授权备用模型。
 
-consultant 把有界的证据工作路由给自己的团队：`common-explorer` 收集缺失证据，`consultant-analyst` 解读实质性分歧，`consultant-critic` 挑战重大结论与计划不确定性，`consultant-auditor` 审计用户/第三方/推广来源中不明的影响或独立性。设计、代码审查与文档属于其他团队：`architect` 负责设计并与 `coder` 共享 `coder-reviewer`（设计事前验尸 / 计划-diff 审查）；`author` 负责文档并派发 `author-writer` 执笔与 `author-reviewer` 独立审稿（`architecture` 文档或 `targeted`/`strict` 验证成稿后必经，`light` 非架构文档与 `briefWaived` 保义微改跳过；不可用时披露而非冒领）。一项检查在其可能实质改变答案、且归属方能说出它可能改变哪个决策、能抓住哪种具体失败时才被派发；跳过角色必须给出该理由。这些角色不是按档位必须凑齐的名册。每个叶节点（`common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`author-writer`、`author-reviewer`、`coder-lite`、`simple`）都有 `permission.task = "deny"` 加显式 `janus_dispatch* = "deny"`、`janus_config = "deny"` 与 `janus_provider_keys = "deny"`；只读专家同时禁 `edit` 与 `bash`（`coder-reviewer` 额外获得 design 状态目录的 `external_directory` 权限，`author-reviewer` 获得 author 与 design 两目录），`author-reviewer` 额外禁 `webfetch`/`websearch`（只读审稿，不联网），`author-writer` 是限定写入叶节点——`edit` 在 `<writer_docs_roots>/**` 之外全拒，`webfetch`/`websearch` 允许用于带来源台账的定向检索。外部 `writer_delegate_agent` 保留其宿主定义的权限，不继承这些限制；内置 `author-reviewer` 的注册不受其影响。插件不强制模型家族多样性；请自行选择。角色上限是建议性天花板，不是运行时强制调度器。
+consultant 把有界的证据工作路由给自己的团队：`common-explorer` 收集缺失证据，`consultant-analyst` 解读实质性分歧，`consultant-critic` 挑战重大结论与计划不确定性，`consultant-auditor` 审计用户/第三方/推广来源中不明的影响或独立性。设计、代码审查与文档属于其他团队：`architect` 负责设计并以 `solution-reviewer` 做单向门设计事前验尸；`tech-lead` 负责研发实施，派 `coder-reviewer` 逐里程碑审补丁、派 `solution-reviewer` 做 Stage-1 计划评审与 Stage-2 终评；`author` 负责文档并派发 `author-writer` 执笔与 `author-reviewer` 独立审稿（`architecture` 文档或 `targeted`/`strict` 验证成稿后必经，`light` 非架构文档与 `briefWaived` 保义微改跳过；不可用时披露而非冒领）。一项检查在其可能实质改变答案、且归属方能说出它可能改变哪个决策、能抓住哪种具体失败时才被派发；跳过角色必须给出该理由。这些角色不是按档位必须凑齐的名册。每个叶节点（`common-explorer`、`consultant-analyst`、`consultant-critic`、`solution-reviewer`、`coder`、`coder-reviewer`、`consultant-auditor`、`author-writer`、`author-reviewer`、`simple`）都有 `permission.task = "deny"` 加显式 `janus_dispatch* = "deny"`、`janus_config = "deny"` 与 `janus_provider_keys = "deny"`；只读专家同时禁 `edit` 与 `bash`（`solution-reviewer` 与 `coder-reviewer` 额外获得 design 状态目录的 `external_directory` 读权限，`author-reviewer` 获得 author 与 design 两目录），`author-reviewer` 额外禁 `webfetch`/`websearch`（只读审稿，不联网），`author-writer` 是限定写入叶节点——`edit` 在 `<writer_docs_roots>/**` 之外全拒，`webfetch`/`websearch` 允许用于带来源台账的定向检索。外部 `writer_delegate_agent` 保留其宿主定义的权限，不继承这些限制；内置 `author-reviewer` 的注册不受其影响。插件不强制模型家族多样性；请自行选择。角色上限是建议性天花板，不是运行时强制调度器。
 
-作者简报位于 `$XDG_DATA_HOME/janus-agent/author/<projectId>/<docId>/brief.md`（固定路径；`projectId` 由项目目录派生）。`author` 创建并更新它；`author-writer` 只读、绝不写。限定写入模式下 `author` 不编辑写手根目录下的文件——它审查 author-writer 的 diff 并请求有界修正。每个 `author-writer` 派发单元只带一个 `writeMode`：目标路径全部位于 `writer_docs_roots` 之下为 `scoped`，由写手直接写入；任一目标路径在根目录之外（如默认根下的 `README.md`、`docs/*.md`），或 `writer_docs_roots: []`，为 `read-only`，混合路径清单拆成多个单元。`read-only` 下写手只返回正文或补丁，`author` 先把返回文本逐字写入已确认的文件，再对磁盘上的文件跑 `author-reviewer` 门禁，账本核对与审稿通过后才在简报变更日志中标记 `published`；`author` 不自行放宽根目录。`AGENTS.md` 等维护文件仍路由给 `coder`。
+作者简报位于 `$XDG_DATA_HOME/janus-agent/author/<projectId>/<docId>/brief.md`（固定路径；`projectId` 由项目目录派生）。`author` 创建并更新它；`author-writer` 只读、绝不写。限定写入模式下 `author` 不编辑写手根目录下的文件——它审查 author-writer 的 diff 并请求有界修正。每个 `author-writer` 派发单元只带一个 `writeMode`：目标路径全部位于 `writer_docs_roots` 之下为 `scoped`，由写手直接写入；任一目标路径在根目录之外（如默认根下的 `README.md`、`docs/*.md`），或 `writer_docs_roots: []`，为 `read-only`，混合路径清单拆成多个单元。`read-only` 下写手只返回正文或补丁，`author` 先把返回文本逐字写入已确认的文件，再对磁盘上的文件跑 `author-reviewer` 门禁，账本核对与审稿通过后才在简报变更日志中标记 `published`；`author` 不自行放宽根目录。`AGENTS.md` 等维护文件仍路由给 `tech-lead`。
 
-分工阈值：`janus`、`architect`、`coder` 把新的读者文档与 ≥3 处编辑的文档重写以 `janus_dispatch`（`role: "author"`，`return_handle: true`）交给 `author`；代码注释、`AGENTS.md`，以及随代码变更的 ≤2 处文档同步留在 `coder` 或调用方自己的车道。被派发的 `author` 服务于派发方而非终端用户：提示带用户确认的 `Confirmed paths` 时视为已通过大纲与文件确认门，否则先返回大纲与文件清单。
+分工阈值：`janus`、`architect`、`tech-lead` 把新的读者文档与 ≥3 处编辑的文档重写以 `janus_dispatch`（`role: "author"`，`return_handle: true`）交给 `author`；代码注释、`AGENTS.md`，以及随代码变更的 ≤2 处文档同步留在 `tech-lead` 或调用方自己的车道。被派发的 `author` 服务于派发方而非终端用户：提示带用户确认的 `Confirmed paths` 时视为已通过大纲与文件确认门，否则先返回大纲与文件清单。
 
-`architect` 拥有 `design` 模式：逐层决定架构、模块边界与接口，把结果记入 `design.md`，并把记录移交给 `coder` 做实施计划。设计状态位于 `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`；`coder` 对它 100% 只读、在同目录写 `plan.md`。`architect` 与 `coder` 拥有 `<designStateDir>/**` 的预授权 `external_directory` 权限；两者都不把设计状态写进项目树。跨团队交接位于 `$XDG_DATA_HOME/janus-agent/handoff/<projectId>/<handoffId>/handoff.md`——五个主入口共享的唯一业务态目录（`consultant` 不持有其他）；交接文档仅在回合末尾显式发起交接时创建或更新（接管纯只读），由 ≤ 80 行的背景与定论加最新一跳携带 `默认接力任务` 的倒序 Hop 账本构成，通过 `/janus-handoff` 命令管理。编码由 `coder` 负责：计划里程碑与完全指定的编码/单测工作交给 `coder-lite`（工作区编辑免确认、外部编辑先询问、项目原生命令允许执行、禁止继续派发——它的停下上报是合法的部分结果，由派发方整合）。`coder-lite` 的 bash 为 `"*": "allow"` 加 `CODER_LITE_BASH_DENY_RULES` 护栏，且只拒绝清单内的命令（git/svn/hg 写与还原、`rm -rf`、`sudo`、`janus-keys` CLI）。该护栏是防误操作的 Speed Bump，不是沙箱：它拦不住子 shell 或脚本重定向——包括直接读写外部文件、插件配置或密钥文件（`janus-keys*` 的拒绝只挡 CLI 调用，不挡对密钥文件的直接读写）；安装脚本与网络请求等工作区快照之外的不可逆副作用也无法由基线还原。工作区文件完整性由 `coder` 侧的基线对账兜底。判断密集型工作留在 `coder`，L3 工作可用 `tier: "deep"` 派发到更强的已配置模型。`coder` 按任务复杂度选择 L0/L1/L2/L3 过程权重，并在编辑前对 L2/L3 设置用户审批门。
+`architect` 拥有 `design` 模式：逐层决定架构、模块边界与接口，把结果记入 `design.md`，并把记录移交给 `tech-lead` 做实施计划。设计状态位于 `$XDG_DATA_HOME/janus-agent/design/<projectId>/<designId>/design.md`；`tech-lead` 对它 100% 只读、在同目录写 `plan.md`。`architect` 与 `tech-lead` 拥有 `<designStateDir>/**` 的预授权 `external_directory` 权限；两者都不把设计状态写进项目树。跨团队交接位于 `$XDG_DATA_HOME/janus-agent/handoff/<projectId>/<handoffId>/handoff.md`——五个主入口共享的唯一业务态目录（`consultant` 不持有其他）；交接文档仅在回合末尾显式发起交接时创建或更新（接管纯只读），由 ≤ 80 行的背景与定论加最新一跳携带 `默认接力任务` 的倒序 Hop 账本构成，通过 `/janus-handoff` 命令管理。研发实施由 `tech-lead` 主控、`coder` 执行：获批的 `plan.md` 按里程碑派发到隔离的 `coder` 子会话（工作区编辑免确认、外部编辑先询问、项目原生命令允许执行、VCS 写禁令、禁止继续派发——停下上报是合法的部分结果，由主控整合）；每个里程碑前后做 PRE/POST 树快照、产出 `.review-mK.patch` 并在 `plan.md` 账本记账，审查走异体席（逐里程碑 `coder-reviewer` 携 `reviews_job_ids`、Stage-1/Stage-2 `solution-reviewer`），fix 轮计入 3 轮熔断，调用方 ≥250k token 的派发带 `[context-watermark: …]` 检查点标记、≥350k 时 `coder` 派发被硬顶拒绝（见前文「上下文水位与 coder 硬顶」）。`coder` 叶的 bash 为 `"*": "allow"` 加 `CODER_BASH_DENY_RULES` 护栏，且只拒绝清单内的命令（git/svn/hg 写与还原、`rm -rf`、`sudo`、`janus-keys` CLI）。该护栏是防误操作的 Speed Bump，不是沙箱：它拦不住子 shell 或脚本重定向——包括直接读写外部文件、插件配置或密钥文件（`janus-keys*` 的拒绝只挡 CLI 调用，不挡对密钥文件的直接读写）；安装脚本与网络请求等工作区快照之外的不可逆副作用也无法由基线还原。工作区文件完整性由 `tech-lead` 侧的基线对账兜底。`tech-lead` 按里程碑复杂度选择过程权重（L0-L3）并以此选档：L1/L2 里程碑派 `coder` `tier: "fast"`（Junior 执行档），L3 派 `coder` `tier: "standard"`（Senior 档执行高风险核心逻辑与红绿测试），并在编辑前对 L2/L3 设置用户审批门。
 
-`janus` 是默认前台：处理一般问题与轻量任务，通过 `janus_dispatch` 把快答路由给 `simple`、证据工作给 `consultant`、编码给 `coder`；设计请求交给用户自选且不可派发的 `architect`；文档请求既可派发 `author`，也可让用户切换到该入口。派发 `consultant` 或 `author` 时 janus 附带 `Memory ownership: consultant saves` 或 `Memory ownership: author saves`，因为 janus 不持有咨询记忆。它自己不做深度研究、设计、文档或重编码。
+`janus` 是默认前台：处理一般问题与轻量任务，通过 `janus_dispatch` 把快答路由给 `simple`、证据工作给 `consultant`、仓库工作给 `tech-lead`；设计请求交给用户自选且不可派发的 `architect`；文档请求既可派发 `author`，也可让用户切换到该入口。派发 `consultant` 或 `author` 时 janus 附带 `Memory ownership: consultant saves` 或 `Memory ownership: author saves`，因为 janus 不持有咨询记忆。它自己不做深度研究、设计、文档或重编码。
 
 ### 模型适配提示词
 
-每个插件自有 agent 的提示词在注册时按固定顺序静态组装：角色 asset（`assets/agents/<agent>.md`）→ 共享原则片段 → 公共基线（`assets/principles/common-base.md`）→ 公共写入门（`assets/principles/common-write.md`；六个只读角色省略）→ 运行时绑定（注入 asset 的 `RUNTIME-BINDINGS` 占位符）。
+每个插件自有 agent 的提示词在注册时按固定顺序静态组装：角色 asset（`assets/agents/<agent>.md`）→ 共享原则片段 → 公共基线（`assets/principles/common-base.md`）→ 公共写入门（`assets/principles/common-write.md`；七个只读角色省略）→ 运行时绑定（注入 asset 的 `RUNTIME-BINDINGS` 占位符）。
 
 模型适配块（`assets/model-prompts/<key>.md`）不属于这一静态组装。`experimental.chat.system.transform` 钩子（`createSystemTransformHook`）在**每一轮请求时**按实际服务该轮的模型解析它，并作为独立的 system 条目追加，因此模式/档位覆盖或会话续接总能拿到匹配的块。块按**模型**而非 agent 索引，且**与提供商无关**地匹配：换掉某个 agent 的模型（哪怕换成另一家提供商托管的同一模型），驾驶提示自动跟随；没有块的模型就不注入模型块。钩子只按模型匹配，不区分是哪个 agent 在使用它。
 
 共享原则片段按角色分配：
-- `research-leaf.md`：六个只读叶节点——`common-explorer`、`consultant-analyst`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`author-reviewer`；
+- `research-leaf.md`：七个只读叶节点——`common-explorer`、`consultant-analyst`、`consultant-critic`、`solution-reviewer`、`coder-reviewer`、`consultant-auditor`、`author-reviewer`；
 - `reasoning-failures.md`：`consultant-analyst`、`consultant-critic`；`claim-types.md`：`consultant-analyst`；
 - `source-criteria.md`：`common-explorer`、`consultant-critic`；`channel-policy.md`：`consultant`、`author`；`mode-routing.md`：`janus`、`consultant`；
-- `dispatch-hub.md`：五个派发枢纽 `janus`、`consultant`、`architect`、`coder`、`author`；
-- `engineering-principles.md`：`architect`、`coder`、`coder-reviewer`，以及 `consultation-design` skill；
-- `user-facing-style.md`：八个面向人的角色 `janus`、`simple`、`consultant`、`architect`、`coder`、`author`、`author-writer`、`author-reviewer`。
+- `dispatch-hub.md`：五个派发枢纽 `janus`、`consultant`、`tech-lead`、`architect`、`author`；
+- `engineering-principles.md`：`architect`、`tech-lead`、`coder`、`coder-reviewer`、`solution-reviewer`，以及 `consultation-design` skill；
+- `user-facing-style.md`：八个面向人的角色 `janus`、`simple`、`consultant`、`tech-lead`、`architect`、`author`、`author-writer`、`author-reviewer`。
 
 模型 ID（`provider/model`）由 `normalizeModelKey` 规范化为单一匹配键：
 
@@ -329,11 +374,12 @@ consultant 把有界的证据工作路由给自己的团队：`common-explorer` 
 2. 否则用出厂库 `assets/model-prompts/<key>.md`；
 3. 否则为空——不注入模型块，角色 asset 单独运行。
 
-出厂的 `assets/model-prompts/` 附带 10 个块，每个文件以规范化键命名。其中 7 个对应当前出厂默认模型：
-- `gemini4argon.md`：`consultant`、`architect`、`author`；`glm53.md`：`coder`；`glm53flash.md`：`janus`、`coder-lite`；
+出厂的 `assets/model-prompts/` 附带 11 个块，每个文件以规范化键命名。其中 8 个对应当前出厂默认模型：
+- `gemini4argon.md`：`consultant`、`architect`、`author`；`glm53.md`：`tech-lead`、`coder`（Senior 标量默认）；`glm53flash.md`：`janus` 与 `tier_models.fast.coder` 的出厂档位默认；
 - `deepseekv41flash.md`：`simple`、`common-explorer`；
-- `kimik31pro.md`：`consultant-analyst`、`author-reviewer`，以及 `tier_models.deep.coder` 的出厂档位默认；
-- `claudesonnet55.md`：`consultant-critic`、`coder-reviewer`、`author-writer`；`grok47.md`：`consultant-auditor`。
+- `kimik31pro.md`：`consultant-analyst`、`author-reviewer`、`coder-reviewer`（Senior 标量默认）；
+- `claudesonnet55.md`：`solution-reviewer`、`consultant-critic`、`author-writer`；`grok47.md`：`consultant-auditor`；
+- `claudehaiku55.md`：`tier_models.fast.coder-reviewer` 的出厂档位默认（补丁审查档）。
 另有 3 个库内备用块，目前没有出厂默认角色使用：`deepseekflash.md`（直连提供商 ID `deepseek/deepseek-flash`，同一 V4.1-Flash 模型但规范化键不同）、`gemini38flash.md`、`qwen38max.md`。
 
 为没有块的模型新增块：以该模型 ID 的规范化键命名文件（规则同上），放到 `assets/model-prompts/<key>.md`，并把文件加进 `script/install-local.ts` 的 `REQUIRED_INSTALLED_FILES`（这是改源码的做法；安装器会校验该文件存在）。例如自定义模型 `acme/deepseek-v4-pro` 的键是 `deepseekv4pro`，文件为 `assets/model-prompts/deepseekv4pro.md`。已安装的插件上不能投放文件：改用 `model_prompts` 把你自己的块文本挂到该键上。
@@ -356,17 +402,17 @@ consultant 把有界的证据工作路由给自己的团队：`common-explorer` 
 
 author 状态目录位于 `$XDG_DATA_HOME/janus-agent/author`（默认 `~/.local/share/janus-agent/author`）。它按 `author/<projectId>/<docId>/brief.md` 存放每篇文档一份的作者简报；`author-writer` 对其只读、绝不写。删除该目录即丢弃文档模式状态；`author` 可凭既有文档与清单重建简报。
 
-design 状态目录位于 `$XDG_DATA_HOME/janus-agent/design`（默认 `~/.local/share/janus-agent/design`）。它按 `design/<projectId>/<designId>/design.md` 存放每项目的设计记录与 coder 的 `plan.md`；没有设计记录的计划位于 `design/<projectId>/<planId>/plan.md`。`design.md` 是现态文档（原地重写，约 200-300 行，architect 是唯一写入者、coder 100% 只读）；删除它需要用户确认，删除已落地（全部里程碑验证、审查消解、终报交付）的 `plan.md` 则不需要。删除该目录即丢弃设计状态。
+design 状态目录位于 `$XDG_DATA_HOME/janus-agent/design`（默认 `~/.local/share/janus-agent/design`）。它按 `design/<projectId>/<designId>/design.md` 存放每项目的设计记录与 tech-lead 的 `plan.md`；没有设计记录的计划位于 `design/<projectId>/<planId>/plan.md`。`design.md` 是现态文档（原地重写，约 200-300 行，architect 是唯一写入者、tech-lead 100% 只读）；删除它需要用户确认，删除已落地（全部里程碑验证、审查消解、终报交付）的 `plan.md` 则不需要。删除该目录即丢弃设计状态。
 
 handoff 状态目录位于 `$XDG_DATA_HOME/janus-agent/handoff`（默认 `~/.local/share/janus-agent/handoff`）。它按 `handoff/<projectId>/<handoffId>/handoff.md` 存放每个课题一份的无状态交接文档：YAML frontmatter（`handoff_id`、`title`、`updated_at`、`last_hop`）、至多 80 行的 `## 1. 背景与当前定论`（拍板结论、未决问题、只存路径指针的产物区），以及最新 `### Hop N` 紧贴标题下方的 `## 2. 交接记录与下一跳指引`（仅最新一跳携带 `建议下一跳` 与 `默认接力任务`）。文档只在回合末尾、当 agent 或用户显式发起交接时创建或更新；接管只读前 120 行；每次写入以 `交接单: <handoff-id>` 回显结尾。删除该目录即丢弃全部交接状态；用 `/janus-handoff export` 保留副本。
 
 ## 第 5 步：验证安装
 
-1. **主入口可选**：启动 OpenCode，确认 `janus`、`simple`、`consultant`、`architect`、`coder`、`author` 出现在 agent 列表。
+1. **主入口可选**：启动 OpenCode，确认 `janus`、`simple`、`consultant`、`architect`、`tech-lead`、`author` 出现在 agent 列表。
 2. **simple 工作区**：`~/.local/share/janus-agent/lite` 存在，且是唯一免确认的可写位置。
-3. **coder-lite 车道已注册**：`coder-lite` 以子 agent 出现（步数 80、工作区编辑允许、项目原生命令允许、VCS 写与破坏性命令拒绝、task 拒绝）。
+3. **研发席位已注册**：`tech-lead` 以薄控制器出现（edit 仅 design/handoff 两状态目录、bash 全放、handoff 目录访问），`coder` 以双档执行叶出现（模式 `subagent`、步数 80、工作区编辑允许、项目原生命令允许、VCS 写与破坏性命令拒绝、task 拒绝）。
 4. **记忆 MCP 启动**：`janus-memory` MCP 服务器已注册。其五个工具（`memory_recall`、`memory_expand`、`memory_prepare`、`memory_commit`、`memory_manage`）可用。
-5. **审查子 agent 已注册**：`common-explorer`、`consultant-critic`、`coder-reviewer`、`consultant-auditor`、`consultant-analyst`、`author-reviewer`（均只读）与 `author-writer`（限定写入：除非改了 `writer_docs_roots`，仅允许编辑 `userdoc/**` 之下）以子 agent（模式 `subagent`）出现，经 `janus_dispatch` 工具派发。
+5. **审查子 agent 已注册**：`common-explorer`、`consultant-critic`、`solution-reviewer`、`coder-reviewer`、`consultant-auditor`、`consultant-analyst`、`author-reviewer`（均只读）与 `author-writer`（限定写入：除非改了 `writer_docs_roots`，仅允许编辑 `userdoc/**` 之下）以子 agent（模式 `subagent`）出现，经 `janus_dispatch` 工具派发。
 6. **skill 就位**：`consultation/SKILL.md`、`consultation-design/SKILL.md`、`consultation-doc/SKILL.md` 存在于 `~/.config/opencode/skills/`（或你的 `$OPENCODE_CONFIG_DIR/skills/`）；设计与文档子 skill 含其模式模板。
 7. **作者、设计与交接状态**：`~/.local/share/janus-agent/author`、`~/.local/share/janus-agent/design` 与 `~/.local/share/janus-agent/handoff` 存在；五个主入口提示词标注项目交接目录，其权限映射允许 `<handoffStateDir>/**`。
 8. **命令就位**：`commands/janus-memory.md`、`commands/janus-models.md`、`commands/janus-handoff.md`、`commands/janus-config.md` 存在于 `~/.config/opencode/`（或你的 `$OPENCODE_CONFIG_DIR/commands/`）。

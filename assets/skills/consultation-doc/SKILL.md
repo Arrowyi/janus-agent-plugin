@@ -26,7 +26,7 @@ Trimming exemptions: an API or configuration reference filed under `architecture
 
 Delivery: `inline` (chat), `single_file` (one Markdown file), `multi_file` (an index plus chapters). Ask for the shape and destination when absent or ambiguous; confirm the resolved destination at the outline gate. Resolve relative paths against the project root and never hard-code a documentation directory or a developer-machine path; follow host/project instructions when present and surface the destination for approval.
 
-Delegation threshold (authoritative here; other prompts only reference it): code comments, docstrings, `AGENTS.md`, and `assets/commands/*.md` stay with `coder`, and so do at most two document edits that merely sync a code change (a table row, a config key, a default model, a count). New reader-facing documents — under `userdoc/`, `docs/`, or `README.md` — plus cross-chapter rewrites, structural reorganization, and full-document reviews (three or more document edits) route to the `author` team, dispatchable as `role: "author"` from a primary entry. While an author dispatch is running, the caller does not edit the same document file concurrently.
+Delegation threshold (authoritative here; other prompts only reference it): code comments, docstrings, `AGENTS.md`, and `assets/commands/*.md` stay with the coding team — they ride along inside a `coder` milestone scheduled by the `tech-lead` — and so do at most two document edits that merely sync a code change (a table row, a config key, a default model, a count). New reader-facing documents — under `userdoc/`, `docs/`, or `README.md` — plus cross-chapter rewrites, structural reorganization, and full-document reviews (three or more document edits) route to the `author` team, dispatchable as `role: "author"` from a primary entry. While an author dispatch is running, the caller does not edit the same document file concurrently.
 
 ### Verification
 
@@ -46,7 +46,7 @@ Fail closed: if `author-reviewer` is disabled, unavailable, or quota-exhausted, 
 
 Adversarial roles are proportionate, never a fixed roster: `common-explorer` gathers missing authoritative evidence; `consultant-critic` runs for `strict` verification, conflicting evidence, high-risk material, failed execution that challenges the explanation, or a material uncertainty it could resolve even in `light`/`targeted` work; `author-reviewer` runs the independent post-draft review at the gate below; a source-independence concern goes back to `consultant`, whose `consultant-auditor` owns it. Skip only when a role's check is demonstrably unnecessary.
 
-Keep the long-lived editorial context clean: send more than two external lookups or broad cross-module exploration to `common-explorer`, non-trivial runnable code verification to `coder`, and any `strict` or disputed-mechanism challenge to `consultant-critic` via `janus_dispatch` with `protocol: "counter_evidence"`.
+Keep the long-lived editorial context clean: send more than two external lookups or broad cross-module exploration to `common-explorer`, non-trivial runnable code verification to `coder` at `tier: "fast"`, and any `strict` or disputed-mechanism challenge to `consultant-critic` via `janus_dispatch` with `protocol: "counter_evidence"`.
 
 ### Permission policy
 

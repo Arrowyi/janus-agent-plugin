@@ -6,7 +6,6 @@ import {
   registerAuthorWriter,
   registerArchitect,
   registerCoder,
-  registerCoderLite,
   registerCoderReviewer,
   registerCommonExplorer,
   registerConsultantAgent,
@@ -15,6 +14,9 @@ import {
   registerConsultantCritic,
   registerJanus,
   registerSimple,
+  registerSolutionReviewer,
+  registerTechLead,
+  resolveEditBases,
   resolveModelPrompt,
 } from "./agent-registration.ts"
 import { createJanusDispatchTools } from "./dispatch-tool.ts"
@@ -40,6 +42,7 @@ import { computeNamespace } from "./namespace.ts"
 export function createJanusConfigHook(
   project: { id: string },
   directory: string,
+  worktree?: string,
 ): (config: Config) => Promise<void> {
   return async (config: Config): Promise<void> => {
     const env = process.env
@@ -47,11 +50,17 @@ export function createJanusConfigHook(
     const namespace = computeNamespace(project.id, directory)
 
     // The directory supplies the author-brief, design-record, and handoff
-    // project ids.
+    // project ids; directory plus worktree resolve the edit-permission
+    // bases that the twin-carrying permission sets are built from.
+    const editBases = resolveEditBases(directory, worktree)
     await registerConsultantAgent(config, pluginConfig, namespace, directory, env)
 
     if (pluginConfig.architect_enabled) {
       await registerArchitect(config, pluginConfig, namespace, directory, env)
+    }
+
+    if (pluginConfig.tech_lead_enabled) {
+      await registerTechLead(config, pluginConfig, directory, env, editBases)
     }
 
     if (pluginConfig.author_enabled) {
@@ -59,15 +68,15 @@ export function createJanusConfigHook(
     }
 
     if (pluginConfig.coder_enabled) {
-      await registerCoder(config, pluginConfig, directory, env)
+      await registerCoder(config, pluginConfig, env, editBases)
+    }
+
+    if (pluginConfig.solution_reviewer_enabled) {
+      await registerSolutionReviewer(config, pluginConfig, env)
     }
 
     if (pluginConfig.simple_enabled) {
-      await registerSimple(config, pluginConfig, namespace)
-    }
-
-    if (pluginConfig.coder_lite_enabled) {
-      await registerCoderLite(config, pluginConfig)
+      await registerSimple(config, pluginConfig, namespace, editBases)
     }
 
     if (pluginConfig.janus_enabled) {
@@ -155,7 +164,7 @@ export function createSystemTransformHook(env: NodeJS.ProcessEnv = process.env) 
  * Contains no evidence, recommendation, or persistence logic.
  */
 export const JanusAgentPlugin: Plugin = async (input) => ({
-  config: createJanusConfigHook(input.project, input.directory),
+  config: createJanusConfigHook(input.project, input.directory, input.worktree),
   tool: {
     ...createJanusDispatchTools(input.client),
     [CONFIG_TOOL_NAME]: createJanusConfigTool(),

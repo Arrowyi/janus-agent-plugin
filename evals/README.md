@@ -19,7 +19,7 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 89 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 entry routing/adaptive coder process plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, C60-C74 the lexicographic dispatch floor, reasoning-failure/auditor/KAC (key-assumptions check)/outside-view/VOI (value-of-information stop rule)/plan pre-mortem cases, and the multi-ask/one-goal/GRADE-lite (evidence-body confidence up/downgrade)/mode-card/ACH (competing-hypothesis matrix) cases, C75-C85 the mode-stack, coder-reviewer, dynamic model routing, continuation-lock, strict unknown-key rejection, critique-contract, specialist-floor, and inline-ceiling cases, and C86-C89 the author-reviewer gate, briefWaived micro-fix, user-facing-style, and coder-lite delegation cases.
+- `fixtures/consultation-cases.json` - 97 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 entry routing/tech-lead milestone routing plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, C60-C74 the lexicographic dispatch floor, reasoning-failure/auditor/KAC (key-assumptions check)/outside-view/VOI (value-of-information stop rule)/plan pre-mortem cases, and the multi-ask/one-goal/GRADE-lite (evidence-body confidence up/downgrade)/mode-card/ACH (competing-hypothesis matrix) cases, C75-C85 the mode-stack, solution-reviewer, dynamic model routing, continuation-lock, strict unknown-key rejection, critique-contract, specialist-floor, and inline-ceiling cases, C86-C89 the author-reviewer gate, briefWaived micro-fix, user-facing-style, and tech-lead milestone-delegation cases, C90-C93 the open-pool tier floor, the four-stage discovery funnel, the provisional-taxonomy external ledger, and the quota-degrade cases, and C94-C97 the tech-lead milestone orchestration, reviewer-guard, watermark-checkpoint, and circuit-breaker cases.
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
@@ -98,7 +98,7 @@ id encodes the scenario, and the test file encodes the function under test.
 | M12 | packages/memory-sqlite/src/multi-instance.test.ts |
 
 Model-graded cases (C3, C4, C5, C6, C7, C8, C10, C11, C12, C13, C14, C15-C25,
-C31-C40, C42-C48, C49-C53, C55, C56-C79, C84-C89, M3, M5) have no test-file mapping by design (C6, C7, C10, C11, C12, C40, C44, C45, C47, C49-C53, C55, C77, and C86-C89 carry deterministic backstops named in their notes).
+C31-C40, C42-C48, C49-C53, C55, C56-C79, C84-C89, C91-C97, M3, M5) have no test-file mapping by design (C6, C7, C10, C11, C12, C40, C44, C45, C47, C49-C53, C55, C77, and C86-C89 carry deterministic backstops named in their notes).
 
 ## Recoverable lifecycle evaluation (C26-C30)
 
@@ -129,7 +129,7 @@ of repository evidence; retain only redacted structural observations and verdict
 
 ### Per-role audit matrix
 
-All 12 dispatch roles share the identical recoverable launch/wait/cancel lifecycle:
+All 13 dispatch roles share the identical recoverable launch/wait/cancel lifecycle:
 `janus_dispatch{role,prompt}`, `janus_dispatch_wait{job_id,wait_ms?}`,
 and `janus_dispatch_cancel{job_id}`. Every role has exactly one configured
 attempt and resolves to a single-model chain — the plugin ships no model-fallback
@@ -141,14 +141,15 @@ and its host permissions are retained, not replaced by bundled restrictions.
 | common-explorer | Same launch/wait/cancel | One | Recover original evidence report; no duplicated gathering on expiry |
 | consultant-analyst | Same launch/wait/cancel | One | Integrate returned analysis; inline reasoning is not an independent check |
 | consultant-critic | Same launch/wait/cancel | One | Await challenge before dependent synthesis; no false review credit |
-| coder-reviewer | Same launch/wait/cancel | One | Await the pre-mortem/plan review before a one-way approval or implementation; no false review credit |
+| coder-reviewer | Same launch/wait/cancel | One | Await the per-milestone patch review before the ledger pass; no false review credit |
+| solution-reviewer | Same launch/wait/cancel | One | Await the design pre-mortem or the Stage-1 plan / Stage-2 final review before the gated decision; no false review credit |
 | simple | Same launch/wait/cancel | One | Bounded economical answer; a leaf that never dispatches |
 | consultant-auditor | Same launch/wait/cancel | One | Separate execution status from evidence-quality uncertainty |
 | bundled author-writer | Same launch/wait/cancel | One (single-model chain) | No fallback advance — a confirmed terminal retryable failure ends the job after one attempt; preserve outline gate and scoped-write roots (edit only under `writer_docs_roots`; `[]` or an approved path outside the roots = read-only, and `author` applies the returned prose) |
 | delegate author-writer | Same launch/wait/cancel | One, pinned model or host selection | No plugin fallback advance; retain external host permissions |
 | author-reviewer | Same launch/wait/cancel | One | Await the independent report before publishing an architecture/targeted/strict document; a disabled or failed reviewer is disclosed, never credited |
-| coder-lite | Same launch/wait/cancel | One | Recover the original milestone result; no duplicate edits on expiry; baseline reconciliation only after the terminal return; a pending job is never credited as done |
-| coder | Same launch/wait/cancel | One | Await the bounded implementation report before dependent steps; follow-ups continue the pinned session; no duplicate implementation on expiry; file changes only on confirmed paths |
+| coder | Same launch/wait/cancel | One (dual-tier: fast or standard, picked by the dispatching tech-lead) | Await the bounded implementation report before dependent steps; follow-ups continue the pinned session; no duplicate implementation on expiry; file changes only on confirmed paths |
+| tech-lead | Same launch/wait/cancel | One | Milestone orchestration: PRE/POST tree snapshots, review patches, the plan ledger, the three-round circuit breaker, and the watermark checkpoint relay use the same launch/wait/cancel lifecycle |
 | consultant | Same launch/wait/cancel | One | Integrate the returned consultation; the dispatcher owns the memory record unless the task says `Memory ownership: consultant saves`; a dispatched consultant never asks the end user |
 | author | Same launch/wait/cancel | One | Await the document delivery report; dispatchable only from top-level entries (a session that was itself dispatched cannot dispatch it); outline gate, reviewer gate, and writer-session reuse stay inside its workflow |
 
@@ -156,19 +157,21 @@ Exercise pending/unknown/recovery/cancel for each role and both delegate model
 forms. Check configured-attempt routing separately from host-internal provider
 retries; the plugin cannot claim control of an external delegate's internals.
 
-## Entry routing and adaptive coder process evaluation (C31-C39)
+## Entry routing and tech-lead milestone routing evaluation (C31-C39)
 
-These cases check the entry layout and the coder's adaptive process, not model
-quality. Run them with a live model and record the observed tool trace:
+These cases check the entry layout and the tech-lead's milestone grading and
+tier routing, not model quality. Run them with a live model and record the
+observed tool trace:
 
-- **C31/C32** — bounded work goes to `simple`; spec-complete milestones and mechanical code go to `coder-lite` (serially, one milestone at a time, after a baseline snapshot); judgment code stays with `coder` (L3 can use a deep-tier model); the consultant does not implement code.
-- **C33/C34** — `janus` routes consulting/coding/quick answers; direct entry to `consultant`/`coder`/`simple` does not bounce back.
-- **C35/C36/C37** — coder L0 skips the plan; L2 presents the design gate and waits; L3 runs the quality gate.
+- **C31/C32** — bounded work goes to `simple`; the tech-lead grades spec-complete milestones to the `coder` at `tier: "fast"` (serially, one milestone at a time, after a baseline snapshot) and judgment-heavy work to the `coder` at `tier: "standard"` (L3); there is no shipped deep-tier default. The consultant hands code to the tech-lead instead of implementing it.
+- **C33/C34** — `janus` routes consulting/coding/quick answers (coding to `tech-lead`); direct entry to `consultant`/`tech-lead`/`simple` does not bounce back.
+- **C35/C36/C37** — a micro-change takes the fast tier with no planning ceremony; a multi-design task presents the plan gate and waits; an L3 milestone runs the quality gate at the standard tier with an independent patch review.
 - **C38** — a dispatched consultant does not ask the end user; it saves only when the task assigns `Memory ownership: consultant saves`, otherwise it returns a summary and the dispatcher owns the record.
 - **C39** — a close `select` answer opens with 结论/理由/下一步, says there is no clear winner, gives a tie-break and `把握`, puts evidence after the decision, and ends with a next action.
 
 Reject a run that uses the same process weight for every task. The expected
-failure modes are process theater on L0 and skipped design on L2/L3.
+failure modes are process theater on a micro-change and skipped design on the
+plan gate for multi-file work.
 
 ## Author separation evaluation (C40-C48)
 
@@ -230,7 +233,7 @@ brief's stored id.**
 
 Model-graded. Record the tool trace and the named output fields, then answer each case's `Rubric:` note.
 
-- **C56-C59** — a structural question routes to `design` and is decided layer by layer with reversibility labels, and the handoff to coder follows the `handoff` skill (`handoff.md` plus the `交接单` echo); a coder with an accepted `design.md` shrinks its L2 gate, treats the record as 100% read-only, deletes the landed `plan.md` freely, and has the diff checked against the record; a one-way door gets a `coder-reviewer` pre-mortem (`designReview`) before approval; the record is rewritten in place at about 200–300 lines with no lifecycle/status line, with a cleanup proposal and confirmation before deleting any `design.md`.
+- **C56-C59** — a structural question routes to `design` and is decided layer by layer with reversibility labels, and the handoff to the `tech-lead` follows the `handoff` skill (`handoff.md` plus the `交接单` echo); a tech-lead with an accepted `design.md` shrinks its plan gate, treats the record as 100% read-only, deletes the landed `plan.md` freely, and has the integrated diff reviewed against the record; a one-way door gets a `solution-reviewer` pre-mortem (`designReview`) before approval; the record is rewritten in place at about 200–300 lines with no lifecycle/status line, with a cleanup proposal and confirmation before deleting any `design.md`.
 - **C60** — lexicographic dispatch floor: a load-bearing evidence gap goes to `common-explorer` (isolated session, `mode`/`tier`/`protocol` named) before inline search; low stakes shorten the trial step, never waive the retrieval floor.
 - **C61/C62** — reasoning-failure check (outcome selection and a missing denominator in 自古红颜多薄命); the consultant-auditor reports `signalsFired` by name and `missingObservations`, never inferring `clean` from missing data.
 - **C63/C64** — KAC (key-assumptions check): at most three load-bearing `assumptions` per claim with `ifFalse` and `test`; outside view: `outsideView` (`referenceClass`, `baseRate`, `caseAdjustment`) before any case adjustment, or a plain "no usable baseline".
@@ -244,8 +247,8 @@ Model-graded. Record the tool trace and the named output fields, then answer eac
 ## Mode-stack, routing, and contract evaluation (C75-C85)
 
 - **C75/C76** (model) — a research-to-design handoff carries the verified evidence into design; a nested `common-explorer`/`consultant-analyst` sub-task returns to the pending design work.
-- **C77** (model) — a coder session is pinned with `return_handle: true` and a later change uses `janus_dispatch_continue` on the same session.
-- **C78/C79** (model) — `coder-reviewer` with `design_premortem` returns `designReview`; with `code_plan_review` it returns `codePlanReview` with a pass/revise/block verdict.
+- **C77** (model) — a tech-lead session is pinned with `return_handle: true` and a later change uses `janus_dispatch_continue` on the same session.
+- **C78/C79** (model) — `solution-reviewer` with `design_premortem` returns `designReview`; with `code_plan_review` at `stage: "plan"`/`stage: "final"` it returns `codePlanReview` with a pass/revise/block verdict.
 - **C80-C83** (deterministic, see the coverage map) — `mode_models` beats `tier_models` beats the scalar model, and the system-transform hook injects the prompt for the model actually serving the turn; a continuation inherits the original `agent_name` and `model_chain`; unknown config keys fail strict config load; `CritiqueDraftSchema` carries `planReview` and a nullable `designReview`.
 - **C84/C85** (model) — a `select` over biased or multi-source evidence uses `common-explorer` and `consultant-auditor` instead of ad-hoc inline search; a claim settled by one conflict-free primary record within two calls stays inline with its residual uncertainty stated.
 
@@ -255,8 +258,19 @@ These cases cover the documentation team's third seat and the shared output styl
 
 - **C86** — the `author-reviewer` gate: an independent dispatch between the writer's final pass and publishing for `architecture` documents and `targeted`/`strict` verification, returning an `AuthorReviewerReport`; `light` non-architecture documents and waived micro-fixes skip it, the writer's self-polish never substitutes, and a disabled or failed reviewer is disclosed, never credited.
 - **C87** — the `briefWaived` fast path: a qualifying micro-fix (typo, punctuation, broken relative link, at most two edits) on a brief-less document under `writer_docs_roots` takes a single delta-sized `author-writer` dispatch with `briefWaived: true`, the writer refuses anything touching numbers, code, APIs, or meaning, and the author closes after the three-item diff check with no reviewer dispatch.
-- **C88** — the shared user-facing style: the eight human-facing roles gloss a technical term at its first occurrence and never paraphrase exact identifiers, commands, paths, or config keys for plainness; the six structural leaves stay exempt.
-- **C89** — coder-lite milestone delegation: an approved plan's spec-complete milestones go serially to `coder-lite` after a 0700 baseline snapshot, with exact-content restore, quarantine, and one bounded re-do on pollution, an ephemeral probe staying on the L0 fast path, and `coder-reviewer` held to the two Stage 1/Stage 2 gate reviews.
+- **C88** — the shared user-facing style: the eight human-facing roles gloss a technical term at its first occurrence and never paraphrase exact identifiers, commands, paths, or config keys for plainness; the seven structural leaves stay exempt.
+- **C89** — tech-lead milestone delegation: an approved plan's spec-complete milestones go serially to the `coder` at `tier: "fast"` after the `.baseline-mK/` PRE-tree snapshot, with exact-content restore, quarantine, and one bounded re-do on pollution, an ephemeral probe staying on the direct fast-tier path, per-milestone `coder-reviewer` patch reviews, and `solution-reviewer` held to the two Stage 1/Stage 2 gate reviews.
+
+## Tech-lead orchestration evaluation (C94-C97)
+
+These cases cover the R&D team's coding controller — its milestone protocol and
+its failure behavior. Run them with a live model and record the tech-lead's
+tool trace plus the design-state artifacts:
+
+- **C94** — milestone orchestration from an accepted record: a fresh tech-lead session reads `design.md` (100% read-only), writes `plan.md` beside it, dispatches each milestone to a fresh coder session, and keeps the PRE/POST tree snapshots (`.baseline-mK/`), the `.review-mK.patch` files, and ledger lines that require a reviewer pass plus real verification output.
+- **C95** — reviewer guards: both `coder-reviewer` milestone patches and `solution-reviewer` `stage: "final"` dispatches carry `reviews_job_ids` validated against the ledger; a same-model/same-family reviewer pairing is rejected with the conflicting pair named; `stage: "plan"` carries no ids, `stage: "final"` lists every coder root.
+- **C96** — the context watermark: a `[context-watermark: <t> tokens >= 250000; checkpoint at milestone boundary]` return finishes the current milestone (ledger + `handoff.md`), ends with the `交接单` echo, and stops; `janus`/`architect` relay into a fresh tech-lead session；the relay triggers on the `交接单` line gated on the newest hop's `建议下一跳` and never over a stop, block, or a decision awaiting the user — a watermark marker alone reflects the caller's own context and never triggers it.
+- **C97** — the circuit breaker: three `revise` rounds without `pass`, or any `block`, stop the milestone with `.baseline-mK/` preserved and the failure reported to the user — never an inline takeover or a self-approved pass; an 80-step-capped coder session opens a continuation session that counts toward the round cap with its job id appended to `reviews_job_ids`. A stop hop names the user-facing caller with the pending decision; the caller surfaces it, never re-dispatches over it.
 
 ## Task-fit routing evaluation (C15-C25)
 

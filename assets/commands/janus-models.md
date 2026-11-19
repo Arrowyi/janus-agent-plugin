@@ -14,7 +14,7 @@ This command requires:
 - Online search for model evaluations, discussions, and pricing;
 - Editing the user-level Janus config.
 
-If the current agent lacks these permissions, stop and ask the user to switch to `janus`, `consultant`, or `coder` and re-run; do not attempt to bypass permissions.
+If the current agent lacks these permissions, stop and ask the user to switch to `janus`, `consultant`, or `tech-lead` and re-run; do not attempt to bypass permissions.
 
 ## User arguments
 
@@ -35,7 +35,7 @@ User arguments: $ARGUMENTS
 - `退出` / `exit` / `0`: exit
 - Any other free text: map to the above modes by meaning; ask one question only when genuinely ambiguous
 
-Role names accept both English and Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `审计`=consultant-auditor, `轻量`/`初级`/`机械`=coder-lite, `写作`=author-writer, `审稿`=author-reviewer. The family has 14 registered agents and 12 dispatch roles; `janus` and `architect` are primary entries and are not dispatchable, while `author` is a dispatchable primary entry.
+Role names accept both English and Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `主控`=tech-lead, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `方案审查`=solution-reviewer, `审计`=consultant-auditor, `写作`=author-writer, `审稿`=author-reviewer. `轻量`/`初级`/`机械` name the coder's `fast` tier (`tier_models.fast.coder`), not a role. The family has 15 registered agents and 13 dispatch roles; `janus` and `architect` are primary entries and are not dispatchable, while `author` is a dispatchable primary entry.
 
 ## No-argument flow
 
@@ -75,16 +75,17 @@ Read-only. Runtime truth takes precedence; do not cite any fixed snapshot.
    | simple | simple_model | simple_agent |
    | consultant | consultant_model | consultant_agent |
    | architect | architect_model | architect_agent |
+   | tech-lead | tech_lead_model | tech_lead_agent |
    | coder | coder_model | coder_agent |
    | author | author_model | author_agent |
    | common-explorer | common_explorer_model | common_explorer_agent |
    | consultant-analyst | consultant_analyst_model | consultant_analyst_agent |
    | consultant-critic | consultant_critic_model | consultant_critic_agent |
    | consultant-auditor | consultant_auditor_model | consultant_auditor_agent |
+   | solution-reviewer | solution_reviewer_model | solution_reviewer_agent |
    | coder-reviewer | coder_reviewer_model | coder_reviewer_agent |
    | author-writer | author_writer_model | author_writer_agent |
    | author-reviewer | author_reviewer_model | author_reviewer_agent |
-   | coder-lite | coder_lite_model | coder_lite_agent |
 
    `architect_model` and `author_model` fall back to an explicitly configured `consultant_model`, then to the plugin default. Also inspect `mode_models` and `tier_models` (see "Advanced routing"). Non-model config fields use the same role prefix, e.g. `simple_enabled`, `architect_enabled`, `author_writer_enabled`.
 
@@ -111,7 +112,7 @@ For example `opencode-go/deepseek-v4.1-flash` → `deepseekv41flash`, `opencode/
 
 Two optional nested maps let the user route a role differently per consultation mode and per depth tier. They apply to dispatched sessions (not to a direct agent selection), and precedence is:
 
-`mode_models[mode][role]` > `tier_models[tier][role]` > `<role>_model` > `TIER_MODEL_DEFAULTS[tier][role]` > plugin default. The plugin ships one tier default (`deep.coder`), and an explicit `<role>_model` still beats it.
+`mode_models[mode][role]` > `tier_models[tier][role]` > `<role>_model` > `TIER_MODEL_DEFAULTS[tier][role]` > plugin default. The plugin ships the fast-tier defaults (`fast.coder` = `glm-5.3-flash` and `fast.coder-reviewer` = `claude-haiku-5-5`); the standard and deep tiers ship no tier defaults and fall back to the plugin scalars, and an explicit `<role>_model` still beats any tier default.
 
 Example:
 
@@ -136,9 +137,9 @@ Read-only. Answer: whether an agent's model should change, and why.
 - Evaluate the current model of every enabled agent.
 - Candidate pool: take only 3–5 mainstream or well-suited models per role family, and they must come from providers already configured on this machine; do not enumerate the whole catalog. Explain why these candidates were chosen, and when necessary why an obvious candidate was not.
 - Role-family dimensions:
-  - Judgment/audit (consultant, consultant-critic, coder-reviewer, consultant-auditor): hard-task capability first; challenger and challenged must stay in different model families.
-  - Coding (coder, coder-lite): agentic/coding hard benchmarks + cost per task; coder-lite is the junior/mid engineer lane — planned milestones, spec-complete coding, unit tests, and batch mechanical edits.
-  - Design (architect, coder-reviewer): long-context structure, trade-off reasoning, and independent review.
+  - Judgment/audit (consultant, consultant-critic, solution-reviewer, coder-reviewer, consultant-auditor): hard-task capability first; challenger and challenged must stay in different model families.
+  - Coding (coder, dual-tier): agentic/coding hard benchmarks + cost per task; the coder is a dual-tier execution leaf — `tier: "standard"` is the Senior lane for L3 core logic and its red-green tests, `tier: "fast"` the Junior lane for spec-complete milestones, unit tests, and batch mechanical edits; the dispatching tech-lead picks the tier.
+  - Design (architect, solution-reviewer): long-context structure, trade-off reasoning, and independent review.
   - Documentation (author, author-writer, author-reviewer): long-context editing, prose quality, and instruction adherence; author-reviewer is judged on close-reading accuracy — it must not share the writer's model family.
   - Entry/quick answer (janus, simple): latency, tool-call stability, price; janus must also be judged on orchestration/routing.
   - Retrieval/writing (common-explorer, consultant-analyst, author-writer): long context, hallucination rate, output quality/verbosity.

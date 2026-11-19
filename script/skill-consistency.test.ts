@@ -300,7 +300,7 @@ describe("consultation mode consistency", () => {
     }
     // The skill still names the other teams' lanes; the consultant prompt hands
     // design and documentation off instead of claiming them.
-    for (const role of ["architect", "coder", "author", "author-writer", "coder-reviewer"]) {
+    for (const role of ["architect", "tech-lead", "coder", "solution-reviewer", "coder-reviewer", "author", "author-writer"]) {
       expect(skill).toContain(`\`${role}\``)
     }
     expect(consultant).toContain("hand it back")

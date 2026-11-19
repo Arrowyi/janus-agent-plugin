@@ -8,8 +8,9 @@ import type { PluginInput, ToolContext } from "@opencode-ai/plugin"
 import { createJanusDispatchTool, createJanusDispatchTools, resolveRoleTarget, splitModel } from "./dispatch-tool.ts"
 import { appendRecord, createAttemptSession, createJob } from "./dispatch-journal.ts"
 import { JanusPluginConfigSchema, type JanusPluginConfig } from "./plugin-config.ts"
-import { createFakeClock, createFakeSdk, type FakeSdk } from "./dispatch-test-fixtures.ts"
-import { createKeyedMutex, parseOutcomeEnvelope, PRODUCTION_WAIT_BUDGET_MS, type DispatchEnvelope, type KeyedMutex, type SdkAssistantMessage, type SdkMessageWithParts, type SdkTextPart } from "./dispatch-contract.ts"
+import { CODER_HARD_CEILING_TOKENS, CONTEXT_WATERMARK_TOKENS } from "./dispatch-guard.ts"
+import { createFakeClock, createFakeSdk, legacyRoleSpecs, makeCancelledEnvelope, makeCompletedEnvelope, makeEnvelope, makeJobSpec, type FakeSdk } from "./dispatch-test-fixtures.ts"
+import { createKeyedMutex, parseOutcomeEnvelope, PRODUCTION_WAIT_BUDGET_MS, type DispatchEnvelope, type JobSpec, type KeyedMutex, type SdkAssistantMessage, type SdkMessageWithParts, type SdkTokenUsage, type SdkTextPart } from "./dispatch-contract.ts"
 import type { DispatchLifecycle, LaunchInput } from "./dispatch-lifecycle.ts"
 
 function config(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConfig {
@@ -116,13 +117,14 @@ describe("resolveRoleTarget", () => {
       "common-explorer": { agentName: "common-explorer", model: "opencode-go/deepseek-v4.1-flash" },
       "consultant-analyst": { agentName: "consultant-analyst", model: "opencode-go/kimi-k3.1-pro" },
       "consultant-critic": { agentName: "consultant-critic", model: "opencode/claude-sonnet-5-5" },
-      "coder-reviewer": { agentName: "coder-reviewer", model: "opencode/claude-sonnet-5-5" },
+      "coder-reviewer": { agentName: "coder-reviewer", model: "opencode-go/kimi-k3.1-pro" },
       "consultant-auditor": { agentName: "consultant-auditor", model: "opencode-go/grok-4.7" },
       "author-writer": { agentName: "author-writer", model: "opencode/claude-sonnet-5-5" },
       "author-reviewer": { agentName: "author-reviewer", model: "opencode-go/kimi-k3.1-pro" },
       coder: { agentName: "coder", model: "opencode-go/glm-5.3" },
       simple: { agentName: "simple", model: "opencode-go/deepseek-v4.1-flash" },
-      "coder-lite": { agentName: "coder-lite", model: "opencode-go/glm-5.3-flash" },
+      "tech-lead": { agentName: "tech-lead", model: "opencode-go/glm-5.3" },
+      "solution-reviewer": { agentName: "solution-reviewer", model: "opencode/claude-sonnet-5-5" },
       consultant: { agentName: "consultant", model: "opencode-go/gemini-4-argon" },
       author: { agentName: "author", model: "opencode-go/gemini-4-argon" },
     } as const
@@ -416,28 +418,75 @@ describe("createJanusDispatchTool", () => {
     }
   })
 
-  it("launches coder-lite with the configured agent and model", async () => {
-    // given
-    const tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-cl-"))
+  it("rejects any dispatch with the removed coder-lite key migration guidance", async () => {
+    // given — a config that still carries a retired coder-lite key
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-migrate-"))
     const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, JSON.stringify({ coder_lite_agent: "custom-lite", coder_lite_model: "custom/glm-flash" }))
+    writeFileSync(configPath, JSON.stringify({ coder_lite_model: "fixture/coder-lite" }))
+    const previousConfig = process.env.JANUS_CONFIG
     process.env.JANUS_CONFIG = configPath
-    const fake = createRespondingFake("done")
+    const fake = createFakeSdk()
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    try {
+      // when — any janus_dispatch call hits the config load
+      let message = ""
+      try {
+        message = outputText(
+          await tools.janus_dispatch.execute({ role: "coder", prompt: "implement" }, fakeContext()),
+        )
+      } catch (error: unknown) {
+        message = error instanceof Error ? error.message : String(error)
+      }
+
+      // then — the error carries the migration guidance and nothing is launched
+      expect(message).toContain("removed coder-lite keys detected")
+      expect(message).toContain("tech_lead_")
+      expect(promptAsyncCount(fake)).toBe(0)
+    } finally {
+      if (previousConfig === undefined) delete process.env.JANUS_CONFIG
+      else process.env.JANUS_CONFIG = previousConfig
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it("launches tech-lead with the configured agent and model", async () => {
+    // given
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-tl-"))
+    const configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, JSON.stringify({ tech_lead_agent: "custom-lead", tech_lead_model: "custom/lead" }))
+    process.env.JANUS_CONFIG = configPath
+    const fake = createRespondingFake("plan reviewed")
     const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
 
     try {
       // when
-      const result = await tools.janus_dispatch.execute({ role: "coder-lite", prompt: "rename A to B" }, fakeContext())
+      const result = await tools.janus_dispatch.execute({ role: "tech-lead", prompt: "plan the milestone" }, fakeContext())
 
       // then
       const body = lastPromptAsyncCall(fake).input.body
-      expect(body.agent).toBe("custom-lite")
-      expect(body.model).toEqual({ providerID: "custom", modelID: "glm-flash" })
-      expect(result).toBe("done")
+      expect(body.agent).toBe("custom-lead")
+      expect(body.model).toEqual({ providerID: "custom", modelID: "lead" })
+      expect(result).toBe("plan reviewed")
     } finally {
       delete process.env.JANUS_CONFIG
       rmSync(tmpConfigDir, { recursive: true, force: true })
     }
+  })
+
+  it("launches solution-reviewer on the default route", async () => {
+    // given
+    const fake = createRespondingFake("pre-mortem done")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute({ role: "solution-reviewer", prompt: "run the pre-mortem" }, fakeContext())
+
+    // then
+    const body = lastPromptAsyncCall(fake).input.body
+    expect(body.agent).toBe("solution-reviewer")
+    expect(body.model).toEqual({ providerID: "opencode", modelID: "claude-sonnet-5-5" })
+    expect(result).toBe("pre-mortem done")
   })
 
   it("rejects an unknown role with the canonical role list", async () => {
@@ -627,6 +676,74 @@ describe("createJanusDispatchTool", () => {
     expect(promptAsyncCount(fake)).toBe(3)
   })
 
+  it("blocks consultant and tech-lead dispatch from a dispatched sub-session with no launch", async () => {
+    // given — a caller session whose title marks it as a dispatched sub-session
+    const fake = createRespondingFake("specialist done")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const marked = await fake.session.create({
+      body: { title: "[consultation-dispatch:v1] coder" },
+      query: { directory: "/tmp/project" },
+    })
+    const rejections = [
+      ["consultant", "Error: dispatched session cannot dispatch consultant; return the consultation request to the primary caller"],
+      ["tech-lead", "Error: dispatched session cannot dispatch tech-lead; return the coding task to the primary caller"],
+    ] as const
+
+    for (const [role, message] of rejections) {
+      // when — the dispatched sub-session tries to delegate a coordinator role
+      const result = await tools.janus_dispatch.execute({ role, prompt: "coordinate this" }, fakeContext({ sessionID: marked.data!.id }))
+
+      // then — the DAG guard rejects before any job session is created
+      expect(result).toBe(message)
+    }
+    expect(promptAsyncCount(fake)).toBe(0)
+    expect(fake.calls.filter((c) => (c as { method: string }).method === "get")).toHaveLength(2)
+  })
+
+  it("dispatches consultant and tech-lead from a top-level session with exactly one caller read each", async () => {
+    // given — a caller session unknown to the SDK: no error, no marker title
+    const fake = createRespondingFake("specialist done")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    for (const role of ["consultant", "tech-lead"] as const) {
+      // when
+      const result = await tools.janus_dispatch.execute({ role, prompt: "coordinate this" }, fakeContext())
+
+      // then — the guard reads the caller once per dispatch and proceeds
+      expect(result).toBe("specialist done")
+    }
+    expect(fake.calls.filter((c) => (c as { method: string }).method === "get")).toHaveLength(2)
+  })
+
+  it("makes no caller session read for the ten unguarded roles", async () => {
+    // given — every role outside {consultant, tech-lead, author} keeps the
+    // existing call trace: the DAG guard never issues a session.get.
+    const spyLifecycle: DispatchLifecycle = {
+      launch: async () => "spy result",
+      wait: async () => "never called",
+      continue: async () => "never called",
+    }
+    const fake = createFakeSdk()
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { lifecycle: spyLifecycle })
+    const roles = [
+      "simple", "common-explorer", "consultant-analyst", "consultant-critic", "consultant-auditor",
+      "solution-reviewer", "coder", "coder-reviewer", "author-writer", "author-reviewer",
+    ] as const
+
+    for (const role of roles) {
+      const result = await tools.janus_dispatch.execute({ role, prompt: "bounded task" }, fakeContext())
+      // coder-reviewer legitimately stops at the review guard (no ids); its
+      // call trace must stay free of session.get all the same.
+      if (role === "coder-reviewer") {
+        expect(result).toMatch(/^Error: coder-reviewer requires reviews_job_ids/)
+      } else {
+        expect(result).toBe("spy result")
+      }
+    }
+
+    expect(fake.calls.filter((c) => (c as { method: string }).method === "get")).toHaveLength(0)
+  })
+
   it("rejects author dispatch and continuation when author is disabled", async () => {
     // given — an enabled dispatch captures a reusable author session
     const fake = createRespondingFake("author prose")
@@ -653,6 +770,356 @@ describe("createJanusDispatchTool", () => {
     expect(dispatch).toBe("Error: author is disabled by configuration")
     expect(continued).toBe("Error: author is disabled by configuration")
     expect(promptAsyncCount(fake)).toBe(before)
+  })
+})
+
+describe("caller context watermark", () => {
+  const savedEnv: Record<string, string | undefined> = {}
+  let tmpConfigDir: string
+  let configPath: string
+
+  beforeEach(() => {
+    savedEnv.JANUS_CONFIG = process.env.JANUS_CONFIG
+    savedEnv.HOME = process.env.HOME
+    tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-watermark-"))
+    configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, "{}")
+    process.env.JANUS_CONFIG = configPath
+  })
+
+  afterEach(() => {
+    if (savedEnv.JANUS_CONFIG === undefined) delete process.env.JANUS_CONFIG
+    else process.env.JANUS_CONFIG = savedEnv.JANUS_CONFIG
+    if (savedEnv.HOME === undefined) delete process.env.HOME
+    else process.env.HOME = savedEnv.HOME
+    rmSync(tmpConfigDir, { recursive: true, force: true })
+  })
+
+  function completedAssistantWithTokens(tokens: SdkTokenUsage): SdkMessageWithParts {
+    return {
+      info: {
+        id: "msg-context",
+        sessionID: "ses_parent",
+        role: "assistant",
+        time: { created: 1, completed: 2 },
+        parentID: "msg-user",
+        modelID: "m",
+        providerID: "p",
+        finish: "stop",
+        tokens,
+      } as SdkAssistantMessage,
+      parts: [],
+    }
+  }
+
+  function watermarkLine(tokens: number): string {
+    return `[context-watermark: ${tokens} tokens >= ${CONTEXT_WATERMARK_TOKENS}; checkpoint at milestone boundary]`
+  }
+
+  it("appends the marker line to a plain success text over the threshold", async () => {
+    // given — a caller past the soft watermark
+    const fake = createRespondingFake("the specialist report")
+    fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: 260_000 })])
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute({ role: "consultant-analyst", prompt: "analyze claims" }, fakeContext())
+
+    // then
+    expect(result).toBe(`the specialist report\n${watermarkLine(260_000)}`)
+  })
+
+  it("appends the marker line to a plain error text over the threshold", async () => {
+    // given — a caller past the soft watermark hitting the DAG guard
+    const fake = createRespondingFake("author prose")
+    const marked = await fake.session.create({
+      body: { title: "[consultation-dispatch:v1] coder" },
+      query: { directory: "/tmp/project" },
+    })
+    fake.seedMessages(marked.data!.id, [completedAssistantWithTokens({ total: 260_000 })])
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute({ role: "author", prompt: "write the tutorial" }, fakeContext({ sessionID: marked.data!.id }))
+
+    // then
+    expect(result).toBe(
+      `Error: dispatched session cannot dispatch author; return the documentation request to the primary caller\n${watermarkLine(260_000)}`,
+    )
+  })
+
+  it("appends the marker line to a review-guard error text over the threshold", async () => {
+    // given — a caller past the soft watermark misusing the review seat
+    const fake = createFakeSdk()
+    fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: 300_000 })])
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute({ role: "coder-reviewer", prompt: "review the plan" }, fakeContext())
+
+    // then
+    expect(result).toBe(
+      `Error: coder-reviewer requires reviews_job_ids: pass the root job_id of each coder task it reviews (the janus_dispatch job_id of the coder work)\n${watermarkLine(300_000)}`,
+    )
+  })
+
+  it("adds context_watermark to every decorated envelope form without free text", async () => {
+    // given — a caller past the soft watermark and a canned launch outcome
+    const fake = createFakeSdk()
+    fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: 260_000 })])
+    const cases: ReadonlyArray<() => string> = [
+      () => JSON.stringify(makeEnvelope("pending")),
+      () => JSON.stringify(makeEnvelope("unknown")),
+      () => JSON.stringify(makeEnvelope("cancelling")),
+      () => JSON.stringify(makeCompletedEnvelope()),
+    ]
+
+    for (const make of cases) {
+      const spyLifecycle: DispatchLifecycle = {
+        launch: async () => make(),
+        wait: async () => "never called",
+        continue: async () => "never called",
+      }
+      const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { lifecycle: spyLifecycle })
+
+      // when
+      const result = await tools.janus_dispatch.execute({ role: "consultant-analyst", prompt: "analyze" }, fakeContext())
+
+      // then — the envelope carries the field and no free-text marker
+      const parsed = parseOutcomeEnvelope(outputText(result))
+      if (!parsed.ok || parsed.value.status === "cancelled") throw new Error(`expected a decorated envelope: ${outputText(result)}`)
+      expect(parsed.value.context_watermark).toBe(260_000)
+      expect(outputText(result)).not.toContain("[context-watermark:")
+    }
+  })
+
+  it("passes a cancelled envelope through untouched", async () => {
+    // given — the cancelled form is outside the decorated set
+    const fake = createFakeSdk()
+    fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: 260_000 })])
+    const launchText = JSON.stringify(makeCancelledEnvelope())
+    const spyLifecycle: DispatchLifecycle = {
+      launch: async () => launchText,
+      wait: async () => "never called",
+      continue: async () => "never called",
+    }
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { lifecycle: spyLifecycle })
+
+    // when
+    const result = await tools.janus_dispatch.execute({ role: "consultant-analyst", prompt: "analyze" }, fakeContext())
+
+    // then
+    expect(outputText(result)).toBe(launchText)
+    const parsed = parseOutcomeEnvelope(outputText(result))
+    if (!parsed.ok || parsed.value.status !== "cancelled") throw new Error(`expected a cancelled envelope: ${outputText(result)}`)
+    expect("context_watermark" in parsed.value).toBe(false)
+  })
+
+  it("rejects a coder dispatch at the hard ceiling byte-exactly with no SDK write traffic", async () => {
+    // given — a caller past the coder hard ceiling
+    const fake = createRespondingFake("never runs")
+    fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: 400_000 })])
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute({ role: "coder", prompt: "implement the milestone" }, fakeContext())
+
+    // then — the full rejection text, the marker line, and zero writes
+    expect(result).toBe(
+      `Error: controller context exceeded ${CODER_HARD_CEILING_TOKENS} tokens hard ceiling; checkpoint to plan.md and handoff.md before continuing. Recovery: update the plan.md ledger and write handoff.md, resume from a fresh controller session with 继续交接, or reduce context and retry.\n${watermarkLine(400_000)}`,
+    )
+    expect(promptAsyncCount(fake)).toBe(0)
+    expect(fake.calls.filter((c) => (c as { method: string }).method === "create")).toHaveLength(0)
+  })
+
+  it("runs non-coder roles normally at and beyond the hard ceiling", async () => {
+    // given — the hard ceiling only guards the coder target
+    for (const tokens of [CODER_HARD_CEILING_TOKENS, 400_000]) {
+      const fake = createRespondingFake("the specialist report")
+      fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: tokens })])
+      const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+      const analyst = await tools.janus_dispatch.execute({ role: "consultant-analyst", prompt: "analyze" }, fakeContext())
+      expect(analyst).toBe(`the specialist report\n${watermarkLine(tokens)}`)
+
+      const lead = await tools.janus_dispatch.execute({ role: "tech-lead", prompt: "plan" }, fakeContext())
+      expect(lead).toBe(`the specialist report\n${watermarkLine(tokens)}`)
+    }
+  })
+
+  it("marks but never rejects between the soft watermark and the hard ceiling", async () => {
+    // given — 250k <= t < 350k: marking only
+    for (const tokens of [CONTEXT_WATERMARK_TOKENS, 349_999]) {
+      const fake = createRespondingFake("the specialist report")
+      fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: tokens })])
+      const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+      // when — even the coder target is dispatched
+      const result = await tools.janus_dispatch.execute({ role: "coder", prompt: "implement" }, fakeContext())
+
+      // then
+      expect(result).toBe(`the specialist report\n${watermarkLine(tokens)}`)
+    }
+  })
+
+  it("adds no marker below the soft watermark", async () => {
+    // given — one token under the threshold
+    const fake = createRespondingFake("the specialist report")
+    fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: CONTEXT_WATERMARK_TOKENS - 1 })])
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when
+    const result = await tools.janus_dispatch.execute({ role: "coder", prompt: "implement" }, fakeContext())
+
+    // then
+    expect(result).toBe("the specialist report")
+  })
+
+  it("dispatches normally with no marker when the context read fails", async () => {
+    // given — the caller session's messages error: the watermark must never
+    // block a dispatch (job sessions keep their own working reads)
+    const fake = createRespondingFake("the specialist report")
+    const base = fake.session.messages.bind(fake.session)
+    fake.session.messages = async (input) => {
+      if (input.path.id === "ses_parent") return { error: { name: "APIError", data: { statusCode: 500 } } }
+      return base(input)
+    }
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // when — a coder dispatch with an unreadable context: pass through
+    const result = await tools.janus_dispatch.execute({ role: "coder", prompt: "implement" }, fakeContext())
+
+    // then
+    expect(result).toBe("the specialist report")
+  })
+
+  it("adds context_watermark to janus_dispatch_wait pending and completed envelopes", async () => {
+    // given — a caller past the soft watermark and canned wait outcomes
+    const fake = createFakeSdk()
+    fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: 260_000 })])
+    const outcomes = [
+      ["pending", JSON.stringify(makeEnvelope("pending"))],
+      ["completed", JSON.stringify(makeCompletedEnvelope())],
+    ] as const
+
+    for (const [name, outcome] of outcomes) {
+      const spyLifecycle: DispatchLifecycle = {
+        launch: async () => "never called",
+        wait: async () => outcome,
+        continue: async () => "never called",
+      }
+      const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { lifecycle: spyLifecycle })
+
+      // when
+      const result = await tools.janus_dispatch_wait.execute({ job_id: "ses_fake_job" }, fakeContext())
+
+      // then — the envelope carries the field and no free-text marker
+      const parsed = parseOutcomeEnvelope(outputText(result))
+      if (!parsed.ok || parsed.value.status === "cancelled") throw new Error(`expected a decorated envelope (${name}): ${outputText(result)}`)
+      expect(parsed.value.context_watermark).toBe(260_000)
+      expect(outputText(result)).not.toContain("[context-watermark:")
+    }
+  })
+
+  it("appends the marker line to a janus_dispatch_continue text return over the threshold", async () => {
+    // given — a caller past the soft watermark and a completed dispatch session
+    const clock = createFakeClock()
+    const fake = createRespondingFake("maintenance applied", clock)
+    fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: 260_000 })])
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+    const dispatchResult = await tools.janus_dispatch.execute(
+      { role: "author-writer", prompt: "draft chapter one", return_handle: true },
+      fakeContext(),
+    )
+    const dispatched = parseOutcomeEnvelope(outputText(dispatchResult))
+    if (!dispatched.ok || dispatched.value.status !== "completed") {
+      throw new Error(`expected completed envelope: ${outputText(dispatchResult)}`)
+    }
+
+    // when
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: dispatched.value.session_id, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+
+    // then — the text return carries the appended marker line
+    expect(result).toBe(`maintenance applied\n${watermarkLine(260_000)}`)
+  })
+
+  it("adds context_watermark to a janus_dispatch_continue pending envelope", async () => {
+    // given — a caller past the soft watermark and a promptAsync that never completes
+    const clock = createFakeClock()
+    const fake = createFakeSdk()
+    fake.setPromptAsyncResult({ data: undefined })
+    fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: 260_000 })])
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+
+    const firstResult = await (async () => {
+      const launched = tools.janus_dispatch.execute({ role: "author-writer", prompt: "draft chapter one" }, fakeContext())
+      await exhaustBudget(clock, launched)
+      return outputText(await launched)
+    })()
+    const first = parseOutcomeEnvelope(firstResult)
+    if (!first.ok) throw first.error
+    expect(first.value.status).toMatch(/pending|unknown/)
+    const targetSession = first.value.session_id
+
+    // when
+    const continueResult = await (async () => {
+      const continued = tools.janus_dispatch_continue.execute(
+        { session_id: targetSession, prompt: "apply the review fix" },
+        fakeContext(),
+      )
+      await exhaustBudget(clock, continued)
+      return outputText(await continued)
+    })()
+
+    // then — the pending envelope carries the field and no free-text marker
+    const parsed = parseOutcomeEnvelope(continueResult)
+    if (!parsed.ok || parsed.value.status === "cancelled") throw new Error(`expected a decorated envelope: ${continueResult}`)
+    expect(parsed.value.context_watermark).toBe(260_000)
+    expect(continueResult).not.toContain("[context-watermark:")
+  })
+
+  it("decorates neither wait nor continue below the soft watermark", async () => {
+    // given — a caller one token under the threshold
+    const clock = createFakeClock()
+    const fake = createRespondingFake("maintenance applied", clock)
+    fake.seedMessages("ses_parent", [completedAssistantWithTokens({ total: CONTEXT_WATERMARK_TOKENS - 1 })])
+
+    const waitSpy: DispatchLifecycle = {
+      launch: async () => "never called",
+      wait: async () => JSON.stringify(makeCompletedEnvelope()),
+      continue: async () => "never called",
+    }
+    const waitTools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { lifecycle: waitSpy, clock })
+
+    // when — a wait over the undecorated caller context
+    const waitResult = await waitTools.janus_dispatch_wait.execute({ job_id: "ses_fake_job" }, fakeContext())
+
+    // then
+    const waitParsed = parseOutcomeEnvelope(outputText(waitResult))
+    if (!waitParsed.ok) throw waitParsed.error
+    expect("context_watermark" in waitParsed.value).toBe(false)
+    expect(outputText(waitResult)).not.toContain("[context-watermark:")
+
+    // when — a continue over the undecorated caller context
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+    const dispatchResult = await tools.janus_dispatch.execute(
+      { role: "author-writer", prompt: "draft chapter one", return_handle: true },
+      fakeContext(),
+    )
+    const dispatched = parseOutcomeEnvelope(outputText(dispatchResult))
+    if (!dispatched.ok || dispatched.value.status !== "completed") {
+      throw new Error(`expected completed envelope: ${outputText(dispatchResult)}`)
+    }
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: dispatched.value.session_id, prompt: "apply the review fix" },
+      fakeContext(),
+    )
+
+    // then
+    expect(result).toBe("maintenance applied")
   })
 })
 
@@ -979,6 +1446,38 @@ describe("janus_dispatch_continue", () => {
     expect(promptAsyncCount(fake)).toBe(before)
   })
 
+  it("rejects continuing a legacy coder-lite session with migration guidance and no prompt", async () => {
+    // given — a historical job root whose spec records the retired coder-lite role
+    const fake = createFakeSdk()
+    const root = await fake.session.create({
+      body: { parentID: "ses_parent", title: "[consultation-dispatch:v1] coder-lite" },
+      query: { directory: "/tmp/project" },
+    })
+    if (root.data === undefined) throw new Error("missing root")
+    await fake.session.prompt({
+      path: { id: root.data.id },
+      body: {
+        noReply: true,
+        parts: [{ type: "text", synthetic: true, ignored: true, text: JSON.stringify(legacyRoleSpecs[0]!.record) }],
+      },
+      query: { directory: "/tmp/project" },
+    })
+    const tools = createTools(fake)
+
+    // when
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: root.data.id, prompt: "continue the milestone" },
+      fakeContext(),
+    )
+
+    // then — the legacy role is blocked before any prompt is issued
+    expect(result).toMatch(/^Error: the coder-lite role is retired/)
+    expect(result).toContain('role "coder"')
+    expect(result).toContain('tier: "fast"')
+    expect(result).toContain("tier_models.fast.coder")
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
   it("rejects a foreign caller, a foreign workspace, and a non-dispatch session", async () => {
     const clock = createFakeClock()
     const fake = createRespondingFake("chapter one prose", clock)
@@ -1075,7 +1574,7 @@ describe("janus_dispatch_continue", () => {
     const tools = createTools(fake, clock)
     const { sessionID } = await dispatchWriterWithHandle(fake, tools, "maintenance applied")
 
-    expect(Object.keys(tools.janus_dispatch_continue.args)).toEqual(["session_id", "prompt", "role"])
+    expect(Object.keys(tools.janus_dispatch_continue.args)).toEqual(["session_id", "prompt", "role", "reviews_job_ids"])
 
     // Unknown arg fields are rejected by the strict args schema before any
     // SDK access or context binding is consulted.
@@ -1240,5 +1739,534 @@ describe("janus_dispatch_continue", () => {
     expect(secondResult).toMatch(/^Error: target session is busy; wait for the active job first/)
     expect(statusCalls).toBe(2)
     expect(continueCalls).toBe(1)
+  })
+})
+
+describe("review seat dispatch guards", () => {
+  const savedEnv: Record<string, string | undefined> = {}
+  let tmpConfigDir: string
+  let configPath: string
+
+  beforeEach(() => {
+    savedEnv.JANUS_CONFIG = process.env.JANUS_CONFIG
+    savedEnv.HOME = process.env.HOME
+    tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-guard-"))
+    configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, "{}")
+    process.env.JANUS_CONFIG = configPath
+  })
+
+  afterEach(() => {
+    if (savedEnv.JANUS_CONFIG === undefined) delete process.env.JANUS_CONFIG
+    else process.env.JANUS_CONFIG = savedEnv.JANUS_CONFIG
+    if (savedEnv.HOME === undefined) delete process.env.HOME
+    else process.env.HOME = savedEnv.HOME
+    rmSync(tmpConfigDir, { recursive: true, force: true })
+  })
+
+  /** Seed a dispatch job root in the fake SDK with the given spec. */
+  async function seedJobRoot(fake: FakeSdk, spec: JobSpec): Promise<string> {
+    const root = await fake.session.create({
+      body: { parentID: spec.parent_id, title: `[consultation-dispatch:v1] ${spec.role}` },
+      query: { directory: spec.directory },
+    })
+    if (root.data === undefined) throw new Error("missing seeded root")
+    await fake.session.prompt({
+      path: { id: root.data.id },
+      body: {
+        noReply: true,
+        messageID: `msg-spec-${root.data.id}`,
+        parts: [{ type: "text", text: JSON.stringify(spec), synthetic: true, ignored: true }],
+      },
+      query: { directory: spec.directory },
+    })
+    return root.data.id
+  }
+
+  async function seedCoderJob(fake: FakeSdk, model: string | null): Promise<string> {
+    return seedJobRoot(fake, makeJobSpec({ role: "coder", agent_name: "coder", model_chain: [model] }))
+  }
+
+  function createCount(fake: FakeSdk): number {
+    return fake.calls.filter((c) => (c as { method: string }).method === "create").length
+  }
+
+  it("rejects coder-reviewer without reviews_job_ids before any SDK traffic", async () => {
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    const result = await tools.janus_dispatch.execute({ role: "coder-reviewer", prompt: "review the plan" }, fakeContext())
+
+    expect(result).toMatch(/^Error: coder-reviewer requires reviews_job_ids/)
+    expect(result).toContain("root job_id")
+    expect(promptAsyncCount(fake)).toBe(0)
+    expect(createCount(fake)).toBe(0)
+  })
+
+  it("rejects coder-reviewer with an empty reviews_job_ids array", async () => {
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the plan", reviews_job_ids: [] },
+      fakeContext(),
+    )
+
+    expect(result).toMatch(/^Error: coder-reviewer requires reviews_job_ids/)
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("rejects a coder-reviewer sharing the coder model (same model)", async () => {
+    writeFileSync(configPath, JSON.stringify({ coder_reviewer_model: "opencode-go/glm-5.3" }))
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const coderJobID = await seedCoderJob(fake, "opencode-go/glm-5.3")
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the milestone", reviews_job_ids: [coderJobID] },
+      fakeContext(),
+    )
+
+    expect(result).toContain("model conflict")
+    expect(result).toContain("reviewer opencode-go/glm-5.3 vs coder opencode-go/glm-5.3")
+    expect(result).toContain(coderJobID)
+    expect(result).toContain("coder_reviewer_model")
+    expect(result).toContain("tier_models")
+    expect(promptAsyncCount(fake)).toBe(0)
+    expect(createCount(fake)).toBe(1) // only the seeded coder root
+  })
+
+  it("rejects a coder-reviewer in the same family with a different model", async () => {
+    // Default reviewer is kimi-k3.1-pro; a kimi-k2 coder is the same Moonshot
+    // family under a different model.
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const coderJobID = await seedCoderJob(fake, "moonshot/kimi-k2")
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the milestone", reviews_job_ids: [coderJobID] },
+      fakeContext(),
+    )
+
+    expect(result).toContain("model conflict")
+    expect(result).toContain("reviewer opencode-go/kimi-k3.1-pro vs coder moonshot/kimi-k2")
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("passes a cross-family coder-reviewer and prompts the reviewer session", async () => {
+    writeFileSync(configPath, JSON.stringify({ coder_reviewer_model: "opencode-go/kimi-k3.1-pro" }))
+    const fake = createRespondingFake("cross-family review", createFakeClock())
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const coderJobID = await seedCoderJob(fake, "opencode-go/glm-5.3")
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the milestone", reviews_job_ids: [coderJobID] },
+      fakeContext(),
+    )
+
+    expect(result).toBe("cross-family review")
+    expect(promptAsyncCount(fake)).toBe(1)
+    const body = lastPromptAsyncCall(fake).input.body
+    expect(body.agent).toBe("coder-reviewer")
+    expect(body.model).toEqual({ providerID: "opencode-go", modelID: "kimi-k3.1-pro" })
+  })
+
+  it("rejects a reviewed coder job that pins no model", async () => {
+    writeFileSync(configPath, JSON.stringify({ coder_reviewer_model: "opencode-go/kimi-k3.1-pro" }))
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const coderJobID = await seedCoderJob(fake, null)
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the milestone", reviews_job_ids: [coderJobID] },
+      fakeContext(),
+    )
+
+    expect(result).toMatch(/^Error: /)
+    expect(result).toContain("pins no model")
+    expect(result).toContain(coderJobID)
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("rejects reviews_job_ids pointing at a continuation job root and names the original root", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("review", clock)
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const coderJobID = await seedCoderJob(fake, "opencode-go/glm-5.3")
+    const continuation = await createJob(fake, {
+      parentID: "ses_parent", directory: "/tmp/project", role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "more milestone work", clock,
+      sessionID: coderJobID, continuedFrom: coderJobID,
+    })
+    if (!continuation.ok) throw continuation.error
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the milestone", reviews_job_ids: [continuation.value.jobID] },
+      fakeContext(),
+    )
+
+    expect(result).toMatch(/^Error: /)
+    expect(result).toContain("continuation job root")
+    expect(result).toContain(coderJobID)
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("rejects reviews_job_ids pointing at an attempt session with a root job_id hint", async () => {
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const coderJobID = await seedCoderJob(fake, "opencode-go/glm-5.3")
+    const attempt = await fake.session.create({
+      body: { parentID: coderJobID, title: "[consultation-dispatch:v1] attempt coder" },
+      query: { directory: "/tmp/project" },
+    })
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the milestone", reviews_job_ids: [attempt.data!.id] },
+      fakeContext(),
+    )
+
+    expect(result).toMatch(/^Error: /)
+    expect(result).toContain("root job_id")
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("rejects reviews_job_ids pointing at a non-coder job", async () => {
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const consultantJobID = await seedJobRoot(
+      fake,
+      makeJobSpec({ role: "consultant-analyst", agent_name: "consultant-analyst", model_chain: ["opencode-go/kimi-k3.1-pro"] }),
+    )
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the milestone", reviews_job_ids: [consultantJobID] },
+      fakeContext(),
+    )
+
+    expect(result).toMatch(/^Error: /)
+    expect(result).toContain("consultant-analyst")
+    expect(result).toContain("coder")
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("rejects solution-reviewer with code_plan_review and no stage", async () => {
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "review", protocol: "code_plan_review" },
+      fakeContext(),
+    )
+
+    expect(result).toMatch(/^Error: solution-reviewer with protocol code_plan_review requires stage/)
+    expect(result).toContain('"plan"')
+    expect(result).toContain('"final"')
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("rejects stage plan carrying reviews_job_ids, including an empty array", async () => {
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const coderJobID = await seedCoderJob(fake, "opencode-go/glm-5.3")
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "review the plan", protocol: "code_plan_review", stage: "plan", reviews_job_ids: [coderJobID] },
+      fakeContext(),
+    )
+    expect(result).toContain('stage "plan" must not carry reviews_job_ids')
+
+    const empty = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "review the plan", protocol: "code_plan_review", stage: "plan", reviews_job_ids: [] },
+      fakeContext(),
+    )
+    expect(empty).toContain('stage "plan" must not carry reviews_job_ids')
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("passes stage plan cross-family against the tech-lead and rejects the same family", async () => {
+    const fake = createRespondingFake("plan reviewed", createFakeClock())
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // Default config: reviewer claude-sonnet vs tech-lead glm-5.3 — cross-family.
+    const ok = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "review the plan", protocol: "code_plan_review", stage: "plan" },
+      fakeContext(),
+    )
+    expect(ok).toBe("plan reviewed")
+    expect(promptAsyncCount(fake)).toBe(1)
+
+    writeFileSync(configPath, JSON.stringify({ tech_lead_model: "anthropic/claude-opus-5-5" }))
+    const rejected = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "review the plan", protocol: "code_plan_review", stage: "plan" },
+      fakeContext(),
+    )
+    expect(rejected).toContain("model conflict")
+    expect(rejected).toContain("reviewer opencode/claude-sonnet-5-5 vs tech-lead anthropic/claude-opus-5-5")
+    expect(rejected).toContain("tech_lead_model")
+    expect(promptAsyncCount(fake)).toBe(1) // unchanged: the rejection prompted nothing
+  })
+
+  it("rejects stage final without reviews_job_ids", async () => {
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "review the final diff", protocol: "code_plan_review", stage: "final" },
+      fakeContext(),
+    )
+
+    expect(result).toContain('stage "final" requires reviews_job_ids')
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("validates stage final against the tech-lead and every listed coder job", async () => {
+    const fake = createRespondingFake("final review", createFakeClock())
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    const glmJob = await seedCoderJob(fake, "opencode-go/glm-5.3")
+    const haikuJob = await seedCoderJob(fake, "opencode-go/claude-haiku-5-5")
+
+    // A tech-lead conflict rejects even when the coder jobs are cross-family.
+    writeFileSync(configPath, JSON.stringify({ tech_lead_model: "anthropic/claude-opus-5-5" }))
+    const techLeadConflict = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "review the final diff", protocol: "code_plan_review", stage: "final", reviews_job_ids: [glmJob] },
+      fakeContext(),
+    )
+    expect(techLeadConflict).toContain("vs tech-lead anthropic/claude-opus-5-5")
+
+    // Default tech-lead (glm): one same-family coder job rejects the dispatch.
+    writeFileSync(configPath, "{}")
+    const coderConflict = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "review the final diff", protocol: "code_plan_review", stage: "final", reviews_job_ids: [glmJob, haikuJob] },
+      fakeContext(),
+    )
+    expect(coderConflict).toContain("model conflict")
+    expect(coderConflict).toContain("reviewer opencode/claude-sonnet-5-5 vs coder opencode-go/claude-haiku-5-5")
+    expect(coderConflict).toContain(haikuJob)
+    expect(promptAsyncCount(fake)).toBe(0)
+
+    // An all-cross chain passes and prompts the reviewer session.
+    const kimiJob = await seedCoderJob(fake, "opencode-go/kimi-k3.1-pro")
+    const ok = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "review the final diff", protocol: "code_plan_review", stage: "final", reviews_job_ids: [glmJob, kimiJob] },
+      fakeContext(),
+    )
+    expect(ok).toBe("final review")
+    expect(promptAsyncCount(fake)).toBe(1)
+  })
+
+  it("validates design_premortem against the architect model", async () => {
+    const fake = createRespondingFake("pre-mortem done", createFakeClock())
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    // Default config: reviewer claude-sonnet vs architect gemini-4-argon — cross-family.
+    const ok = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "run the pre-mortem", protocol: "design_premortem" },
+      fakeContext(),
+    )
+    expect(ok).toBe("pre-mortem done")
+    expect(promptAsyncCount(fake)).toBe(1)
+
+    writeFileSync(configPath, JSON.stringify({ solution_reviewer_model: "opencode-go/gemini-4-argon" }))
+    const rejected = await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "run the pre-mortem", protocol: "design_premortem" },
+      fakeContext(),
+    )
+    expect(rejected).toContain("model conflict")
+    expect(rejected).toContain("reviewer opencode-go/gemini-4-argon vs architect opencode-go/gemini-4-argon")
+    expect(rejected).toContain("architect_model")
+    expect(promptAsyncCount(fake)).toBe(1) // unchanged
+  })
+
+  it("rejects stage outside the solution-reviewer code_plan_review combination", async () => {
+    const fake = createRespondingFake("review")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the plan", stage: "plan", reviews_job_ids: ["ses_whatever"] },
+      fakeContext(),
+    )
+
+    expect(result).toContain("stage is only valid for solution-reviewer with protocol code_plan_review")
+    expect(promptAsyncCount(fake)).toBe(0)
+  })
+
+  it("passes stage through to the lifecycle launch", async () => {
+    const captured: LaunchInput[] = []
+    const spyLifecycle: DispatchLifecycle = {
+      launch: async (input) => {
+        captured.push(input)
+        return "spy result"
+      },
+      wait: async () => "never called",
+      continue: async () => "never called",
+    }
+    const fake = createFakeSdk()
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { lifecycle: spyLifecycle })
+
+    await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "review the plan", protocol: "code_plan_review", stage: "plan" },
+      fakeContext(),
+    )
+    await tools.janus_dispatch.execute(
+      { role: "solution-reviewer", prompt: "run the pre-mortem", protocol: "design_premortem" },
+      fakeContext(),
+    )
+
+    expect(captured[0]!.stage).toBe("plan")
+    expect(captured[1]!.stage).toBeUndefined()
+  })
+})
+
+describe("review seat continuation guards", () => {
+  const savedEnv: Record<string, string | undefined> = {}
+  let tmpConfigDir: string
+  let configPath: string
+
+  beforeEach(() => {
+    savedEnv.JANUS_CONFIG = process.env.JANUS_CONFIG
+    savedEnv.HOME = process.env.HOME
+    tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-continue-guard-"))
+    configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, "{}")
+    process.env.JANUS_CONFIG = configPath
+  })
+
+  afterEach(() => {
+    if (savedEnv.JANUS_CONFIG === undefined) delete process.env.JANUS_CONFIG
+    else process.env.JANUS_CONFIG = savedEnv.JANUS_CONFIG
+    if (savedEnv.HOME === undefined) delete process.env.HOME
+    else process.env.HOME = savedEnv.HOME
+    rmSync(tmpConfigDir, { recursive: true, force: true })
+  })
+
+  async function seedCoderJob(fake: FakeSdk, model: string | null): Promise<string> {
+    const root = await fake.session.create({
+      body: { parentID: "ses_parent", title: "[consultation-dispatch:v1] coder" },
+      query: { directory: "/tmp/project" },
+    })
+    if (root.data === undefined) throw new Error("missing seeded root")
+    await fake.session.prompt({
+      path: { id: root.data.id },
+      body: {
+        noReply: true,
+        messageID: `msg-spec-${root.data.id}`,
+        parts: [{
+          type: "text",
+          text: JSON.stringify(makeJobSpec({ role: "coder", agent_name: "coder", model_chain: [model] })),
+          synthetic: true,
+          ignored: true,
+        }],
+      },
+      query: { directory: "/tmp/project" },
+    })
+    return root.data.id
+  }
+
+  async function dispatchWithHandle(
+    fake: FakeSdk,
+    tools: ReturnType<typeof createJanusDispatchTools>,
+    args: Record<string, string | string[] | boolean | undefined>,
+  ): Promise<{ sessionID: string }> {
+    const result = await tools.janus_dispatch.execute({ ...args, return_handle: true } as { role: "coder-reviewer" | "solution-reviewer"; prompt: string; return_handle: true }, fakeContext())
+    const parsed = parseOutcomeEnvelope(outputText(result))
+    if (!parsed.ok || parsed.value.status !== "completed") {
+      throw new Error(`expected completed envelope: ${outputText(result)}`)
+    }
+    return { sessionID: parsed.value.session_id }
+  }
+
+  it("rejects continuing a coder-reviewer session without reviews_job_ids and prompts nothing", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("review done", clock)
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+    const glmJob = await seedCoderJob(fake, "opencode-go/glm-5.3")
+    const { sessionID } = await dispatchWithHandle(fake, tools, {
+      role: "coder-reviewer", prompt: "review the milestone", reviews_job_ids: [glmJob],
+    })
+    const before = promptAsyncCount(fake)
+
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "re-check the diff" },
+      fakeContext(),
+    )
+
+    expect(result).toMatch(/^Error: coder-reviewer continuation requires reviews_job_ids/)
+    expect(promptAsyncCount(fake)).toBe(before)
+  })
+
+  it("rejects a continuing coder-reviewer whose ids conflict with the session's pinned model", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("review done", clock)
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+    const glmJob = await seedCoderJob(fake, "opencode-go/glm-5.3")
+    const { sessionID } = await dispatchWithHandle(fake, tools, {
+      role: "coder-reviewer", prompt: "review the milestone", reviews_job_ids: [glmJob],
+    })
+    const before = promptAsyncCount(fake)
+
+    // The session runs kimi-k3.1-pro (its durable spec): a same-family coder
+    // job id conflicts with it even though the ids differ.
+    const k2Job = await seedCoderJob(fake, "moonshot/kimi-k2")
+    const rejected = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "re-check the diff", reviews_job_ids: [k2Job] },
+      fakeContext(),
+    )
+    expect(rejected).toContain("model conflict")
+    expect(rejected).toContain("reviewer opencode-go/kimi-k3.1-pro vs coder moonshot/kimi-k2")
+    expect(promptAsyncCount(fake)).toBe(before)
+
+    // The cross-family id keeps passing and the continuation prompts.
+    const ok = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "re-check the diff", reviews_job_ids: [glmJob] },
+      fakeContext(),
+    )
+    expect(ok).toBe("review done")
+    expect(promptAsyncCount(fake)).toBe(before + 1)
+  })
+
+  it("rejects continuing a code_plan_review solution-reviewer session without ids, plan stage included", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("plan reviewed", clock)
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+    const glmJob = await seedCoderJob(fake, "opencode-go/glm-5.3")
+    const { sessionID } = await dispatchWithHandle(fake, tools, {
+      role: "solution-reviewer", prompt: "review the plan", protocol: "code_plan_review", stage: "plan",
+    })
+    const before = promptAsyncCount(fake)
+
+    // Stage-1 (plan) re-review should be a fresh dispatch; a continuation
+    // still requires the full ids discipline, no plan-stage back door.
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "re-check the plan" },
+      fakeContext(),
+    )
+    expect(result).toMatch(/^Error: solution-reviewer continuation requires reviews_job_ids/)
+    expect(promptAsyncCount(fake)).toBe(before)
+
+    // With ids that stay cross-family against the pinned reviewer and the
+    // tech-lead, the continuation proceeds.
+    const ok = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "scoped re-review", reviews_job_ids: [glmJob] },
+      fakeContext(),
+    )
+    expect(ok).toBe("plan reviewed")
+    expect(promptAsyncCount(fake)).toBe(before + 1)
+  })
+
+  it("leaves a design_premortem solution-reviewer continuation ungated by ids", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("pre-mortem done", clock)
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+    const { sessionID } = await dispatchWithHandle(fake, tools, {
+      role: "solution-reviewer", prompt: "run the pre-mortem", protocol: "design_premortem",
+    })
+
+    const result = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "one more pre-mortem pass" },
+      fakeContext(),
+    )
+
+    expect(result).toBe("pre-mortem done")
+    expect(promptAsyncCount(fake)).toBe(2)
   })
 })

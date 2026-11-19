@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execSync } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, relative } from "node:path"
 import {
   registerConsultantAgent,
   registerConsultantCritic,
@@ -15,7 +15,8 @@ import {
   registerAuthorReviewer,
   registerCoder,
   registerSimple,
-  registerCoderLite,
+  registerSolutionReviewer,
+  registerTechLead,
   registerJanus,
   registerArchitect,
   registerAuthor,
@@ -24,10 +25,10 @@ import {
   buildArchitectRuntimeBindings,
   buildAuthorRuntimeBindings,
   buildAuthorReviewerPermission,
-  buildCoderRuntimeBindings,
+  buildCoderPermission,
+  buildTechLeadRuntimeBindings,
   buildJanusRuntimeBindings,
   buildSimplePermission,
-  buildCoderLitePermission,
   buildAuthorWriterPermission,
   buildAuthorWriterRuntimeBindings,
   computeProjectId,
@@ -42,7 +43,7 @@ import {
   loadCommonWrite,
   resolveModelPrompt,
   normalizeModelKey,
-  CODER_LITE_BASH_DENY_RULES,
+  CODER_BASH_DENY_RULES,
   LEAF_DISPATCH_DENY,
 } from "./agent-registration.ts"
 import { resolveAsset } from "./asset-paths.ts"
@@ -60,8 +61,12 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     consultant_agent: "consultant",
     architect_agent: "architect",
     architect_enabled: true,
+    tech_lead_agent: "tech-lead",
+    tech_lead_enabled: true,
     coder_agent: "coder",
     coder_enabled: true,
+    solution_reviewer_agent: "solution-reviewer",
+    solution_reviewer_enabled: true,
     author_agent: "author",
     author_enabled: true,
     common_explorer_agent: "common-explorer",
@@ -79,8 +84,6 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     author_reviewer_agent: "author-reviewer",
     author_reviewer_enabled: true,
     writer_docs_roots: ["userdoc"],
-    coder_lite_agent: "coder-lite",
-    coder_lite_enabled: true,
     ...overrides,
   }
 }
@@ -312,10 +315,10 @@ describe("buildArchitectRuntimeBindings", () => {
     expect(block).toContain("janus-memory")
     expect(block).toContain("Architect model")
     expect(block).toContain("common-explorer")
-    expect(block).toContain("coder-reviewer")
+    expect(block).toContain("solution-reviewer")
     expect(block).toContain("consultant-analyst")
     expect(block).toContain("consultant-auditor")
-    expect(block).toContain("Implementation handoff: `coder`")
+    expect(block).toContain("Implementation handoff: `tech-lead`")
     expect(block).toContain("Documentation handoff: `author`")
     expect(block).toContain('`role: "author"`')
     expect(block).toContain("dispatch an accepted design.md into a clean sub-session")
@@ -323,7 +326,7 @@ describe("buildArchitectRuntimeBindings", () => {
     expect(block).toContain("Economical leaf: `simple`")
     expect(block).toContain("Design state dir: `/xdg/data/janus-agent/design`")
     expect(block).toContain("my-project-a1b2c3d4/<designId>/design.md")
-    expect(block).toContain("you are the sole author of the record; the coder reads it read-only and writes only `plan.md` beside it")
+    expect(block).toContain("you are the sole author of the record; the tech-lead reads it read-only and writes only `plan.md` beside it")
     expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
     expect(block).toContain("Handoff discipline")
     expect(block).toContain("Handoff wakeup")
@@ -338,9 +341,9 @@ describe("buildArchitectRuntimeBindings", () => {
     expect(block).not.toContain("author-writer")
   })
 
-  it("says coder-reviewer DISABLED when it is disabled", () => {
+  it("says solution-reviewer DISABLED when it is disabled", () => {
     // given
-    const config = makeConfig({ coder_reviewer_enabled: false })
+    const config = makeConfig({ solution_reviewer_enabled: false })
 
     // when
     const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING, {
@@ -349,18 +352,18 @@ describe("buildArchitectRuntimeBindings", () => {
     })
 
     // then
-    expect(block).toContain("coder-reviewer DISABLED by configuration")
+    expect(block).toContain("solution-reviewer DISABLED by configuration")
   })
 
-  it("says the coder implementation handoff is DISABLED when coder is disabled", () => {
+  it("says the implementation handoff is DISABLED when the tech-lead is disabled", () => {
     // given
-    const config = makeConfig({ coder_enabled: false })
+    const config = makeConfig({ tech_lead_enabled: false })
 
     // when
     const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING, HANDOFF_BINDING)
 
     // then
-    expect(block).toContain("Implementation handoff: coder DISABLED by configuration")
+    expect(block).toContain("Implementation handoff: tech-lead DISABLED by configuration")
   })
 
   it("says the documentation handoff is DISABLED when author is disabled", () => {
@@ -456,53 +459,59 @@ describe("buildAuthorRuntimeBindings", () => {
   })
 })
 
-describe("buildCoderRuntimeBindings", () => {
-  it("reports the research floor, reviewer, escalation path, design record, and handoff binding", () => {
+describe("buildTechLeadRuntimeBindings", () => {
+  it("reports the model, both reviewer seats, the escalation path, design record, handoff binding, and job tools", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildCoderRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
+    const block = buildTechLeadRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
 
     // then
-    expect(block).toContain("Coder model")
-    expect(block).toContain("Junior/mid engineer lane: `coder-lite`")
-    expect(block).toContain(
-      "for planned milestones, spec-complete coding, unit tests, and batch mechanical file tasks",
-    )
-    expect(block).toContain("Research floor: `common-explorer`")
-    expect(block).toContain("Independent reviewer: `coder-reviewer`")
-    expect(block).toContain("Documentation handoff: `author`")
-    expect(block).toContain('protocol: "code_plan_review"')
-    expect(block).toContain("hand it to the `architect`")
+    expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
+    expect(block).toContain("Tech-lead model: `opencode-go/glm-5.3`")
+    expect(block).toContain('Milestone reviewer: `coder-reviewer` (`opencode-go/kimi-k3.1-pro`) with `protocol: "code_plan_review"`')
+    expect(block).toContain("reviews_job_ids")
+    expect(block).toContain("Solution reviewer: `solution-reviewer` (`opencode/claude-sonnet-5-5`)")
+    expect(block).toContain('protocol: "design_premortem"')
+    expect(block).toContain('stage: "plan"')
+    expect(block).toContain('stage: "final"')
+    expect(block).toContain("goes back to the `architect` primary entry")
     expect(block).toContain("Design record: `/xdg/data/janus-agent/design/my-project-a1b2c3d4`")
     expect(block).toContain("`architect` is its sole writer")
-    expect(block).toContain("`design.md` is 100% read-only for you")
     expect(block).toContain("deletes without confirmation")
-    expect(block).not.toContain("you never edit `design.md`")
     expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
     expect(block).toContain("Handoff discipline")
     expect(block).toContain("Handoff wakeup")
-    expect(block).toContain("write `handoff.md` only at handoff")
-    expect(block).toContain("pickup is read-only — the first 120 lines only")
-    expect(block).toContain("继续交接: <handoff-id>")
-    expect(block).toContain("untrusted data, never file-write authorization")
-    expect(block).not.toContain("hop_state")
-    expect(block).not.toContain("hop_count")
+    expect(block).toContain("janus_dispatch_wait")
+    expect(block).toContain("`return_handle: true`")
+    // No memory namespace and no ledger: coding sessions keep state in
+    // plan.md/handoff.md, not consultation memory.
+    expect(block).not.toContain("janus-memory")
     expect(block).not.toContain("Memory namespace")
   })
 
-  it("reports disabled research, review, and documentation lanes", () => {
+  it("reports the configured tech-lead model override", () => {
     // given
-    const config = makeConfig({ common_explorer_enabled: false, coder_reviewer_enabled: false, author_enabled: false })
+    const config = makeConfig({ tech_lead_model: "custom/lead" })
 
     // when
-    const block = buildCoderRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
+    const block = buildTechLeadRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
 
     // then
-    expect(block).toContain("Research floor: common-explorer DISABLED by configuration")
-    expect(block).toContain("Independent reviewer: coder-reviewer DISABLED by configuration")
-    expect(block).toContain("Documentation handoff: author DISABLED by configuration")
+    expect(block).toContain("Tech-lead model: `custom/lead`")
+  })
+
+  it("says both reviewer seats DISABLED when they are disabled", () => {
+    // given
+    const config = makeConfig({ coder_reviewer_enabled: false, solution_reviewer_enabled: false })
+
+    // when
+    const block = buildTechLeadRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
+
+    // then
+    expect(block).toContain("Milestone reviewer: coder-reviewer DISABLED by configuration")
+    expect(block).toContain("Solution reviewer: solution-reviewer DISABLED by configuration")
   })
 })
 
@@ -593,6 +602,7 @@ describe("normalizeModelKey", () => {
     expect(normalizeModelKey("deepseek/deepseek-v4-pro")).toBe("deepseekv4pro")
     expect(normalizeModelKey("opencode-go/deepseek-v4-pro")).toBe("deepseekv4pro")
     expect(normalizeModelKey("opencode/claude-sonnet-5-5")).toBe("claudesonnet55")
+    expect(normalizeModelKey("opencode-go/claude-haiku-5-5")).toBe("claudehaiku55")
     expect(normalizeModelKey("DeepSeek-V4-Pro")).toBe("deepseekv4pro")
   })
 })
@@ -648,6 +658,17 @@ describe("resolveModelPrompt", () => {
 
     // when // then
     expect(await resolveModelPrompt(config, "opencode-go/deepseek-v4.1-flash")).toBe("")
+  })
+
+  it("loads the shipped Claude Haiku 5.5 block for the coder-reviewer fast-tier model", async () => {
+    // given
+    const config = makeConfig()
+
+    // when
+    const block = await resolveModelPrompt(config, "opencode-go/claude-haiku-5-5")
+
+    // then
+    expect(block.startsWith("## Driving Claude Haiku 5.5")).toBe(true)
   })
 
   it("loads the shipped block for the direct-provider DeepSeek Flash id", async () => {
@@ -1068,7 +1089,7 @@ describe("registerCoderReviewer", () => {
     await registerCoderReviewer(config, makeConfig(), { HOME: "/home/test-user" } as NodeJS.ProcessEnv)
     expect(config.agent?.["coder-reviewer"]).toMatchObject({
       mode: "subagent",
-      model: "opencode/claude-sonnet-5-5",
+      model: "opencode-go/kimi-k3.1-pro",
       permission: {
         edit: "deny", bash: "deny", task: "deny",
         janus_dispatch: "deny", janus_dispatch_wait: "deny",
@@ -1653,7 +1674,7 @@ describe("buildSimpleRuntimeBindings", () => {
     expect(block).toContain("Simple model: `opencode-go/deepseek-v4.1-flash`")
     expect(block).toContain("Consultant:")
     expect(block).toContain("Architect:")
-    expect(block).toContain("Coder:")
+    expect(block).toContain("Tech-lead:")
     expect(block).toContain("Author:")
     expect(block).toContain("Janus:")
     expect(block).toContain("You are a leaf: do not dispatch another agent")
@@ -1840,13 +1861,13 @@ describe("registerSimple", () => {
 })
 
 describe("registerCoder", () => {
-  it("registers mode all with the coder.md body and runtime bindings", async () => {
+  it("registers the dual-tier leaf with steps 80, the static prompt, and the leaf permission shape", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
 
     // when
-    await registerCoder(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+    await registerCoder(config, pluginConfig)
 
     // then
     const coder = config.agent?.["coder"] as {
@@ -1854,41 +1875,79 @@ describe("registerCoder", () => {
       description: string
       prompt: string
       model: string
+      steps: number
       permission: Record<string, unknown>
     }
-    expect(coder.mode).toBe("all")
+    expect(coder.mode).toBe("subagent")
+    expect(coder.steps).toBe(80)
     expect(coder.model).toBe("opencode-go/glm-5.3")
-    expect(coder.description).toContain("coding and maintenance entry")
-    expect(coder.description).toContain("module architect and senior engineer")
-    expect(coder.description).toContain("delegates coder-lite by cost-performance")
+    expect(coder.description).toContain("Dual-tier coding execution leaf")
+    expect(coder.description).toContain("Senior Coder")
+    expect(coder.description).toContain("Junior Coder")
+    // Leaf node: never dispatches, so the prompt stays static with no runtime
+    // bindings block.
     expect(coder.prompt).toContain("# Coder")
-    expect(coder.prompt).toContain("Task triage")
-    expect(coder.prompt).toContain("## Dispatched mode")
+    expect(coder.prompt).toContain("Senior Coder")
+    expect(coder.prompt).toContain("Take a task only when all three hold")
+    expect(coder.prompt).toContain("Never take — stop and report instead")
     expect(coder.prompt).toContain("<!-- MODEL-PROMPT")
     expect(coder.prompt).not.toContain("## Driving GLM-5.3")
-    expect(coder.prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
-    expect(coder.prompt).toContain("coder-lite")
-    expect(coder.prompt).not.toContain("janus-memory")
+    expect(coder.prompt).not.toContain("## Runtime Bindings (injected")
+    expect(coder.prompt).not.toContain("<!-- RUNTIME-BINDINGS")
+    const permission = coder.permission
+    expect(permission.edit).toEqual({ "*": "allow", "/*": "ask" })
+    const bash = permission.bash as Record<string, string>
+    expect(bash["git commit*"]).toBe("deny")
+    expect(bash["janus-keys*"]).toBe("deny")
+    expect(bash["*"]).toBe("allow")
+    const external = permission.external_directory as Record<string, string>
+    const tmp = tmpdir()
+    const expectedScopes = new Set([
+      `${tmp}/opencode/**`,
+      `${realpathSync(tmp)}/opencode/**`,
+      "/tmp/opencode/**",
+      "/private/tmp/opencode/**",
+    ])
+    expect(Object.keys(external).sort()).toEqual([...expectedScopes].sort())
+    expect(external[`${tmp}/opencode/**`]).toBe("allow")
+    for (const key of Object.keys(external)) {
+      expect(key).not.toContain("janus-agent/design")
+      expect(key).not.toContain("janus-agent/handoff")
+    }
+    expect(permission.task).toBe("deny")
+    expect(Object.keys(LEAF_DISPATCH_DENY)).toHaveLength(6)
+    for (const tool of Object.keys(LEAF_DISPATCH_DENY)) {
+      expect(permission[tool]).toBe("deny")
+    }
   })
 
-  it("injects the shared engineering principles into the coder prompt, not the coder asset", async () => {
-    // given
-    const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig()
-    const principles = (
-      await readFile(resolveAsset("principles/engineering-principles.md"), "utf8")
-    ).trim()
-    const asset = await readFile(resolveAsset("agents/coder.md"), "utf8")
+  it("replaces a stale user-side agent.coder entry wholesale (D-a)", async () => {
+    // given — a pre-existing user block that the plugin must overwrite so a
+    // dispatched milestone always runs the current prompt
+    const config: { agent?: Record<string, unknown> } = {
+      agent: {
+        coder: { mode: "all", prompt: "user prompt", model: "user/model", permission: {} },
+      },
+    }
+    const pluginConfig = makeConfig({ coder_model: "test/coder-model" })
 
     // when
-    await registerCoder(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+    await registerCoder(config, pluginConfig)
 
-    // then — one copy in the assembled prompt, none duplicated in the role asset
-    const coder = config.agent?.["coder"] as { prompt: string }
-    expect(coder.prompt).toContain(principles)
-    expect(coder.prompt.split(principles).length - 1).toBe(1)
-    expect(asset).not.toContain(principles)
-    expect(asset).toContain("name a shared engineering principle only when it changes the choice")
+    // then — the whole entry is replaced, not merged
+    const coder = config.agent?.["coder"] as {
+      mode: string
+      prompt: string
+      model: string
+      steps: number
+      permission: Record<string, unknown>
+    }
+    expect(coder.mode).toBe("subagent")
+    expect(coder.steps).toBe(80)
+    expect(coder.prompt).not.toBe("user prompt")
+    expect(coder.prompt).toContain("# Coder")
+    expect(coder.model).toBe("test/coder-model")
+    expect(coder.permission).toEqual(buildCoderPermission())
   })
 
   it("overrides the coder model from coder_model", async () => {
@@ -1897,42 +1956,39 @@ describe("registerCoder", () => {
     const pluginConfig = makeConfig({ coder_model: "test/coder-model" })
 
     // when
-    await registerCoder(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
+    await registerCoder(config, pluginConfig)
 
     // then
     const coder = config.agent?.["coder"] as { model: string }
     expect(coder.model).toBe("test/coder-model")
   })
 
-  it("grants external access to the design and handoff state dirs and names both project dirs", async () => {
-    // given
+  it("injects the shared engineering principles into the coder prompt, not the coder asset", async () => {
+    // given — the coder asset tells the leaf to use "the shared Engineering
+    // Principles", so the registration must append exactly one copy of the
+    // fragment; the asset itself never embeds it.
     const config: { agent?: Record<string, unknown> } = {}
-    const projectId = computeProjectId("/tmp/my-project")
-    const env = { HOME: "/home/test-user" } as NodeJS.ProcessEnv
+    const pluginConfig = makeConfig()
+    const principles = (
+      await readFile(resolveAsset("principles/engineering-principles.md"), "utf8")
+    ).trim()
+    const asset = await readFile(resolveAsset("agents/coder.md"), "utf8")
 
     // when
-    await registerCoder(config, makeConfig(), "/tmp/my-project", env)
+    await registerCoder(config, pluginConfig)
 
-    // then
-    const coder = config.agent?.["coder"] as {
-      prompt: string
-      permission: Record<string, unknown>
-    }
-    const external = coder.permission.external_directory as Record<string, string>
-    expect(external["/home/test-user/.local/share/janus-agent/design/**"]).toBe("allow")
-    expect(external["/home/test-user/.local/share/janus-agent/handoff/**"]).toBe("allow")
-    expect(coder.prompt).toContain(
-      `Design record: \`/home/test-user/.local/share/janus-agent/design/${projectId}\``,
-    )
-    expect(coder.prompt).toContain(
-      `Handoff state dir: \`/home/test-user/.local/share/janus-agent/handoff/${projectId}\``,
-    )
+    // then — one copy in the assembled prompt, none duplicated in the role asset
+    const coder = config.agent?.["coder"] as { prompt: string }
+    expect(coder.prompt).toContain(principles)
+    expect(coder.prompt.split(principles).length - 1).toBe(1)
+    expect(asset).not.toContain(principles)
+    expect(asset).toContain("name a principle only when it changes a choice")
   })
 })
 
-describe("buildCoderLitePermission", () => {
-  // The D2/QS2 contract, pinned literally so a dropped or misspelled deny key
-  // fails even if the exported constant drifts.
+describe("buildCoderPermission", () => {
+  // Pinned literally so a dropped or misspelled deny key fails even if the
+  // exported constant drifts.
   const DENY_KEYS = [
     "git add*",
     "git commit*",
@@ -1965,7 +2021,7 @@ describe("buildCoderLitePermission", () => {
 
   it("allows workspace edits and project-native commands while denying VCS writes, destructive deletes, and the key CLI", () => {
     // given // when
-    const permission = buildCoderLitePermission()
+    const permission = buildCoderPermission()
 
     // then
     const edit = permission.edit as Record<string, string>
@@ -1976,8 +2032,8 @@ describe("buildCoderLitePermission", () => {
     const bash = permission.bash as Record<string, string>
     expect(Object.keys(bash)[0]).toBe("*")
     expect(bash["*"]).toBe("allow")
-    expect(Object.keys(CODER_LITE_BASH_DENY_RULES)).toEqual([...DENY_KEYS])
-    expect(Object.keys(CODER_LITE_BASH_DENY_RULES)).toHaveLength(27)
+    expect(Object.keys(CODER_BASH_DENY_RULES)).toEqual([...DENY_KEYS])
+    expect(Object.keys(CODER_BASH_DENY_RULES)).toHaveLength(27)
     for (const pattern of DENY_KEYS) {
       expect(bash[pattern]).toBe("deny")
     }
@@ -1994,6 +2050,18 @@ describe("buildCoderLitePermission", () => {
     for (const tool of Object.keys(LEAF_DISPATCH_DENY)) {
       expect(permission[tool]).toBe("deny")
     }
+    // External reads stop at the shared temp directory: the design and
+    // handoff state dirs belong to the primary seats.
+    const external = permission.external_directory as Record<string, string>
+    const tmp = tmpdir()
+    expect(Object.keys(external).sort()).toEqual(
+      [
+        `${tmp}/opencode/**`,
+        `${realpathSync(tmp)}/opencode/**`,
+        "/tmp/opencode/**",
+        "/private/tmp/opencode/**",
+      ].sort(),
+    )
   })
 
   it("keeps buildSimplePermission on the read-only bash rules", () => {
@@ -2010,127 +2078,268 @@ describe("buildCoderLitePermission", () => {
   })
 })
 
-describe("registerCoderLite", () => {
-  it("registers a leaf subagent with steps 80 and the role body", async () => {
-    // given
-    const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig()
-
-    // when
-    await registerCoderLite(config, pluginConfig)
-
-    // then
-    const lite = config.agent?.["coder-lite"] as {
-      mode: string
-      description: string
-      prompt: string
-      model: string
-      steps: number
-      permission: Record<string, unknown>
+describe("edit permissions under host worktree-relative submission", () => {
+  // Host opencode (verified against 1.18.32): edit/write/apply_patch submit
+  // `path.relative(worktree, file)` for permission matching, the matcher
+  // escapes regex metacharacters before translating `*` to `.*` and `?` to
+  // `.`, anchors `^...$` (flags `is`), and the evaluator is findLast — the
+  // last matching rule wins. Emitted-shape assertions cannot catch a
+  // rule-set/real-matcher mismatch, so this describe feeds the emitted edit
+  // rule objects to a mini evaluator replicating those semantics with
+  // `path.relative(base, file)` submissions.
+  function wildcardToRegExp(pattern: string): RegExp {
+    let source = "^"
+    for (const char of pattern) {
+      if (char === "*") source += ".*"
+      else if (char === "?") source += "."
+      else source += char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     }
-    expect(lite.mode).toBe("subagent")
-    expect(lite.model).toBe("opencode-go/glm-5.3-flash")
-    expect(lite.steps).toBe(80)
-    expect(lite.description).toContain("planned milestones")
-    expect(lite.description).toContain("unplanned cross-module")
-    expect(lite.description).toContain("mechanical coding")
-    expect(lite.description).toContain("Junior-to-mid engineer executor")
-    expect(lite.description).toContain("unit tests from a checklist or exemplar")
-    expect(lite.prompt).toContain("# Coder-Lite")
-    expect(lite.prompt).toContain("Report-Up discipline")
-    // Model adaptation is injected per request; the asset keeps the inert
-    // placeholder.
-    expect(lite.prompt).toContain("<!-- MODEL-PROMPT")
-    expect(lite.prompt).not.toContain("## Driving GLM-5.3-Flash")
-    expect(lite.permission.task).toBe("deny")
-  })
+    return new RegExp(`${source}$`, "is")
+  }
 
-  it("assembles the raw asset plus the common base and write blocks when the model is swapped and no user block exists", async () => {
-    // given
-    const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig({ coder_lite_model: "my-provider/other-model" })
-
-    // when
-    await registerCoderLite(config, pluginConfig)
-
-    // then — a writable role keeps both shared layers, in base -> write order
-    const lite = config.agent?.["coder-lite"] as { prompt: string }
-    const source = await readFile(resolveAsset("agents/coder-lite.md"), "utf8")
-    const base = await loadCommonBase()
-    const write = await loadCommonWrite()
-    expect(lite.prompt).toBe(`${source}\n\n${base.trim()}\n\n${write.trim()}`)
-  })
-
-  it("leaves coder-lite model adaptation to the system hook", async () => {
-    // given
-    const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig({
-      model_prompts: { glm53flash: "user glm block" },
-    })
-
-    // when
-    await registerCoderLite(config, pluginConfig)
-
-    // then
-    const lite = config.agent?.["coder-lite"] as { prompt: string }
-    expect(lite.prompt).not.toContain("user glm block")
-    expect(lite.prompt).not.toContain("Driving GLM-5.3-Flash")
-    expect(lite.prompt).toContain("<!-- MODEL-PROMPT")
-  })
-
-  it("overrides the model from coder_lite_model", async () => {
-    // given
-    const config: { agent?: Record<string, unknown> } = {}
-    const pluginConfig = makeConfig({ coder_lite_model: "test/glm-flash" })
-
-    // when
-    await registerCoderLite(config, pluginConfig)
-
-    // then
-    const lite = config.agent?.["coder-lite"] as { model: string }
-    expect(lite.model).toBe("test/glm-flash")
-  })
-
-  it("uses the configured coder_lite_agent name and never clobbers", async () => {
-    // given
-    const userPrompt = "user-defined coder-lite prompt"
-    const config: { agent?: Record<string, unknown> } = {
-      agent: { "coder-lite": { mode: "subagent", prompt: userPrompt } },
+  function hostEvaluate(rules: Record<string, string>, submitted: string): string | undefined {
+    let action: string | undefined
+    for (const [pattern, value] of Object.entries(rules)) {
+      if (wildcardToRegExp(pattern).test(submitted)) action = value
     }
-    const pluginConfig = makeConfig()
+    return action
+  }
 
-    // when
-    await registerCoderLite(config, pluginConfig)
+  it("tech-lead: state-dir writes allow and other external writes deny", async () => {
+    // given — a temp HOME (state dirs) and a temp project base
+    const workspaceParent = mkdtempSync(join(tmpdir(), "tl-edit-bases-"))
+    const projectDir = join(workspaceParent, "proj")
+    const env = { HOME: workspaceParent } as NodeJS.ProcessEnv
+    const config: { agent?: Record<string, unknown> } = {}
 
-    // then
-    const lite = config.agent?.["coder-lite"] as { prompt: string }
-    expect(lite.prompt).toBe(userPrompt)
+    try {
+      // when — registration carries the project base like the config hook
+      await registerTechLead(config, makeConfig(), projectDir, env, [projectDir])
+
+      // then
+      const techLead = config.agent?.["tech-lead"] as { permission: Record<string, unknown> }
+      const edit = techLead.permission.edit as Record<string, string>
+      const designFile = join(resolveDesignStateDir(env), "proj-x", "plan.md")
+      const handoffFile = join(resolveHandoffStateDir(env), "proj-x", "hop-1", "handoff.md")
+      expect(hostEvaluate(edit, relative(projectDir, designFile))).toBe("allow")
+      expect(hostEvaluate(edit, relative(projectDir, handoffFile))).toBe("allow")
+      // absolute-shape submissions still hit the absolute hedges
+      expect(hostEvaluate(edit, designFile)).toBe("allow")
+      expect(hostEvaluate(edit, handoffFile)).toBe("allow")
+      // any other external path denies under both submission shapes
+      expect(hostEvaluate(edit, relative(projectDir, "/etc/hosts"))).toBe("deny")
+      expect(hostEvaluate(edit, relative(projectDir, join(workspaceParent, "elsewhere", "x.ts")))).toBe("deny")
+      expect(hostEvaluate(edit, "/etc/hosts")).toBe("deny")
+      // the deny catch-all stays first
+      expect(Object.keys(edit)[0]).toBe("*")
+    } finally {
+      rmSync(workspaceParent, { recursive: true, force: true })
+    }
+  })
+
+  it("coder: workspace edits allow, external edits ask, every shared tmp scope allows", () => {
+    // given
+    const workspaceParent = mkdtempSync(join(tmpdir(), "coder-edit-bases-"))
+    const projectDir = join(workspaceParent, "proj")
+    const tmp = tmpdir()
+
+    try {
+      // when
+      const permission = buildCoderPermission([projectDir])
+      const edit = permission.edit as Record<string, string>
+
+      // then — in-workspace files submit as plain relative paths
+      expect(hostEvaluate(edit, "packages/opencode-adapter/src/index.ts")).toBe("allow")
+      // outside-workspace files submit as `..`-prefixed relative paths and ask
+      expect(hostEvaluate(edit, relative(projectDir, "/etc/hosts"))).toBe("ask")
+      expect(hostEvaluate(edit, relative(projectDir, join(workspaceParent, "elsewhere", "x.ts")))).toBe("ask")
+      // absolute-shape submissions keep the "/*" ask hedge
+      expect(hostEvaluate(edit, "/etc/hosts")).toBe("ask")
+      // each shared tmp scope allows under relative submission
+      const scopeDirs = [
+        `${tmp}/opencode`,
+        `${realpathSync(tmp)}/opencode`,
+        "/tmp/opencode",
+        "/private/tmp/opencode",
+      ]
+      for (const scopeDir of scopeDirs) {
+        const artifact = join(scopeDir, "x", "artifact.txt")
+        expect(hostEvaluate(edit, relative(projectDir, artifact))).toBe("allow")
+      }
+      // the catch-all allow stays first, the two asks after it
+      expect(Object.keys(edit)[0]).toBe("*")
+      expect(edit["../*"]).toBe("ask")
+      expect(edit["/*"]).toBe("ask")
+    } finally {
+      rmSync(workspaceParent, { recursive: true, force: true })
+    }
+  })
+
+  it("coder: the realpath cross-product of a /tmp-shaped base and the /private/tmp scope allows", () => {
+    // given — the base as supplied (under the /tmp symlink) and the target
+    // in its realpath'd /private/tmp form
+    const permission = buildCoderPermission(["/tmp/proj"])
+    const edit = permission.edit as Record<string, string>
+
+    // when / then
+    expect(hostEvaluate(edit, relative("/tmp/proj", "/private/tmp/opencode/x"))).toBe("allow")
+    // and the as-supplied /tmp scope twin allows against the same base
+    expect(hostEvaluate(edit, relative("/tmp/proj", "/tmp/opencode/x"))).toBe("allow")
+  })
+
+  it("simple: its own workspace allows and every other write asks", async () => {
+    // given
+    const workspaceParent = mkdtempSync(join(tmpdir(), "lite-edit-bases-"))
+    const projectDir = join(workspaceParent, "proj")
+    const workspace = join(workspaceParent, "lite")
+    const pluginConfig = makeConfig({ simple_workspace_dir: workspace })
+    const config: { agent?: Record<string, unknown> } = {}
+
+    try {
+      // when
+      await registerSimple(config, pluginConfig, "oc-ns", [projectDir])
+
+      // then
+      const lite = config.agent?.["simple"] as { permission: Record<string, unknown> }
+      const edit = lite.permission.edit as Record<string, string>
+      expect(hostEvaluate(edit, relative(projectDir, join(workspace, "notes.md")))).toBe("allow")
+      expect(hostEvaluate(edit, join(workspace, "notes.md"))).toBe("allow")
+      expect(hostEvaluate(edit, relative(projectDir, join(workspaceParent, "elsewhere", "x.md")))).toBe("ask")
+      // a project file outside simple's workspace is not pre-approved
+      expect(hostEvaluate(edit, "src/index.ts")).toBe("ask")
+    } finally {
+      rmSync(workspaceParent, { recursive: true, force: true })
+    }
+  })
+
+  it("skips the relative twin when the target equals or is an ancestor of a base (no over-grant)", async () => {
+    // given — one base that equals the design state dir and one nested
+    // inside it (both make the state dir an ancestor-or-equal target)
+    const workspaceParent = mkdtempSync(join(tmpdir(), "tl-ancestor-bases-"))
+    const env = { HOME: workspaceParent } as NodeJS.ProcessEnv
+    const designDir = resolveDesignStateDir(env)
+    const config: { agent?: Record<string, unknown> } = {}
+
+    try {
+      // when
+      await registerTechLead(
+        config,
+        makeConfig(),
+        join(workspaceParent, "proj"),
+        env,
+        [designDir, join(designDir, "proj-x")],
+      )
+
+      // then — no twin degenerates into a bare `/**` or `../**` catch-all
+      const techLead = config.agent?.["tech-lead"] as { permission: Record<string, unknown> }
+      const edit = techLead.permission.edit as Record<string, string>
+      expect(edit["/**"]).toBeUndefined()
+      expect(edit["../**"]).toBeUndefined()
+      // every external relative path still denies
+      expect(hostEvaluate(edit, "../etc/passwd")).toBe("deny")
+      expect(hostEvaluate(edit, "../../etc/passwd")).toBe("deny")
+      // the handoff dir (not an ancestor of any base) still carries its twins
+      expect(hostEvaluate(edit, relative(designDir, join(resolveHandoffStateDir(env), "p", "handoff.md")))).toBe("allow")
+
+      // and simple with a base inside its workspace falls back to ask
+      const workspace = join(workspaceParent, "lite")
+      const liteEdit = buildSimplePermission(workspace, [join(workspace, "sub")]).edit as Record<
+        string,
+        string
+      >
+      expect(liteEdit["../**"]).toBeUndefined()
+      expect(hostEvaluate(liteEdit, relative(join(workspace, "sub"), join(workspace, "notes.md")))).toBe("ask")
+    } finally {
+      rmSync(workspaceParent, { recursive: true, force: true })
+    }
+  })
+
+  it("emits the pre-twin shapes when bases are not passed", async () => {
+    // given
+    const workspaceParent = mkdtempSync(join(tmpdir(), "tl-default-bases-"))
+    const env = { HOME: workspaceParent } as NodeJS.ProcessEnv
+    const config: { agent?: Record<string, unknown> } = {}
+
+    try {
+      // when — default registration without bases
+      await registerTechLead(config, makeConfig(), "/tmp/my-project", env)
+
+      // then — exactly the pre-twin rule sets and ordering
+      const techLead = config.agent?.["tech-lead"] as { permission: Record<string, unknown> }
+      const designDir = resolveDesignStateDir(env)
+      const handoffDir = resolveHandoffStateDir(env)
+      expect(techLead.permission.edit).toEqual({
+        "*": "deny",
+        [`${designDir}/**`]: "allow",
+        [`${handoffDir}/**`]: "allow",
+      })
+      expect(Object.keys(techLead.permission.edit as Record<string, string>)).toEqual([
+        "*",
+        `${designDir}/**`,
+        `${handoffDir}/**`,
+      ])
+      expect(buildCoderPermission().edit).toEqual({ "*": "allow", "/*": "ask" })
+      expect(buildSimplePermission("/ws/lite").edit).toEqual({ "*": "ask", "/ws/lite/**": "allow" })
+    } finally {
+      rmSync(workspaceParent, { recursive: true, force: true })
+    }
   })
 })
 
-describe("coder-lite dispatch baseline restore", () => {
-  // The restore procedure lives in the coder prompt; this test pins that the
-  // exact commands coder.md prescribes actually restore a polluted worktree
-  // to its pre-dispatch content (baseline-first origin restore protocol).
+describe("tech-lead tree-snapshot protocol", () => {
+  // Proves the tech-lead asset's snapshot recipe mechanically works: a
+  // temporary-index tree capture that never touches the real .git/index, the
+  // binary-diff restore incantation, the AGENTS.md/CLAUDE.md guard, the
+  // review-patch header and sentinel, and the no-VCS tar fallback. The coder
+  // leaf never runs these commands — the tree snapshot, patch construction,
+  // and restoration belong to the dispatching tech-lead.
   const ISOLATED_GIT_ENV: NodeJS.ProcessEnv = {
     ...process.env,
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_SYSTEM: "/dev/null",
   }
 
-  function run(repo: string, command: string): string {
+  function run(cwd: string, command: string): string {
     return execSync(command, {
-      cwd: repo,
+      cwd,
       env: ISOLATED_GIT_ENV,
       stdio: ["ignore", "pipe", "pipe"],
     }).toString()
   }
 
+  function snapshotTree(cwd: string, indexFile: string): string {
+    execSync("git read-tree HEAD", {
+      cwd,
+      env: { ...ISOLATED_GIT_ENV, GIT_INDEX_FILE: indexFile },
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    execSync("git add -A", {
+      cwd,
+      env: { ...ISOLATED_GIT_ENV, GIT_INDEX_FILE: indexFile },
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    return execSync("git write-tree", {
+      cwd,
+      env: { ...ISOLATED_GIT_ENV, GIT_INDEX_FILE: indexFile },
+      stdio: ["ignore", "pipe", "pipe"],
+    }).toString().trim()
+  }
+
+  function walkFiles(root: string, dir: string = root): string[] {
+    return readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name)
+      return statSync(path).isDirectory() ? walkFiles(root, path) : [path]
+    })
+  }
+
   function seedRepo(repo: string, withUntracked: boolean): void {
     mkdirSync(join(repo, "src"))
+    mkdirSync(join(repo, "bin"))
     writeFileSync(join(repo, ".gitignore"), "dist/\n")
+    writeFileSync(join(repo, "AGENTS.md"), "# Agents\n\ncontroller guidance\n")
     writeFileSync(join(repo, "src", "app.ts"), "export const app = 1\n")
     writeFileSync(join(repo, "src", "wip.ts"), "export const wip = 1\n")
+    writeFileSync(join(repo, "bin", "blob.bin"), Buffer.from([0x00, 0x01, 0x02, 0xff, 0xfe]))
     mkdirSync(join(repo, "dist"))
     writeFileSync(join(repo, "dist", "api.js"), "export const api = 1\n")
     run(repo, "git init -q")
@@ -2145,74 +2354,117 @@ describe("coder-lite dispatch baseline restore", () => {
     if (withUntracked) writeFileSync(join(repo, "notes.md"), "untracked before dispatch\n")
   }
 
-  it("restores exact pre-dispatch content across the five pollution scenarios", async () => {
-    // The tested procedure and the coder.md prompt must not drift apart.
-    const coderPrompt = await readFile(resolveAsset("agents/coder.md"), "utf8")
+  it("captures the pre tree with a temporary index and restores every pollution scenario via the binary-diff incantation", async () => {
+    // The tech-lead asset pins the recipe commands; the scenario below proves
+    // those commands mechanically restore a polluted worktree.
+    const techLeadPrompt = await readFile(resolveAsset("agents/tech-lead.md"), "utf8")
     for (const command of [
-      "git checkout HEAD --",
-      "git apply --include=",
-      "git diff HEAD --binary",
-      "git ls-files -o --exclude-standard -z | tar --null -T - -cf",
-      "quarantine",
+      'GIT_INDEX_FILE="$BASELINE_DIR/index.pre" git -C "$ROOT" add -A',
+      'GIT_INDEX_FILE="$BASELINE_DIR/index.post" git -C "$ROOT" add -A',
+      'git -C "$ROOT" write-tree',
+      'git -C "$ROOT" diff --binary "$POST_TREE" "$PRE_TREE" -- <files> | git -C "$ROOT" apply',
+      'git -C "$ROOT" diff --name-only "$PRE_TREE" "$POST_TREE" -- AGENTS.md CLAUDE.md',
+      'git -C "$ROOT" diff --binary "$POST_TREE" "$PRE_TREE" -- AGENTS.md CLAUDE.md | git -C "$ROOT" apply',
+      "# review-patch: milestone=mK pre_tree=<PRE_TREE> post_tree=<POST_TREE> total_lines=<N> max_line_length=<M> long_line_files=[",
+      "=== EOF .review-mK.patch ===",
+      "diff -ruN",
+      ".git",
+      "node_modules",
+      "__pycache__",
+      ".venv",
+      "dist",
+      "build",
+      ".baseline-*",
+      "shasum -a 256",
     ]) {
-      expect(coderPrompt).toContain(command)
+      expect(techLeadPrompt).toContain(command)
     }
 
-    const repo = mkdtempSync(join(tmpdir(), "baseline-restore-"))
+    const repo = mkdtempSync(join(tmpdir(), "tree-snapshot-"))
     // The baseline dir lives outside the worktree so it never shows as ?? .
-    const baselineDir = mkdtempSync(join(tmpdir(), "baseline-artifacts-"))
+    const baselineDir = mkdtempSync(join(tmpdir(), "tree-snapshot-artifacts-"))
     try {
       seedRepo(repo, true)
 
-      // Baseline-first artifacts, created before the dispatch.
-      writeFileSync(
-        join(baselineDir, "status.txt"),
-        run(repo, "git status --porcelain --untracked-files=all"),
-      )
-      run(repo, `git diff HEAD --stat > ${JSON.stringify(join(baselineDir, "stat.txt"))}`)
-      run(repo, `git diff HEAD --binary > ${JSON.stringify(join(baselineDir, "dirty.patch"))}`)
-      run(
-        repo,
-        `git ls-files -o --exclude-standard -z | tar --null -T - -cf ${JSON.stringify(
-          join(baselineDir, "untracked.tar"),
-        )}`,
-      )
+      const preStatus = run(repo, "git status --porcelain --untracked-files=all")
+      writeFileSync(join(baselineDir, "status.txt"), preStatus)
 
-      // coder-lite pollution: an out-of-scope tracked edit, a further edit to
-      // the pre-dirty file, an edit to the pre-existing untracked file, an
-      // unauthorized new file, a fresh ignored build artifact, and a
-      // modification of a tracked file inside the build-named directory.
+      // (a) PRE tree via a temporary index: the real .git/index is untouched
+      // (status output is identical after the snapshot) and untracked files
+      // enter the tree.
+      const preTree = snapshotTree(repo, join(baselineDir, "index.pre"))
+      expect(run(repo, "git status --porcelain --untracked-files=all")).toBe(preStatus)
+      expect(run(repo, `git ls-tree -r --name-only "${preTree}"`)).toContain("notes.md")
+
+      // pollution: a tracked edit plus mode flip, a further edit to the
+      // pre-dirty file, an edit to the pre-existing untracked file, an
+      // unauthorized new file, a binary rewrite, a guard-file edit, a fresh
+      // ignored build artifact, and a tracked edit inside the build-named dir.
       writeFileSync(join(repo, "src", "app.ts"), "export const app = 1\n// polluted\n")
+      chmodSync(join(repo, "src", "app.ts"), 0o755)
       writeFileSync(join(repo, "src", "wip.ts"), "export const wip = 1\n// pre-dispatch edit\n// polluted\n")
       writeFileSync(join(repo, "notes.md"), "untracked before dispatch\n// polluted\n")
       writeFileSync(join(repo, "src", "rogue.ts"), "unauthorized new file\n")
+      writeFileSync(join(repo, "bin", "blob.bin"), Buffer.from([0xde, 0xad, 0xbe, 0xef]))
+      writeFileSync(join(repo, "AGENTS.md"), "# Agents\n\npolluted\n")
       writeFileSync(join(repo, "dist", "bundle.js"), "build output\n")
       writeFileSync(join(repo, "dist", "api.js"), "export const api = 1\n// polluted\n")
 
-      // The directory-name exclusion never masks a tracked modification.
-      expect(run(repo, "git status --porcelain --untracked-files=all")).toContain(" M dist/api.js")
+      const postTree = snapshotTree(repo, join(baselineDir, "index.post"))
+      const postListing = run(repo, `git ls-tree -r --name-only "${postTree}"`)
+      // Untracked files and tracked build-dir modifications enter the tree;
+      // the ignored build artifact stays out.
+      expect(postListing).toContain("src/rogue.ts")
+      expect(postListing).toContain("dist/api.js")
+      expect(postListing).not.toContain("dist/bundle.js")
 
-      // Restore per the protocol: clean-at-baseline and build-dir tracked
-      // files reset to HEAD; the pre-dirty file reset then re-patched.
-      run(repo, "git checkout HEAD -- src/app.ts dist/api.js")
-      run(repo, "git checkout HEAD -- src/wip.ts")
-      run(repo, `git apply --include=src/wip.ts ${JSON.stringify(join(baselineDir, "dirty.patch"))}`)
-      run(repo, `tar -xf ${JSON.stringify(join(baselineDir, "untracked.tar"))} notes.md`)
-      mkdirSync(join(baselineDir, "quarantine"))
-      renameSync(join(repo, "src", "rogue.ts"), join(baselineDir, "quarantine", "rogue.ts"))
+      // (c) AGENTS.md guard: name-only check non-empty, then restore.
+      const guardCheck = run(repo, `git diff --name-only "${preTree}" "${postTree}" -- AGENTS.md CLAUDE.md`)
+      expect(guardCheck).toContain("AGENTS.md")
+      run(repo, `git diff --binary "${postTree}" "${preTree}" -- AGENTS.md CLAUDE.md | git apply`)
+      expect(readFileSync(join(repo, "AGENTS.md"), "utf8")).toBe("# Agents\n\ncontroller guidance\n")
 
+      // (b) restore the remaining polluted files with the incantation.
+      run(
+        repo,
+        `git diff --binary "${postTree}" "${preTree}" -- src/app.ts src/wip.ts notes.md src/rogue.ts bin/blob.bin dist/api.js | git apply`,
+      )
       expect(readFileSync(join(repo, "src", "app.ts"), "utf8")).toBe("export const app = 1\n")
+      expect(statSync(join(repo, "src", "app.ts")).mode & 0o777).toBe(0o644)
       expect(readFileSync(join(repo, "src", "wip.ts"), "utf8")).toBe(
         "export const wip = 1\n// pre-dispatch edit\n",
       )
       expect(readFileSync(join(repo, "notes.md"), "utf8")).toBe("untracked before dispatch\n")
-      expect(readFileSync(join(repo, "dist", "api.js"), "utf8")).toBe("export const api = 1\n")
       expect(existsSync(join(repo, "src", "rogue.ts"))).toBe(false)
-      expect(readFileSync(join(baselineDir, "quarantine", "rogue.ts"), "utf8")).toBe(
-        "unauthorized new file\n",
-      )
+      expect(readFileSync(join(repo, "bin", "blob.bin")).equals(Buffer.from([0x00, 0x01, 0x02, 0xff, 0xfe]))).toBe(true)
+      expect(readFileSync(join(repo, "dist", "api.js"), "utf8")).toBe("export const api = 1\n")
+      // The ignored build output is outside the snapshot's reach and untouched.
       expect(readFileSync(join(repo, "dist", "bundle.js"), "utf8")).toBe("build output\n")
       // The restored tree matches the recorded baseline byte for byte.
+      expect(run(repo, "git status --porcelain --untracked-files=all")).toBe(preStatus)
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+      rmSync(baselineDir, { recursive: true, force: true })
+    }
+  })
+
+  it("still restores tracked pollution when nothing untracked exists at snapshot time", () => {
+    const repo = mkdtempSync(join(tmpdir(), "tree-snapshot-empty-"))
+    const baselineDir = mkdtempSync(join(tmpdir(), "tree-snapshot-artifacts-empty-"))
+    try {
+      seedRepo(repo, false)
+
+      // Guard path: nothing untracked exists, so no untracked capture is needed.
+      expect(run(repo, "git ls-files -o --exclude-standard")).toBe("")
+      writeFileSync(
+        join(baselineDir, "status.txt"),
+        run(repo, "git status --porcelain --untracked-files=all"),
+      )
+      const preTree = snapshotTree(repo, join(baselineDir, "index.pre"))
+      writeFileSync(join(repo, "src", "app.ts"), "export const app = 1\n// polluted\n")
+      const postTree = snapshotTree(repo, join(baselineDir, "index.post"))
+      run(repo, `git diff --binary "${postTree}" "${preTree}" -- src/app.ts | git apply`)
+      expect(readFileSync(join(repo, "src", "app.ts"), "utf8")).toBe("export const app = 1\n")
       expect(run(repo, "git status --porcelain --untracked-files=all")).toBe(
         readFileSync(join(baselineDir, "status.txt"), "utf8"),
       )
@@ -2222,30 +2474,114 @@ describe("coder-lite dispatch baseline restore", () => {
     }
   })
 
-  it("skips untracked.tar when the untracked list is empty and still restores tracked pollution", () => {
-    const repo = mkdtempSync(join(tmpdir(), "baseline-restore-empty-"))
-    const baselineDir = mkdtempSync(join(tmpdir(), "baseline-artifacts-empty-"))
+  it("builds the review-patch header with long_line_files and the sentinel, and falls back to tar plus a manifest outside git", () => {
+    // (d) patch header and sentinel over a git worktree.
+    const repo = mkdtempSync(join(tmpdir(), "review-patch-"))
+    const baselineDir = mkdtempSync(join(tmpdir(), "review-patch-artifacts-"))
     try {
       seedRepo(repo, false)
-
-      // Guard path: no untracked files -> no untracked.tar to create.
-      expect(run(repo, "git ls-files -o --exclude-standard")).toBe("")
+      writeFileSync(join(repo, "src", "long.ts"), "export const long = 1\n")
+      run(repo, "git add src/long.ts")
+      run(repo, 'git commit -q -m "track long"')
+      const preTree = snapshotTree(repo, join(baselineDir, "index.pre"))
       writeFileSync(
-        join(baselineDir, "status.txt"),
-        run(repo, "git status --porcelain --untracked-files=all"),
+        join(repo, "src", "long.ts"),
+        `export const long = "${"x".repeat(2500)}"\n`,
       )
-      run(repo, `git diff HEAD --binary > ${JSON.stringify(join(baselineDir, "dirty.patch"))}`)
-      expect(existsSync(join(baselineDir, "untracked.tar"))).toBe(false)
+      const postTree = snapshotTree(repo, join(baselineDir, "index.post"))
 
-      writeFileSync(join(repo, "src", "app.ts"), "export const app = 1\n// polluted\n")
-      run(repo, "git checkout HEAD -- src/app.ts")
-      expect(readFileSync(join(repo, "src", "app.ts"), "utf8")).toBe("export const app = 1\n")
-      expect(run(repo, "git status --porcelain --untracked-files=all")).toBe(
-        readFileSync(join(baselineDir, "status.txt"), "utf8"),
-      )
+      const statLine = run(repo, `git diff --stat "${preTree}" "${postTree}"`).trimEnd()
+      const body = run(repo, `git diff "${preTree}" "${postTree}"`)
+      const bodyLines = body.split("\n")
+      const totalLines = bodyLines.length
+      const maxLineLength = Math.max(...bodyLines.map((line) => line.length))
+      const longLineFiles = body
+        .split("diff --git ")
+        .slice(1)
+        .filter((chunk) => chunk.split("\n").some((line) => line.length > 2000))
+        .map((chunk) => chunk.match(/^a\/(\S+) b\//)?.[1] ?? "")
+        .filter((name) => name.length > 0)
+      // mechanical long-line detection: the >2000-character file is named
+      expect(longLineFiles).toEqual(["src/long.ts"])
+      expect(maxLineLength).toBeGreaterThan(2000)
+
+      const header = `# review-patch: milestone=m3 pre_tree=${preTree} post_tree=${postTree} total_lines=${totalLines} max_line_length=${maxLineLength} long_line_files=[${longLineFiles.join(", ")}]`
+      const patch = [header, statLine, body.trimEnd(), "=== EOF .review-m3.patch ==="].join("\n") + "\n"
+      writeFileSync(join(baselineDir, ".review-m3.patch"), patch)
+      const written = readFileSync(join(baselineDir, ".review-m3.patch"), "utf8")
+      expect(written.startsWith(header)).toBe(true)
+      expect(written.trimEnd().endsWith("=== EOF .review-m3.patch ===")).toBe(true)
     } finally {
       rmSync(repo, { recursive: true, force: true })
       rmSync(baselineDir, { recursive: true, force: true })
+    }
+
+    // (e) no-VCS fallback: tar snapshot + manifest, pollution, restore.
+    const dir = mkdtempSync(join(tmpdir(), "tree-snapshot-tar-"))
+    const backupDir = mkdtempSync(join(tmpdir(), "tree-snapshot-tar-backup-"))
+    try {
+      mkdirSync(join(dir, "sub"))
+      writeFileSync(join(dir, "doc.md"), "hello\n")
+      writeFileSync(join(dir, "sub", "note.txt"), "note\n")
+      // Directories the snapshot must exclude.
+      mkdirSync(join(dir, "node_modules"))
+      writeFileSync(join(dir, "node_modules", "pkg.js"), "dep\n")
+      mkdirSync(join(dir, ".baseline-m1"))
+      writeFileSync(join(dir, ".baseline-m1", "state"), "snap\n")
+
+      const snapshot = join(backupDir, "snapshot.tar")
+      run(
+        dir,
+        `tar -cf ${JSON.stringify(snapshot)} --exclude=.git --exclude=node_modules --exclude=__pycache__ --exclude=.venv --exclude=dist --exclude=build --exclude=.baseline-* .`,
+      )
+      const listing = run(dir, `tar -tf ${JSON.stringify(snapshot)}`)
+      for (const excluded of ["node_modules", ".baseline-m1", ".git"]) {
+        expect(listing).not.toContain(excluded)
+      }
+      const listedEntries = new Set(
+        listing
+          .split("\n")
+          .map((entry) => entry.replace(/^\.\//, "").replace(/\/$/, ""))
+          .filter((entry) => entry.length > 0 && entry !== "."),
+      )
+      expect(listedEntries.has("doc.md")).toBe(true)
+      expect(listedEntries.has("sub/note.txt")).toBe(true)
+
+      const manifestCommand =
+        'find . -type f ! -path "./.git/*" ! -path "./node_modules/*" ! -path "./__pycache__/*" ! -path "./.venv/*" ! -path "./dist/*" ! -path "./build/*" ! -path "./.baseline-*" | sort | xargs shasum -a 256'
+      const manifest = run(dir, manifestCommand)
+      const preCopy = join(backupDir, "pre")
+      run(backupDir, `cp -R ${JSON.stringify(dir)} ${JSON.stringify(preCopy)}`)
+
+      // pollution: a content edit, a deletion, and an unauthorized new file.
+      writeFileSync(join(dir, "doc.md"), "polluted\n")
+      rmSync(join(dir, "sub", "note.txt"))
+      writeFileSync(join(dir, "rogue.txt"), "unauthorized\n")
+
+      // Restore: extract the tar, then drop files the snapshot never carried.
+      // The excluded directories sit outside the snapshot's responsibility.
+      const excludedPrefixes = ["node_modules/", "__pycache__/", ".venv/", "dist/", "build/", ".baseline-"]
+      run(dir, `tar -xf ${JSON.stringify(snapshot)}`)
+      for (const path of walkFiles(dir)) {
+        const relative = path.slice(dir.length + 1)
+        if (excludedPrefixes.some((prefix) => relative.startsWith(prefix))) continue
+        if (!listedEntries.has(relative)) rmSync(path)
+      }
+      expect(readFileSync(join(dir, "doc.md"), "utf8")).toBe("hello\n")
+      expect(readFileSync(join(dir, "sub", "note.txt"), "utf8")).toBe("note\n")
+      expect(existsSync(join(dir, "rogue.txt"))).toBe(false)
+      // The excluded directories are outside the snapshot and untouched.
+      expect(readFileSync(join(dir, "node_modules", "pkg.js"), "utf8")).toBe("dep\n")
+      expect(readFileSync(join(dir, ".baseline-m1", "state"), "utf8")).toBe("snap\n")
+      // The restored tree matches the recorded manifest and the pre copy.
+      expect(run(dir, manifestCommand)).toBe(manifest)
+      run(
+        backupDir,
+        `diff -ruN --exclude=.git --exclude=node_modules --exclude=__pycache__ --exclude=.venv --exclude=dist --exclude=build --exclude=.baseline-* ${JSON.stringify(preCopy)} ${JSON.stringify(dir)}`,
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(backupDir, { recursive: true, force: true })
     }
   })
 })
@@ -2263,7 +2599,8 @@ describe("buildJanusRuntimeBindings", () => {
     expect(block).toContain("Janus model: `opencode-go/glm-5.3-flash`")
     expect(block).toContain("`simple` (agent `simple`, `opencode-go/deepseek-v4.1-flash`)")
     expect(block).toContain("`consultant` (agent `consultant`, `opencode-go/gemini-4-argon`)")
-    expect(block).toContain("`coder` (agent `coder`, `opencode-go/glm-5.3`)")
+    expect(block).toContain("`tech-lead` (agent `tech-lead`, `opencode-go/glm-5.3`)")
+    expect(block).toContain('dispatch via `janus_dispatch` (role="tech-lead")')
     expect(block).toContain("`architect` (agent `architect`, `opencode-go/gemini-4-argon`)")
     expect(block).toContain("`author` (agent `author`, `opencode-go/gemini-4-argon`)")
     expect(block).toContain('dispatch via `janus_dispatch` (role="author")')
@@ -2280,7 +2617,7 @@ describe("buildJanusRuntimeBindings", () => {
 
   it("reports the DISABLED simple and team-entry variants", () => {
     // given
-    const config = makeConfig({ simple_enabled: false, architect_enabled: false, author_enabled: false, coder_enabled: false })
+    const config = makeConfig({ simple_enabled: false, architect_enabled: false, author_enabled: false, tech_lead_enabled: false })
 
     // when
     const block = buildJanusRuntimeBindings(config, HANDOFF_BINDING)
@@ -2289,7 +2626,7 @@ describe("buildJanusRuntimeBindings", () => {
     expect(block).toContain("simple DISABLED by configuration")
     expect(block).toContain("architect DISABLED by configuration")
     expect(block).toContain("author DISABLED by configuration")
-    expect(block).toContain("coder DISABLED by configuration")
+    expect(block).toContain("tech-lead DISABLED by configuration")
   })
 })
 
@@ -2396,6 +2733,7 @@ const READ_ONLY_AGENT_KEYS = [
   "consultant-critic",
   "coder-reviewer",
   "consultant-auditor",
+  "solution-reviewer",
   "author-reviewer",
 ] as const
 
@@ -2408,18 +2746,19 @@ describe("common operating principles injection", () => {
     const pluginConfig = makeConfig({ simple_workspace_dir: join(workspaceParent, "lite") })
 
     try {
-      // when — register the full fourteen-role family into one config
+      // when — register the full fifteen-role family into one config
       await registerJanus(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
       await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
       await registerArchitect(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
+      await registerTechLead(config, pluginConfig, "/tmp/my-project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
       await registerAuthor(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
-      await registerCoder(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
-      await registerCoderLite(config, pluginConfig)
+      await registerCoder(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
+      await registerSolutionReviewer(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
       await registerSimple(config, pluginConfig, "oc-ns")
       await registerCommonExplorer(config, pluginConfig)
       await registerConsultantAnalyst(config, pluginConfig)
       await registerConsultantCritic(config, pluginConfig)
-      await registerCoderReviewer(config, pluginConfig)
+      await registerCoderReviewer(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
       await registerConsultantAuditor(config, pluginConfig)
       await registerAuthorReviewer(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
       // Temp HOME keeps the writer's author state dir off the real HOME.
@@ -2432,7 +2771,6 @@ describe("common operating principles injection", () => {
         "author-reviewer",
         "author-writer",
         "coder",
-        "coder-lite",
         "coder-reviewer",
         "common-explorer",
         "consultant",
@@ -2441,6 +2779,8 @@ describe("common operating principles injection", () => {
         "consultant-critic",
         "janus",
         "simple",
+        "solution-reviewer",
+        "tech-lead",
       ])
       for (const [name, entry] of Object.entries(config.agent ?? {})) {
         const prompt = (entry as { prompt: string }).prompt
@@ -2458,7 +2798,7 @@ describe("common operating principles injection", () => {
     }
   })
 
-  it("injects the user-facing-style fragment into the eight human-facing roles and none of the six structural leaves", async () => {
+  it("injects the user-facing-style fragment into the eight human-facing roles and none of the seven structural leaves", async () => {
     // given — the same full-family assembly as the test above
     const workspaceParent = mkdtempSync(join(tmpdir(), "lite-ws-"))
     const config: { agent?: Record<string, unknown> } = {}
@@ -2468,7 +2808,7 @@ describe("common operating principles injection", () => {
       "simple",
       "consultant",
       "architect",
-      "coder",
+      "tech-lead",
       "author",
       "author-writer",
       "author-reviewer",
@@ -2478,8 +2818,9 @@ describe("common operating principles injection", () => {
       "consultant-analyst",
       "consultant-critic",
       "consultant-auditor",
+      "solution-reviewer",
+      "coder",
       "coder-reviewer",
-      "coder-lite",
     ]
 
     try {
@@ -2487,14 +2828,15 @@ describe("common operating principles injection", () => {
       await registerJanus(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
       await registerConsultantAgent(config, pluginConfig, "oc-ns", "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
       await registerArchitect(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
+      await registerTechLead(config, pluginConfig, "/tmp/my-project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
       await registerAuthor(config, pluginConfig, "oc-ns", "/tmp/project", { HOME: workspaceParent } as NodeJS.ProcessEnv)
-      await registerCoder(config, pluginConfig, "/tmp/my-project", { HOME: "/tmp/home" } as NodeJS.ProcessEnv)
-      await registerCoderLite(config, pluginConfig)
+      await registerCoder(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
+      await registerSolutionReviewer(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
       await registerSimple(config, pluginConfig, "oc-ns")
       await registerCommonExplorer(config, pluginConfig)
       await registerConsultantAnalyst(config, pluginConfig)
       await registerConsultantCritic(config, pluginConfig)
-      await registerCoderReviewer(config, pluginConfig)
+      await registerCoderReviewer(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
       await registerConsultantAuditor(config, pluginConfig)
       await registerAuthorReviewer(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
       await registerAuthorWriter(config, pluginConfig, { HOME: workspaceParent } as NodeJS.ProcessEnv)
@@ -2513,7 +2855,7 @@ describe("common operating principles injection", () => {
         expect(prompt).not.toContain("## User-Facing Style")
         expect(prompt).not.toContain("everyday language")
       }
-      expect(humanFacing.length + structuralLeaves.length).toBe(14)
+      expect(humanFacing.length + structuralLeaves.length).toBe(15)
     } finally {
       rmSync(workspaceParent, { recursive: true, force: true })
     }
@@ -2632,6 +2974,8 @@ describe("existing agents carry the inert MODEL-PROMPT placeholder", () => {
       "agents/simple.md",
       "agents/consultant.md",
       "agents/architect.md",
+      "agents/tech-lead.md",
+      "agents/solution-reviewer.md",
       "agents/coder.md",
       "agents/author.md",
       "agents/common-explorer.md",
@@ -2641,7 +2985,6 @@ describe("existing agents carry the inert MODEL-PROMPT placeholder", () => {
       "agents/coder-reviewer.md",
       "agents/author-writer.md",
       "agents/author-reviewer.md",
-      "agents/coder-lite.md",
     ]
 
     // when // then
@@ -2772,44 +3115,46 @@ describe("model-prompt blocks are model-property only", () => {
     }
   })
 
-  it("coder prompt encodes adaptive process weight and the design gate", async () => {
+  it("coder prompt encodes the two-tier leaf contract; tech-lead carries the plan gate and design record", async () => {
     // given
-    const source = await readFile(resolveAsset("agents/coder.md"), "utf8")
+    const coder = await readFile(resolveAsset("agents/coder.md"), "utf8")
+    const techLead = await readFile(resolveAsset("agents/tech-lead.md"), "utf8")
 
-    // when // then
-    expect(source).toContain("Task triage")
-    expect(source).toContain("L0 — Direct")
-    expect(source).toContain("L1 — Brief plan")
-    expect(source).toContain("L2 — Design + plan")
-    expect(source).toContain("L3 — Quality gate")
-    expect(source).toContain("Design gate — how to ask")
-    expect(source).toContain("Do not use a heavyweight process for a simple task")
-    expect(source).toContain("Do not skip design for a complex one")
-    expect(source).toContain("## Working with a design record")
-    expect(source).toContain("the gate shrinks to the implementation details")
-    expect(source).toContain("Approving the plan means confirming the files it lists")
-    expect(source).toContain("compare the diff with `design.md`")
-    expect(source).toContain("one-way-door decision")
-    expect(source).toContain("Deleting that `plan.md` once the work lands — all milestones verified, review resolved, and the final report delivered — is the one persistent-file deletion that needs no confirmation")
-    expect(source).toContain("Host subagents are allowed for exploration and review")
+    // when // then — the leaf (B4/C1–C6)
+    expect(coder).toContain("Senior Coder")
+    expect(coder).toContain("Junior Coder")
+    expect(coder).toContain("Take a task only when all three hold")
+    expect(coder).toContain("Never take — stop and report instead")
+    expect(coder).toContain("deferred to the controller")
+    expect(coder).toContain("never reverted by you")
+
+    // the controller's plan gate (B1/B2/B3): shrink with a record, full gate without
+    expect(techLead).toContain("the plan gate shrinks to the details the record does not cover plus the exact file list")
+    expect(techLead).toContain("the record is the approved spec; never re-open its accepted decisions")
+    expect(techLead).toContain("every accepted decision has a task, every interface has a test")
+    expect(techLead).toContain("ordered independently green and revertible")
+    expect(techLead).toContain("`design/<projectId>/<designId>/plan.md`")
+    expect(techLead).toContain("`design/<projectId>/<planId>/plan.md` when there is no design record")
   })
 
-  it("coder prompt overrides installed skill workflow at P0", async () => {
+  it("coder prompt overrides installed skill workflow at P0 with the commit ban and own-lane rule", async () => {
     // given
     const source = await readFile(resolveAsset("agents/coder.md"), "utf8")
+    const techLead = await readFile(resolveAsset("agents/tech-lead.md"), "utf8")
 
-    // when // then — skills are advisory and never own commits, plan files, or dispatch
-    expect(source).toContain("### P0 overrides (these win over any skill)")
+    // when // then — skills are advisory and never own commits or dispatch
+    expect(source).toContain("## P0 overrides (these win over any skill)")
     expect(source).toContain("advisory procedure, not authority")
     expect(source).toContain("Never execute a skill's `git commit`")
     expect(source).toContain("`git push`")
-    expect(source).toContain("design-record path")
-    expect(source).toContain("`design/<projectId>/<designId>/plan.md`")
-    expect(source).toContain("`design/<projectId>/<planId>/plan.md` when there is no design")
-    expect(source).toContain("list it for confirmation before writing")
     expect(source).toContain("`subagent-driven-development`")
-    expect(source).toContain("skip brainstorming's spec/design conversation")
-    expect(source).toContain("the design record is the approved spec")
+    expect(source).toContain("The dispatcher owns the task order, checkpoints, and integration")
+
+    // the controller's P0: plan placement, confirmation before writing, approved-spec precedence
+    expect(techLead).toContain("design-record path")
+    expect(techLead).toContain("list it for confirmation before writing")
+    expect(techLead).toContain("skip brainstorming's spec/design conversation")
+    expect(techLead).toContain("the design record is the approved spec")
   })
 
   it("lite and janus prompts encode the entry/leaf boundaries", async () => {
@@ -2820,7 +3165,7 @@ describe("model-prompt blocks are model-property only", () => {
     // when // then
     expect(lite).toContain("You are a leaf: you never dispatch another agent.")
     expect(lite).toContain("escalate to `consultant`")
-    expect(lite).toContain("escalate to `coder`")
+    expect(lite).toContain("escalate to `tech-lead`")
     expect(lite).toContain("personal plans and guides belong to `consultant`")
     expect(lite).toContain("architecture belongs to `architect`")
     expect(lite).toContain("durable documents belong to `author`")
@@ -2832,10 +3177,10 @@ describe("model-prompt blocks are model-property only", () => {
     expect(janus).toContain("Route a design or document task to its entry even when it looks small")
     expect(janus).toContain("Do not run a design gate")
     expect(janus).toContain("a system-design decision goes to `architect`")
-    expect(janus).toContain("implementation goes to `coder`")
+    expect(janus).toContain("implementation goes to `tech-lead`")
     expect(janus).toContain("a read-only question about an existing document")
     expect(janus).toContain("`architect` is deliberately absent from this tool")
-    expect(janus).toContain("`author` is the one primary entry you can dispatch")
+    expect(janus).toContain("`tech-lead` and `author` are the primary entries you can dispatch")
     expect(lite).toContain("read-only document Q&A")
   })
 
@@ -2856,6 +3201,8 @@ describe("model-prompt blocks are model-property only", () => {
       "agents/simple.md",
       "agents/consultant.md",
       "agents/architect.md",
+      "agents/tech-lead.md",
+      "agents/solution-reviewer.md",
       "agents/coder.md",
       "agents/author.md",
       "agents/common-explorer.md",
@@ -2865,10 +3212,11 @@ describe("model-prompt blocks are model-property only", () => {
       "agents/coder-reviewer.md",
       "agents/author-writer.md",
       "agents/author-reviewer.md",
-      "agents/coder-lite.md",
       "skills/consultation/SKILL.md",
     ]
-    const modelTokens = /(GLM-|DeepSeek|Gemini|Qwen|Claude|Sonnet|Haiku|Kimi|MiMo|Terminal-Bench|GPQA|HLE|IFBench|ARC-AGI|SkillsBench|DeepSWE)/i
+    // "Claude" the model is banned; "CLAUDE.md" the host guard file is required
+    // controller content (the AGENTS.md/CLAUDE.md guard), so it is exempted.
+    const modelTokens = /(GLM-|DeepSeek|Gemini|Qwen|Sonnet|Haiku|Kimi|MiMo|Terminal-Bench|GPQA|HLE|IFBench|ARC-AGI|SkillsBench|DeepSWE|Claude(?!\.md))/i
 
     // when // then
     for (const asset of roleAssets) {

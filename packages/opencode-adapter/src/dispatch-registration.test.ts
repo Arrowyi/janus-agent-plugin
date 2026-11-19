@@ -6,13 +6,37 @@ import { setImmediate } from "node:timers/promises"
 import type { ToolDefinition } from "@opencode-ai/plugin"
 import * as dispatchTools from "./dispatch-tool.ts"
 import { JanusAgentPlugin } from "./plugin.ts"
-import { buildConsultantRuntimeBindings, buildCoderRuntimeBindings, buildJanusRuntimeBindings } from "./agent-registration.ts"
+import { buildConsultantRuntimeBindings, buildTechLeadRuntimeBindings, buildJanusRuntimeBindings } from "./agent-registration.ts"
 import { JanusPluginConfigSchema } from "./plugin-config.ts"
-import { createFakeClock } from "./dispatch-test-fixtures.ts"
+import { createFakeClock, createFakeSdk, makeJobSpec } from "./dispatch-test-fixtures.ts"
 import { PRODUCTION_WAIT_BUDGET_MS } from "./dispatch-contract.ts"
 import { context, envelope, fixture, pluginInput } from "./dispatch-registration-fixtures.ts"
 
 const { createJanusDispatchTools } = dispatchTools
+
+/** Seed a coder job root (glm-5.3) a review-seat dispatch can verify against. */
+async function seedCoderJobRoot(sdk: ReturnType<typeof createFakeSdk>): Promise<string> {
+  const root = await sdk.session.create({
+    body: { parentID: "ses_parent", title: "[consultation-dispatch:v1] coder" },
+    query: { directory: "/tmp/project" },
+  })
+  if (root.data === undefined) throw new Error("missing seeded root")
+  await sdk.session.prompt({
+    path: { id: root.data.id },
+    body: {
+      noReply: true,
+      messageID: `msg-spec-${root.data.id}`,
+      parts: [{
+        type: "text",
+        text: JSON.stringify(makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3"] })),
+        synthetic: true,
+        ignored: true,
+      }],
+    },
+    query: { directory: "/tmp/project" },
+  })
+  return root.data.id
+}
 
 describe("unified dispatch registration", () => {
   let directory: string
@@ -137,9 +161,9 @@ describe("unified dispatch registration", () => {
     ])
     expect(bindings).toContain("`return_handle: true`")
     expect(bindings).not.toContain("`writer_session_id`")
-    const coderBindings = buildCoderRuntimeBindings(config, design, handoff)
-    expect(coderBindings).toContain("`janus_dispatch_continue`")
-    expect(coderBindings).toContain("`return_handle: true`")
+    const techLeadBindings = buildTechLeadRuntimeBindings(config, design, handoff)
+    expect(techLeadBindings).toContain("`janus_dispatch_continue`")
+    expect(techLeadBindings).toContain("`return_handle: true`")
     const janusBindings = buildJanusRuntimeBindings(config, handoff)
     expect(janusBindings).toContain("`janus_dispatch_continue`")
     expect(janusBindings).toContain("`return_handle: true`")
@@ -151,8 +175,8 @@ describe("unified dispatch registration", () => {
     const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
     // Then the fourth job tool is present with exactly the contract args.
     expect(Object.keys(tools)).toEqual(["janus_dispatch", "janus_dispatch_wait", "janus_dispatch_cancel", "janus_dispatch_continue"])
-    expect(Object.keys(tools.janus_dispatch.args)).toEqual(["role", "prompt", "return_handle", "mode", "tier", "protocol"])
-    expect(Object.keys(tools.janus_dispatch_continue.args)).toEqual(["session_id", "prompt", "role"])
+    expect(Object.keys(tools.janus_dispatch.args)).toEqual(["role", "prompt", "return_handle", "mode", "tier", "protocol", "reviews_job_ids", "stage"])
+    expect(Object.keys(tools.janus_dispatch_continue.args)).toEqual(["session_id", "prompt", "role", "reviews_job_ids"])
     expect(tools.janus_dispatch_continue.description).toContain("session_id")
   })
 
@@ -210,7 +234,7 @@ describe("unified dispatch registration", () => {
 
   for (const scenario of [
     { role: "common-explorer", field: "common_explorer", agent: "common-explorer", model: "opencode-go/deepseek-v4.1-flash" },
-    { role: "coder-reviewer", field: "coder_reviewer", agent: "coder-reviewer", model: "opencode/claude-sonnet-5-5" },
+    { role: "coder-reviewer", field: "coder_reviewer", agent: "coder-reviewer", model: "opencode-go/kimi-k3.1-pro" },
     { role: "author-reviewer", field: "author_reviewer", agent: "author-reviewer", model: "opencode-go/kimi-k3.1-pro" },
     { role: "author", field: "author", agent: "author", model: "opencode-go/gemini-4-argon" },
     { role: "simple", field: "simple", agent: "simple", model: "opencode-go/deepseek-v4.1-flash" },
@@ -230,9 +254,13 @@ describe("unified dispatch registration", () => {
           f.finish()
           return result
         }
+        // A coder-reviewer dispatch names the coder job it reviews; the
+        // seeded root pins glm-5.3, cross-family from both route variants.
+        const reviewArgs =
+          scenario.role === "coder-reviewer" ? { reviews_job_ids: [await seedCoderJobRoot(f.sdk)] } : {}
         const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
         // When dispatching the configured role.
-        const result = await tools.janus_dispatch.execute({ role: scenario.role, prompt: "bounded task" }, context())
+        const result = await tools.janus_dispatch.execute({ role: scenario.role, prompt: "bounded task", ...reviewArgs }, context())
         // Then the actual generating request uses the selected route.
         expect(result).toBe("final report")
         expect(f.submissions.map((s) => ({ agent: s.body.agent, model: s.body.model }))).toEqual([{

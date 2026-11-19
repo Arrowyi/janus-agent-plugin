@@ -5,10 +5,13 @@ import {
   type AttemptReservation,
   type CancelIntent,
   type Clock,
+  type DispatchProtocol,
   type DispatchRole,
   type DispatchSdk,
+  type DispatchStage,
   type JobSpec,
   type JournalRecord,
+  type JournalRole,
   type SdkSession,
   type SdkTextPart,
   type SdkPart,
@@ -57,6 +60,10 @@ export interface CreateJobInput {
   readonly modelChain: ReadonlyArray<string | null>
   readonly prompt: string
   readonly clock: Clock
+  /** Protocol whose card prefixed the turn-1 prompt, persisted for the record. */
+  readonly protocol?: DispatchProtocol
+  /** Caller-declared review stage, persisted for the record (see dispatch-guard.ts). */
+  readonly stage?: DispatchStage
   /** Existing dispatch session a continuation job reuses as its attempt-0 target. */
   readonly sessionID?: string
   /** Original job root that owned the reused target session. */
@@ -77,7 +84,7 @@ export interface AppendRecordResult {
 export interface CreateAttemptSessionInput {
   readonly jobID: string
   readonly directory: string
-  readonly role: DispatchRole
+  readonly role: JournalRole
 }
 export interface CreateAttemptSessionResult {
   readonly sessionID: string
@@ -86,6 +93,117 @@ export interface LoadJobInput {
   readonly jobID: string
   readonly directory: string
   readonly expectedParentID: string
+}
+
+/**
+ * Cross-session read-only query for the review-seat guard: the pinned model
+ * of a coder job root. Unlike `loadJob`, ownership is deliberately NOT
+ * checked — a later controller session must still be able to verify a coder
+ * task dispatched by an earlier controller at Stage 2. A continuation job
+ * root (its spec carries `continued_from`) is rejected with a pointer to
+ * the original root; an attempt session id has no spec to read and is
+ * rejected as not-found with a root job_id hint.
+ */
+export type JobModelGuardResult =
+  | { readonly ok: true; readonly model: string | null }
+  | {
+      readonly ok: false
+      readonly reason: "not-found" | "read-error" | "not-coder-root" | "invalid-job"
+      readonly message: string
+    }
+
+export async function loadJobModelForGuard(
+  sdk: DispatchSdk,
+  input: { readonly jobID: string; readonly directory: string },
+): Promise<JobModelGuardResult> {
+  const directory = path.normalize(input.directory)
+  const getResult = await sdk.session.get({ path: { id: input.jobID }, query: { directory } })
+  if (getResult.error !== undefined) {
+    return { ok: false, reason: "read-error", message: `job root read failed for ${input.jobID} in ${directory}` }
+  }
+  if (getResult.data === undefined) {
+    return {
+      ok: false,
+      reason: "not-found",
+      message: `job ${input.jobID} was not found in the current workspace; pass the coder task's root job_id (the job_id from janus_dispatch), not a session id`,
+    }
+  }
+  const root = getResult.data
+  if (path.normalize(root.directory) !== directory) {
+    return {
+      ok: false,
+      reason: "not-found",
+      message: `job ${input.jobID} belongs to a different workspace; reviews_job_ids must reference coder jobs in the current workspace`,
+    }
+  }
+  if (!root.title.startsWith(MARKER)) {
+    return {
+      ok: false,
+      reason: "not-found",
+      message: `session ${input.jobID} is not a dispatch job root; pass the coder task's root job_id (the job_id from janus_dispatch), not an attempt session id`,
+    }
+  }
+  const messagesResult = await sdk.session.messages({ path: { id: input.jobID }, query: { directory } })
+  if (messagesResult.error !== undefined) {
+    return { ok: false, reason: "read-error", message: `job messages read failed for ${input.jobID} in ${directory}` }
+  }
+  if (messagesResult.data === undefined) {
+    return { ok: false, reason: "invalid-job", message: `could not read job messages for ${input.jobID}` }
+  }
+  const specs: JobSpec[] = []
+  for (const message of messagesResult.data) {
+    for (const part of message.parts) {
+      if (!isJournalPart(part)) continue
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(part.text)
+      } catch {
+        return { ok: false, reason: "invalid-job", message: `corrupt journal record in job ${input.jobID}: invalid JSON` }
+      }
+      const recordResult = parseJournalRecord(parsed)
+      if (!recordResult.ok) {
+        return { ok: false, reason: "invalid-job", message: `corrupt journal record in job ${input.jobID}: schema rejected` }
+      }
+      if (recordResult.value.kind === "job-spec") specs.push(recordResult.value)
+    }
+  }
+  if (specs.length === 0) {
+    return {
+      ok: false,
+      reason: "not-found",
+      message: `no job spec found for ${input.jobID}; pass the coder task's root job_id (the job_id from janus_dispatch), not an attempt session id`,
+    }
+  }
+  if (specs.length > 1) {
+    return { ok: false, reason: "invalid-job", message: `multiple job specs found in job ${input.jobID}` }
+  }
+  const spec = specs[0]
+  if (spec === undefined) return { ok: false, reason: "invalid-job", message: `no job spec found in job ${input.jobID}` }
+  if (path.normalize(spec.directory) !== directory) {
+    return {
+      ok: false,
+      reason: "not-found",
+      message: `job ${input.jobID} records a different workspace; reviews_job_ids must reference coder jobs in the current workspace`,
+    }
+  }
+  if (root.title !== `${MARKER}${spec.role}`) {
+    return { ok: false, reason: "invalid-job", message: `job ${input.jobID} root title does not match its recorded role` }
+  }
+  if (spec.continued_from !== undefined) {
+    return {
+      ok: false,
+      reason: "not-coder-root",
+      message: `job ${input.jobID} is a continuation job root; pass the original coder task's root job_id (${spec.continued_from})`,
+    }
+  }
+  if (spec.role !== "coder") {
+    return {
+      ok: false,
+      reason: "not-coder-root",
+      message: `job ${input.jobID} records dispatch role ${spec.role}; reviews_job_ids must reference coder task jobs`,
+    }
+  }
+  return { ok: true, model: spec.model_chain[0] ?? null }
 }
 
 const MARKER = "[consultation-dispatch:v1] "
@@ -122,6 +240,8 @@ export async function createJob(
     parent_id: input.parentID,
     directory,
     created_at: input.clock.now(),
+    ...(input.protocol !== undefined ? { protocol: input.protocol } : {}),
+    ...(input.stage !== undefined ? { stage: input.stage } : {}),
     ...(input.sessionID !== undefined ? { session_id: input.sessionID } : {}),
     ...(input.continuedFrom !== undefined ? { continued_from: input.continuedFrom } : {}),
   }

@@ -9,7 +9,6 @@ import {
   registerAuthorReviewer,
   registerAuthorWriter,
   registerCoder,
-  registerCoderLite,
   registerCoderReviewer,
   registerCommonExplorer,
   registerConsultantAgent,
@@ -18,6 +17,8 @@ import {
   registerConsultantCritic,
   registerJanus,
   registerSimple,
+  registerSolutionReviewer,
+  registerTechLead,
 } from "./agent-registration.ts"
 import type { JanusPluginConfig } from "./plugin-config.ts"
 
@@ -55,6 +56,7 @@ const ROLE_TARGETS = [
   { golden: "simple", agent: "simple" },
   { golden: "consultant", agent: "consultant" },
   { golden: "architect", agent: "architect" },
+  { golden: "tech-lead", agent: "tech-lead" },
   { golden: "coder", agent: "coder" },
   { golden: "author", agent: "author" },
   { golden: "common-explorer", agent: "common-explorer" },
@@ -62,9 +64,9 @@ const ROLE_TARGETS = [
   { golden: "consultant-critic", agent: "consultant-critic" },
   { golden: "consultant-auditor", agent: "consultant-auditor" },
   { golden: "coder-reviewer", agent: "coder-reviewer" },
+  { golden: "solution-reviewer", agent: "solution-reviewer" },
   { golden: "author-writer", agent: "author-writer" },
   { golden: "author-reviewer", agent: "author-reviewer" },
-  { golden: "coder-lite", agent: "coder-lite" },
 ] as const
 
 function makeConfig(): JanusPluginConfig {
@@ -80,8 +82,12 @@ function makeConfig(): JanusPluginConfig {
     consultant_agent: "consultant",
     architect_agent: "architect",
     architect_enabled: true,
+    tech_lead_agent: "tech-lead",
+    tech_lead_enabled: true,
     coder_agent: "coder",
     coder_enabled: true,
+    solution_reviewer_agent: "solution-reviewer",
+    solution_reviewer_enabled: true,
     author_agent: "author",
     author_enabled: true,
     common_explorer_agent: "common-explorer",
@@ -99,8 +105,6 @@ function makeConfig(): JanusPluginConfig {
     author_reviewer_agent: "author-reviewer",
     author_reviewer_enabled: true,
     writer_docs_roots: ["userdoc"],
-    coder_lite_agent: "coder-lite",
-    coder_lite_enabled: true,
   }
 }
 
@@ -110,10 +114,11 @@ async function assembleAll(): Promise<Map<string, string>> {
 
   await registerConsultantAgent(config, pluginConfig, SNAPSHOT_NAMESPACE, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
   await registerArchitect(config, pluginConfig, SNAPSHOT_NAMESPACE, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
+  await registerTechLead(config, pluginConfig, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
   await registerAuthor(config, pluginConfig, SNAPSHOT_NAMESPACE, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
-  await registerCoder(config, pluginConfig, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
+  await registerCoder(config, pluginConfig, SNAPSHOT_ENV)
+  await registerSolutionReviewer(config, pluginConfig, SNAPSHOT_ENV)
   await registerSimple(config, pluginConfig, SNAPSHOT_NAMESPACE)
-  await registerCoderLite(config, pluginConfig)
   await registerJanus(config, pluginConfig, SNAPSHOT_PROJECT_DIR, SNAPSHOT_ENV)
   await registerCommonExplorer(config, pluginConfig)
   await registerConsultantAnalyst(config, pluginConfig)

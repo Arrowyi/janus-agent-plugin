@@ -350,7 +350,7 @@
   {
     "id": "C30",
     "title": "No role advances a fallback chain: every role is single-attempt",
-    "given": "Fallback chains were removed; every dispatch role resolves to a single model. A delegated author-writer targets the host agent with a single attempt; the coder can take a deep-tier model override.",
+    "given": "Fallback chains were removed; every dispatch role resolves to a single model. A delegated author-writer targets the host agent with a single attempt; the coder's dual-tier routing still resolves each tier to a single model.",
     "when": "A dispatch attempt fails terminally with a retryable provider error (e.g. 402)",
     "then": "The failure surfaces as a terminal failure carrying the remediation hint (naming the role's _model config field and the config path) — no backup model is attempted, for any role including the author-writer.",
     "grading": "deterministic",
@@ -373,20 +373,20 @@
   },
   {
     "id": "C32",
-    "title": "Coder routes spec-complete milestones to coder-lite; judgment work stays with coder (deep-tier uplift)",
+    "title": "The tech-lead routes spec-complete milestones to coder (fast); judgment work goes to coder (standard)",
     "given": "A coding task has one fully specified, mechanically repeatable subtask (three or more edit operations) and one subtask that needs debugging or a design decision.",
-    "when": "The coder routes the work",
-    "then": "The spec-complete subtask is delegated to coder-lite serially, one milestone at a time, after a pre-dispatch baseline snapshot; the judgment-heavy subtask stays with coder (L3 can use a deep-tier model override) — never to coder-lite. The consultant does not implement the code.",
+    "when": "The tech-lead routes the work",
+    "then": "The spec-complete subtask is dispatched to the coder at tier \"fast\", serially, one milestone at a time, after a pre-dispatch baseline snapshot; the judgment-heavy subtask goes to the coder at tier \"standard\" (an L3 milestone) — never kept inline by the tech-lead. The consultant hands the coding task to the tech-lead instead of implementing it.",
     "grading": "model",
     "modes": [],
-    "notes": "Rubric: Did the routing respect coder-lite's scope (no ambiguous, judgment, or unplanned cross-module work), record a baseline before dispatching, and avoid keeping spec-complete volume inline just because the files were already read? Did the consultant hand code to coder instead of writing it itself?"
+    "notes": "Rubric: Did the routing respect the fast tier's scope (no ambiguous, judgment, or unplanned cross-module work), record a baseline before dispatching, and avoid keeping spec-complete volume inline just because the files were already read? Did the consultant hand the code to the tech-lead instead of writing it itself?"
   },
   {
     "id": "C33",
     "title": "Janus is the default router for consulting, coding, and quick answers",
     "given": "A user starts at the default janus entry with three requests in sequence: a product-selection question, a code change, and a simple version lookup.",
     "when": "Janus classifies each request",
-    "then": "The selection question routes to consultant, the code change to coder, and the version lookup to simple (or an inline one-liner). Janus does not do the deep evidence work or the heavy coding itself.",
+    "then": "The selection question routes to consultant, the code change to tech-lead, and the version lookup to simple (or an inline one-liner). Janus does not do the deep evidence work or the heavy coding itself.",
     "grading": "model",
     "modes": [
       "select"
@@ -395,10 +395,10 @@
   },
   {
     "id": "C34",
-    "title": "Direct entry to consultant, coder, or simple bypasses routing",
-    "given": "A user already knows the task type and selects consultant, coder, or simple directly.",
+    "title": "Direct entry to consultant, tech-lead, or simple bypasses routing",
+    "given": "A user already knows the task type and selects consultant, tech-lead, or simple directly.",
     "when": "The selected specialist handles the request",
-    "then": "The specialist starts in its own workflow without first re-routing through janus; consultant may still dispatch its research team, coder may still dispatch coder-lite, and simple never dispatches.",
+    "then": "The specialist starts in its own workflow without first re-routing through janus; consultant may still dispatch its research team, tech-lead may still dispatch the coder and its reviewer seats, and simple never dispatches.",
     "grading": "model",
     "modes": [
       "select"
@@ -407,30 +407,30 @@
   },
   {
     "id": "C35",
-    "title": "Coder L0 takes the direct path",
+    "title": "A micro-change takes the coder fast tier without planning ceremony",
     "given": "A one-line fix or a mechanically obvious config change; the diff can be described in one sentence.",
-    "when": "The coder classifies the task",
-    "then": "The coder announces L0, states the intended change, edits minimally, runs the nearest verification, and reports the diff/output. It does not write a plan, invoke brainstorming, or ask for design approval.",
+    "when": "The tech-lead classifies the task",
+    "then": "The tech-lead grades it L0/L1 and dispatches the coder at tier \"fast\" with the objective, the acceptance criteria, the verification commands, and the Confirmed paths; the coder edits minimally, runs the nearest verification, and reports the diff/output. No plan, brainstorming, or design approval is opened for it.",
     "grading": "model",
     "modes": [],
     "notes": "Rubric: Reject heavyweight planning/TDD ceremony on a one-line fix; require a real verification result."
   },
   {
     "id": "C36",
-    "title": "Coder L2 presents the design gate before editing",
+    "title": "A multi-design task presents the plan gate before any coder dispatch",
     "given": "A multi-file feature or refactor with more than one plausible design; the diff cannot be described in one sentence.",
-    "when": "The coder begins the task",
-    "then": "The coder explores first, presents Goal/Context/Constraints/Done-when, 2-3 options with trade-offs, a recommendation, files, risks, and verification; it waits for approval before editing.",
+    "when": "The tech-lead begins the task",
+    "then": "The tech-lead explores first and, without an accepted design.md, presents the full plan gate — Goal/Context/Constraints/Done-when, 2-3 options with trade-offs, a recommendation, files, risks, and verification — and waits for approval before dispatching any coder; with an accepted design.md the gate shrinks to the uncovered details plus the exact file list.",
     "grading": "model",
     "modes": [],
-    "notes": "Rubric: Did the coder avoid editing before the design approval, and did the proposal include concrete files and a verification plan?"
+    "notes": "Rubric: Did the tech-lead avoid dispatching any coder before the plan approval, and did the proposal include concrete files and a verification plan?"
   },
   {
     "id": "C37",
-    "title": "Coder L3 runs the correctness-critical quality gate",
+    "title": "An L3 milestone runs the correctness-critical quality gate at the standard tier",
     "given": "A change touches concurrency, idempotency, transactions, a DB migration, auth, money, data deletion, or production config.",
-    "when": "The coder plans and implements the change",
-    "then": "The coder runs the four-column pre-analysis, reads the schema/constraints, analyzes idempotency/replay/concurrency/failure modes, proves the test can fail, gets independent review, and asks before destructive actions.",
+    "when": "The tech-lead plans and dispatches the change",
+    "then": "The tech-lead grades it L3 and dispatches the coder at tier \"standard\" for the core logic and its red-green failing tests: the coder runs the four-column pre-analysis, reads the schema/constraints, analyzes idempotency/replay/concurrency/failure modes, proves the test can fail, and asks before destructive actions; the milestone patch then gets an independent coder-reviewer review — never a self-approved L3 change.",
     "grading": "model",
     "modes": [],
     "notes": "Rubric: Reject a self-approved L3 change without the constraint/replay/concurrency walkthrough or independent review."
@@ -656,7 +656,7 @@
     "title": "A structural design question routes to design with per-layer gates",
     "given": "The user asks how to structure a new service: module boundaries, ownership, and the interface between two components. Existing code and AGENTS.md are available, and the decision changes future structure.",
     "when": "The architect classifies the mode and runs the design method",
-    "then": "It routes to `design` (never `select`, `doc` architecture, or `roadmap`), runs at standard or deep, frames L0 with prioritised six-part quality scenarios, and decides layer by layer. Each decision offers at least two genuinely different options with a recommendation, what would change it, and a reversibility label; one-way doors are approved individually while two-way doors get a default and one batch approval per layer. It writes design.md and, in a bounded design turn, returns only the current layer's decision requests. Handing the record to `coder` follows the `handoff` skill: `handoff.md` links `design.md` under `关联文件链接` and the handing turn ends with `交接单: <handoff-id>`.",
+    "then": "It routes to `design` (never `select`, `doc` architecture, or `roadmap`), runs at standard or deep, frames L0 with prioritised six-part quality scenarios, and decides layer by layer. Each decision offers at least two genuinely different options with a recommendation, what would change it, and a reversibility label; one-way doors are approved individually while two-way doors get a default and one batch approval per layer. It writes design.md and, in a bounded design turn, returns only the current layer's decision requests. Handing the record to `tech-lead` follows the `handoff` skill: `handoff.md` links `design.md` under `关联文件链接` and the handing turn ends with `交接单: <handoff-id>`.",
     "grading": "model",
     "modes": [
       "design"
@@ -665,10 +665,10 @@
   },
   {
     "id": "C57",
-    "title": "A coder with a design record shrinks the design gate and checks the plan against it",
-    "given": "An accepted design.md exists for the task, and the coder receives a bounded L2 implementation request.",
-    "when": "The coder classifies the task and plans",
-    "then": "It reads design.md, skips brainstorming's spec conversation, and shrinks the L2 design gate to the implementation details the record does not cover plus the exact file list. It writes a lean ExecPlan (milestones, verification/rollback, decision log, unexpected and findings) at design/<projectId>/<designId>/plan.md, self-checks every accepted decision has a task, every interface has a test, and the order is revertible, and after implementation has a fresh-context subagent compare the diff with design.md. It treats `design.md` as 100% read-only (never edits any line of it) and deletes the temporary `plan.md` without confirmation once the work has landed (all milestones verified, review resolved, final report delivered).",
+    "title": "The tech-lead plans from an accepted design record with a shrunk gate",
+    "given": "An accepted design.md exists for the task, and the tech-lead receives the implementation request.",
+    "when": "The tech-lead classifies the task and plans",
+    "then": "It reads design.md and treats it as 100% read-only (never edits any line of it), skips brainstorming's spec conversation, and shrinks the plan gate to the implementation details the record does not cover plus the exact file list. It writes a lean plan.md (milestones ordered independently green and revertible, verification/rollback) at design/<projectId>/<designId>/plan.md, self-checks every accepted decision has a task, every interface has a test, and the order is revertible, dispatches each milestone to a fresh coder session, and after implementation has the integrated diff reviewed against the record at Stage 2. It deletes the temporary `plan.md` without confirmation once the work has landed (all milestones verified, review resolved, final report delivered).",
     "grading": "model",
     "modes": [
       "design"
@@ -677,15 +677,15 @@
   },
   {
     "id": "C58",
-    "title": "A one-way-door design decision gets a coder-reviewer pre-mortem",
+    "title": "A one-way-door design decision gets a solution-reviewer pre-mortem",
     "given": "A design decision is labelled a one-way door (an irreversible schema or public-interface commitment) and is ready for approval.",
     "when": "The architect reaches the approval gate",
-    "then": "It dispatches the coder-reviewer for a pre-mortem on that decision before approval. The coder-reviewer returns a `designReview` block covering preMortem failures, unmet quality scenarios, reversibility problems, and missing options, reporting only correctness-affecting problems; the architect reconciles it (adopt, lower confidence, or change the decision) before asking for approval.",
+    "then": "It dispatches the solution-reviewer for a pre-mortem on that decision before approval. The solution-reviewer returns a `designReview` block covering preMortem failures, unmet quality scenarios, reversibility problems, and missing options, reporting only correctness-affecting problems; the architect reconciles it (adopt, lower confidence, or change the decision) before asking for approval.",
     "grading": "model",
     "modes": [
       "design"
     ],
-    "notes": "Rubric: Reject skipping the coder-reviewer for a one-way door, a batch approval that hides it, or a critique made of stylistic preferences. Require designReview fields and a reconciled decision gate."
+    "notes": "Rubric: Reject skipping the solution-reviewer for a one-way door, a batch approval that hides it, or a critique made of stylistic preferences. Require designReview fields and a reconciled decision gate."
   },
   {
     "id": "C59",
@@ -916,10 +916,10 @@
   },
   {
     "id": "C77",
-    "title": "Coder session is pinned for a later revision",
-    "given": "An accepted design record needs a bounded coder implementation, and a follow-up fix may be requested after review.",
-    "when": "The coder dispatches the implementation with return_handle: true and later sends a bounded change.",
-    "then": "The first coder dispatch captures session_id; the follow-up uses janus_dispatch_continue on that same session, not a fresh coder dispatch; the model and agent are inherited from the original job spec.",
+    "title": "The tech-lead session is pinned for a later revision",
+    "given": "An accepted design record needs implementation, and a follow-up fix may be requested after review.",
+    "when": "The tech-lead dispatch is launched with return_handle: true and later receives a bounded change.",
+    "then": "The first tech-lead dispatch captures session_id; the follow-up uses janus_dispatch_continue on that same session, not a fresh dispatch; the model and agent are inherited from the original job spec.",
     "grading": "model",
     "modes": [
       "design"
@@ -928,22 +928,22 @@
   },
   {
     "id": "C78",
-    "title": "Coder-reviewer runs a one-way-door design pre-mortem",
+    "title": "Solution-reviewer runs a one-way-door design pre-mortem",
     "given": "A design layer contains a one-way-door decision with measurable quality scenarios and a reversibility label.",
-    "when": "The architect dispatches coder-reviewer with protocol design_premortem.",
-    "then": "The coder-reviewer assumes failure, names concrete failure mechanisms, checks each quality scenario and the reversibility/approval path, names missing options or fired triggers, and reports only correctness-affecting problems in designReview.",
+    "when": "The architect dispatches solution-reviewer with protocol design_premortem.",
+    "then": "The solution-reviewer assumes failure, names concrete failure mechanisms, checks each quality scenario and the reversibility/approval path, names missing options or fired triggers, and reports only correctness-affecting problems in designReview.",
     "grading": "model",
     "modes": [
       "design"
     ],
-    "notes": "Protocol card assets/protocols/design_premortem.md; coder-reviewer output contract."
+    "notes": "Protocol card assets/protocols/design_premortem.md; solution-reviewer output contract."
   },
   {
     "id": "C79",
-    "title": "Coder-reviewer reviews a coder plan and diff against design.md",
-    "given": "An accepted design.md and a coder L2/L3 plan.md plus a git diff are supplied.",
-    "when": "The coder dispatches coder-reviewer with protocol code_plan_review.",
-    "then": "The coder-reviewer maps every accepted decision to a task, every interface to a test, checks the diff for scope creep and migration/failure-path coverage, and returns codePlanReview with a pass/revise/block verdict and residual uncertainty.",
+    "title": "Solution-reviewer reviews the tech-lead's plan and the final diff against design.md",
+    "given": "An accepted design.md and the tech-lead's plan.md plus a git diff are supplied.",
+    "when": "The tech-lead dispatches solution-reviewer with protocol code_plan_review at stage plan (before implementation) or stage final (the integrated diff).",
+    "then": "The solution-reviewer maps every accepted decision to a task, every interface to a test, checks the diff for scope creep and migration/failure-path coverage, and returns codePlanReview with a pass/revise/block verdict and residual uncertainty.",
     "grading": "model",
     "modes": [
       "design"
@@ -983,7 +983,7 @@
   {
     "id": "C83",
     "title": "CritiqueDraft contract carries planReview and nullable designReview",
-    "given": "A consultant-critic returns planReview and residualUncertainty; a coder-reviewer returns designReview or null.",
+    "given": "A consultant-critic returns planReview and residualUncertainty; a solution-reviewer returns designReview or null.",
     "when": "Each draft is parsed with CritiqueDraftSchema and the prompt contracts are checked.",
     "then": "planReview defaults to [] when absent, residualUncertainty accepts string/null, designReview accepts an object/null/undefined, and every schema field appears in the corresponding critique prompt.",
     "grading": "deterministic",
@@ -1041,24 +1041,24 @@
   {
     "id": "C88",
     "title": "Human-facing roles explain a technical term at first use without touching exact symbols",
-    "given": "A human-facing role (janus, simple, consultant, architect, coder, author, author-writer, or author-reviewer) must answer or draft prose containing a domain term whose first occurrence the reader has not met.",
+    "given": "A human-facing role (janus, simple, consultant, architect, tech-lead, author, author-writer, or author-reviewer) must answer or draft prose containing a domain term whose first occurrence the reader has not met.",
     "when": "It produces user-facing output",
-    "then": "It prefers plain everyday language over stacked jargon and boilerplate; at the term's first occurrence it adds a plain-language gloss, an analogy, or a one-line concrete example; it never paraphrases code identifiers, signatures, CLI commands and arguments, file paths, config keys, verbatim quotations, or structured field names for the sake of plainness. A structural leaf (common-explorer, consultant-analyst, consultant-critic, consultant-auditor, coder-reviewer, coder-lite) is exempt: its structured output is unchanged.",
+    "then": "It prefers plain everyday language over stacked jargon and boilerplate; at the term's first occurrence it adds a plain-language gloss, an analogy, or a one-line concrete example; it never paraphrases code identifiers, signatures, CLI commands and arguments, file paths, config keys, verbatim quotations, or structured field names for the sake of plainness. A structural leaf (common-explorer, consultant-analyst, consultant-critic, consultant-auditor, coder, coder-reviewer, solution-reviewer) is exempt: its structured output is unchanged.",
     "grading": "model",
     "modes": [
       "doc"
     ],
-    "notes": "Rubric: Inspect a user-facing reply and a drafted section for a first-use gloss on each load-bearing term, and exact symbol/command/path preservation; reject jargon stacking with no explanation or a 'simplified' identifier/command. Deterministic backstop: the fragment is injected into exactly the eight human-facing roles and none of the six structural leaves (agent-registration.test.ts), and its wording lives once in assets/principles/user-facing-style.md (prompt-lint.test.ts budget)."
+    "notes": "Rubric: Inspect a user-facing reply and a drafted section for a first-use gloss on each load-bearing term, and exact symbol/command/path preservation; reject jargon stacking with no explanation or a 'simplified' identifier/command. Deterministic backstop: the fragment is injected into exactly the eight human-facing roles and none of the seven structural leaves (agent-registration.test.ts), and its wording lives once in assets/principles/user-facing-style.md (prompt-lint.test.ts budget)."
   },
   {
     "id": "C89",
-    "title": "Coder delegates approved-plan milestones with baseline restore, the ephemeral fast path, and the two-tier review",
-    "given": "An accepted design.md with Confirmed paths is handed to coder; the plan.md splits the work into spec-complete milestones of three or more edit operations each, and the user also asks for a throwaway probe program.",
-    "when": "The coder executes the plan",
-    "then": "Each spec-complete milestone is delegated serially to coder-lite in a clean sub-session (planning-phase reads never keep Phase 2 inline); a pre-dispatch baseline (status.txt, dirty.patch, untracked.tar or snapshot.tar under a 0700 .baseline-<id>/ dir) is recorded and reconciled after each return, out-of-scope pollution is restored to exact pre-dispatch content with unauthorized new files quarantined and at most one re-do continue requiring a re-read; the throwaway probe runs direct as L0 (ephemeral verification) with no plan.md and no dispatch; coder reviews every milestone itself and coder-reviewer runs only at Stage 1 (plan.md) and Stage 2 (the final total diff).",
+    "title": "The tech-lead delegates approved-plan milestones with baseline restore, the ephemeral fast path, and the two-tier review",
+    "given": "An accepted design.md with Confirmed paths is handed to the tech-lead; the plan.md splits the work into spec-complete milestones of three or more edit operations each, and the user also asks for a throwaway probe program.",
+    "when": "The tech-lead executes the plan",
+    "then": "Each spec-complete milestone is dispatched serially to the coder at tier \"fast\" in a clean sub-session; a pre-dispatch baseline (the .baseline-mK/ PRE tree snapshots) is recorded and reconciled after each return, out-of-scope pollution is restored to exact pre-dispatch content with unauthorized new files quarantined and at most one re-do continue requiring a re-read; the throwaway probe runs as a direct coder tier \"fast\" verification with no plan.md and no persistent change; the tech-lead reviews every milestone itself and coder-reviewer reviews each milestone patch, while solution-reviewer runs only at Stage 1 (plan.md) and Stage 2 (the final total diff).",
     "grading": "model",
     "modes": [],
-    "notes": "Rubric: Inspect the dispatch trace for per-milestone coder-lite jobs, a baseline snapshot before the first dispatch, reconciliation git status/diff after each return, quarantine plus single-continue handling of an out-of-scope change, and the absence of per-milestone coder-reviewer calls; the probe must stay out of plan.md and out of the repo. Deterministic backstop: the two-tier review, baseline artifacts, and ephemeral classification live in assets/agents/coder.md (prompt-contracts.test.ts), and the deny-guarded bash permission, restore protocol, and steps 80 in agent-registration.test.ts."
+    "notes": "Rubric: Inspect the dispatch trace for per-milestone coder jobs, a baseline snapshot before the first dispatch, reconciliation after each return, restore handling of an out-of-scope change, and the absence of self-review; the probe must stay out of plan.md and out of the repo. Deterministic backstop: the milestone protocol, baseline artifacts, and two-tier review live in assets/agents/tech-lead.md (prompt-contracts.test.ts), and the dispatch deny-guards and steps cap in agent-registration.test.ts."
   },
   {
     "id": "C90",
@@ -1110,5 +1110,45 @@
       "guide"
     ],
     "notes": "Rubric: Inspect the dispatch trace for session reuse or clustered verification (never a silent Stage 3 skip), the shrunk-quota disclosure, and the auditor-absence line; reject an unconditional 首选 for a ranking-dependent finalist. Deterministic backstop: the degrade order and its disclosures live in the consultation skill's team-orchestration module (prompt-contracts.test.ts)."
+  },
+  {
+    "id": "C94",
+    "title": "The tech-lead orchestrates milestones from an accepted design record",
+    "given": "An accepted design.md is handed to the tech-lead with a confirmed file list.",
+    "when": "The tech-lead plans and runs the implementation",
+    "then": "It opens a brand-new sub-session to read the record (100% read-only — it never edits a line of design.md), writes plan.md beside it, and dispatches each milestone to a fresh coder session. For every milestone it records the PRE/POST tree snapshots under .baseline-mK/, builds .review-mK.patch for the reviewer, and appends the ledger line to plan.md only on a reviewer pass backed by the actual verification output.",
+    "grading": "model",
+    "modes": [],
+    "notes": "Rubric: Inspect the dispatch trace for a fresh coder session per milestone, the .baseline-mK/ snapshots, the .review-mK.patch files, and ledger lines that require a reviewer pass plus real verification output; reject the tech-lead writing business code inline or a ledger line without verification. Deterministic backstop: the milestone orchestration protocol and statutory bash limits live in assets/agents/tech-lead.md (prompt-contracts.test.ts)."
+  },
+  {
+    "id": "C95",
+    "title": "Reviewer dispatches carry reviews_job_ids with per-milestone family checks",
+    "given": "The tech-lead is about to dispatch coder-reviewer for a milestone patch, or solution-reviewer with protocol code_plan_review and stage final.",
+    "when": "The review dispatch is built",
+    "then": "Both shapes require reviews_job_ids — the root job ids of every coder session that touched the milestone, fix rounds included — and each listed id is validated one by one against the milestone's ledger; a dispatch whose reviewer shares the coder's model (or model family) is rejected, naming the conflicting pair and the change needed to resolve it; stage plan carries no reviews_job_ids, while stage final must list every coder root id from the plan ledger.",
+    "grading": "model",
+    "modes": [],
+    "notes": "Rubric: Reject a reviewer dispatch without reviews_job_ids, a self-model or same-family review, a stage:plan call carrying ids, or a stage:final call missing coder roots; require the conflict pair and the fix guidance in the rejection. Deterministic backstop: the guard assertions live in dispatch-guard.test.ts and the protocol anchors in assets/agents/tech-lead.md and prompt-contracts.test.ts."
+  },
+  {
+    "id": "C96",
+    "title": "The context watermark checkpoints at the milestone boundary and the caller relays",
+    "given": "A tech-lead dispatch return carries `[context-watermark: <t> tokens >= 250000; checkpoint at milestone boundary]` while milestones remain.",
+    "when": "The tech-lead handles the watermark",
+    "then": "It finishes the current milestone first — the ledger line, the POST_TREE snapshot, and handoff.md per the handoff skill — then ends the turn with `交接单: <handoff-id>` and stops; it never starts the next milestone or continues past the watermark inline. janus or architect receiving the 交接单 relays the work into a fresh tech-lead session via the handoff id — but only after reading the newest hop: the relay runs when its 建议下一跳 names the tech-lead entry, its 默认接力任务 continues the plan, and neither the return nor the hop reports a stop, block, circuit breaker, or a decision awaiting the user; anything else is surfaced to the user instead. A return carrying only the `[context-watermark: <t> tokens >= 250000; checkpoint at milestone boundary]` marker reflects the caller's own context level and never triggers the relay.",
+    "grading": "model",
+    "modes": [],
+    "notes": "Rubric: Inspect the trace for the completed milestone's ledger and handoff.md before the stop, the 交接单 echo, and a fresh tech-lead session on relay gated on the newest hop's 建议下一跳 with its 默认接力任务 continuing the plan; reject an inline takeover of the next milestone, a silent continuation, an unconditional re-dispatch on any 交接单 echo, a relay that overrides a stop, block, circuit breaker, or a decision awaiting the user, or an auto re-dispatch triggered by the watermark marker alone (it reflects the caller's own context, not the tech-lead's). Deterministic backstop: the watermark protocol and checkpoint-hop vocabulary live in assets/agents/tech-lead.md; the handoff echo in the handoff skill (prompt-contracts.test.ts)."
+  },
+  {
+    "id": "C97",
+    "title": "Three failed rounds stop the milestone for the user, never an inline takeover",
+    "given": "A single milestone reaches its third revise round without a pass, or any reviewer returns a block; separately, a coder session exhausts its 80-step cap mid-milestone.",
+    "when": "The tech-lead applies the circuit breaker",
+    "then": "It stops immediately, preserves .baseline-mK/ and the current tree, and reports the failure details to the user for a model upgrade or human intervention — never taking the milestone over inline and never self-approving the review. An 80-step-capped coder session is never taken over inline: the tech-lead opens a new coder session continuing the remaining checklist, the capped session counts toward the milestone's three-round cap, and its job id is appended to reviews_job_ids. A hop written on such a stop names the user-facing caller as its 建议下一跳 and states the pending decision in the 默认接力任务, so the caller surfaces it — never re-dispatches over it.",
+    "grading": "model",
+    "modes": [],
+    "notes": "Rubric: Reject inline implementation after the cap, a self-review pass, a discarded baseline directory, or a silent fourth round; require the stop-and-report behavior and the capped-session continuation with the appended job id. Deterministic backstop: the circuit-breaker, step-cap, and relay rules live in assets/agents/tech-lead.md (prompt-contracts.test.ts)."
   }
 ]

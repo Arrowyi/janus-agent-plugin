@@ -80,7 +80,7 @@ const DESIGN_SKILL_MARKERS = [
   "### Anti-patterns (do not)",
   "one-way-door pre-mortem",
   "six-part scenario",
-  "### Handoff to coder",
+  "### Handoff to the tech-lead",
 ] as const
 
 const DOC_SKILL_MARKERS = [

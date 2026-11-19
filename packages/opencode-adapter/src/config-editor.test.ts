@@ -120,6 +120,16 @@ describe("planChange + applyChange", () => {
     expect(planChange(state, { kind: "set", key: "team_caps.round_cap", value: "1.5" }).errors[0]).toContain("整数")
   })
 
+  test("validateConfigText carries the coder-lite migration hint for removed keys", async () => {
+    const result = validateConfigText('{ "coder_lite_model": "a/b", "tier_models": { "fast": { "coder-lite": "c/d" } } }\n')
+    const errors = result.errors.join("\n")
+    expect(errors).toContain("schema 校验失败")
+    expect(errors).toContain("removed coder-lite keys detected")
+    expect(errors).toContain("coder_lite_model → tier_models.fast.coder")
+    expect(errors).toContain('tier_models.fast["coder-lite"] → tier_models.fast["coder"]')
+    expect(validateConfigText('{ "coder_model": "acme/x" }\n').errors).toEqual([])
+  })
+
   test("setting the current value is a no-op", async () => {
     await seed('{ "coder_model": "acme/x" }\n')
     const plan = planChange(await readConfigState(env), { kind: "set", key: "coder_model", value: "acme/x" })
@@ -166,7 +176,8 @@ describe("effective values", () => {
     expect(effectiveValue(state, ["architect_model"])).toEqual({ value: "acme/judge", source: "inherited" })
     expect(effectiveValue(state, ["consultant_model"])).toEqual({ value: "acme/judge", source: "user" })
     expect(effectiveValue(state, ["coder_model"]).source).toBe("default")
-    expect(effectiveValue(state, ["tier_models", "deep", "coder"]).value).toBe("opencode-go/kimi-k3.1-pro")
+    expect(effectiveValue(state, ["tier_models", "fast", "coder"]).value).toBe("opencode-go/glm-5.3-flash")
+    expect(effectiveValue(state, ["tier_models", "deep", "coder"])).toEqual({ value: undefined, source: "unset" })
     expect(effectiveValue(state, ["writer_delegate_agent"]).source).toBe("unset")
   })
 

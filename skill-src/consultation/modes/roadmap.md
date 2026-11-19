@@ -1,6 +1,6 @@
 ### roadmap: feasibility first
 
-`roadmap` sequences a personal or organizational action plan: habit or behavior change, skill acquisition, a career transition, or project execution. An implementation plan for a codebase belongs to the coder's ExecPlan, and a future-structure decision is `design`.
+`roadmap` sequences a personal or organizational action plan: habit or behavior change, skill acquisition, a career transition, or project execution. An implementation plan for a codebase belongs to the `tech-lead`'s plan, and a future-structure decision is `design`.
 
 `roadmap` never routes to `fast`. Dispatch `common-explorer` first when external prerequisites, rules, or outside-view base rates are unknown. Dispatch `consultant-critic` with `protocol: "plan_robustness"` whenever sequential steps carry `inferred`/`unverifiable` support or multi-stage dependencies; it repairs fragile steps and extracts the top three observable early warning signals.
 

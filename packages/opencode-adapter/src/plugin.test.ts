@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs"
-import { join } from "node:path"
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, realpathSync } from "node:fs"
+import { join, relative } from "node:path"
 import { tmpdir } from "node:os"
 import { createHash } from "node:crypto"
 import { readFile } from "node:fs/promises"
@@ -78,11 +78,14 @@ describe("createJanusConfigHook", () => {
       const consultant = config.agent?.["consultant"] as { prompt: string; permission: Record<string, unknown> }
       const architect = config.agent?.["architect"] as { prompt: string; permission: Record<string, unknown> }
       const author = config.agent?.["author"] as { prompt: string; permission: Record<string, unknown> }
+      const techLead = config.agent?.["tech-lead"] as { prompt: string; permission: Record<string, unknown> }
       const coder = config.agent?.["coder"] as { prompt: string; permission: Record<string, unknown> }
       const janus = config.agent?.["janus"] as { prompt: string; permission: Record<string, unknown> }
 
-      // The handoff dir is the one business-state dir shared by all five primaries.
-      for (const entry of [consultant, architect, author, coder, janus]) {
+      // The handoff dir is the one business-state dir shared by the five
+      // primary entries (janus/consultant/architect/tech-lead/author); the
+      // coder leaf holds none of them.
+      for (const entry of [consultant, architect, author, techLead, janus]) {
         const external = entry.permission.external_directory as Record<string, string>
         expect(external[`${handoffDir}/**`]).toBe("allow")
         expect(entry.prompt).toContain(`Handoff state dir: \`${handoffDir}/${projectId}\``)
@@ -113,9 +116,46 @@ describe("createJanusConfigHook", () => {
       expect(author.prompt).toContain(`Author state dir: \`${authorDir}\``)
       expect(author.prompt).toContain(`${authorDir}/${projectId}/<docId>/brief.md`)
 
+      const techLeadExternal = techLead.permission.external_directory as Record<string, string>
+      expect(techLeadExternal[`${designDir}/**`]).toBe("allow")
+      expect(techLead.prompt).toContain(`Design record: \`${designDir}/${projectId}\``)
+      // the tech-lead edit surface is the two state directories, each allow
+      // carrying its worktree-relative twins (host edit permissions evaluate
+      // path.relative(worktree, file) submissions)
+      const techLeadEdit = techLead.permission.edit as Record<string, string>
+      expect(techLeadEdit["*"]).toBe("deny")
+      expect(Object.keys(techLeadEdit)[0]).toBe("*")
+      expect(techLeadEdit[`${designDir}/**`]).toBe("allow")
+      expect(techLeadEdit[`${handoffDir}/**`]).toBe("allow")
+      expect(techLeadEdit[`${relative(projectDir, designDir)}/**`]).toBe("allow")
+      expect(techLeadEdit[`${relative(projectDir, handoffDir)}/**`]).toBe("allow")
+
+      // The coder is a leaf execution seat: no design/handoff state dirs,
+      // only the shared temporary directory.
       const coderExternal = coder.permission.external_directory as Record<string, string>
-      expect(coderExternal[`${designDir}/**`]).toBe("allow")
-      expect(coder.prompt).toContain(`Design record: \`${designDir}/${projectId}\``)
+      expect(coderExternal[`${designDir}/**`]).toBeUndefined()
+      expect(coderExternal[`${handoffDir}/**`]).toBeUndefined()
+      expect(coder.prompt).not.toContain("Design record:")
+      expect(coder.prompt).not.toContain("Handoff state dir")
+      // coder edit: workspace allow, relative-shape and absolute-shape
+      // external asks, and the tmp-scope allow twins last.
+      const coderEdit = coder.permission.edit as Record<string, string>
+      expect(coderEdit["*"]).toBe("allow")
+      expect(Object.keys(coderEdit)[0]).toBe("*")
+      expect(coderEdit["../*"]).toBe("ask")
+      expect(coderEdit["/*"]).toBe("ask")
+      const tmp = tmpdir()
+      for (const scopeDir of [
+        `${tmp}/opencode`,
+        `${realpathSync(tmp)}/opencode`,
+        "/tmp/opencode",
+        "/private/tmp/opencode",
+      ]) {
+        expect(coderEdit[`${scopeDir}/**`]).toBe("allow")
+        expect(coderEdit[`${relative(projectDir, scopeDir)}/**`]).toBe("allow")
+      }
+      // no state-dir twin leaks into the coder edit surface
+      expect(coderEdit[`${relative(projectDir, designDir)}/**`]).toBeUndefined()
 
       // Janus is an orchestrator, not a team: only the handoff dir.
       expect(janus.permission).toEqual({
@@ -146,23 +186,24 @@ describe("createJanusConfigHook", () => {
       // when
       await hook(config)
 
-      // then — the six single-word entries
+      // then — the five primary entries
       expect(config.agent?.["janus"]).toMatchObject({ mode: "all", model: "opencode-go/glm-5.3-flash" })
       expect(config.agent?.["simple"]).toMatchObject({ mode: "all", model: "opencode-go/deepseek-v4.1-flash" })
       expect(config.agent?.["consultant"]).toMatchObject({ mode: "primary", model: "opencode-go/gemini-4-argon" })
       expect(config.agent?.["architect"]).toMatchObject({ mode: "primary", model: "opencode-go/gemini-4-argon" })
-      expect(config.agent?.["coder"]).toMatchObject({ mode: "all", model: "opencode-go/glm-5.3" })
+      expect(config.agent?.["tech-lead"]).toMatchObject({ mode: "all", model: "opencode-go/glm-5.3" })
       expect(config.agent?.["author"]).toMatchObject({ mode: "primary", model: "opencode-go/gemini-4-argon" })
 
-      // the eight hyphenated team members
+      // the nine hyphenated leaves
       expect(config.agent?.["common-explorer"]).toMatchObject({ mode: "subagent", model: "opencode-go/deepseek-v4.1-flash" })
       expect(config.agent?.["consultant-analyst"]).toMatchObject({ mode: "subagent", model: "opencode-go/kimi-k3.1-pro" })
       expect(config.agent?.["consultant-critic"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
-      expect(config.agent?.["coder-reviewer"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
+      expect(config.agent?.["coder-reviewer"]).toMatchObject({ mode: "subagent", model: "opencode-go/kimi-k3.1-pro" })
       expect(config.agent?.["consultant-auditor"]).toMatchObject({ mode: "subagent", model: "opencode-go/grok-4.7" })
+      expect(config.agent?.["solution-reviewer"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
+      expect(config.agent?.["coder"]).toMatchObject({ mode: "subagent", steps: 80, model: "opencode-go/glm-5.3" })
       expect(config.agent?.["author-writer"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
       expect(config.agent?.["author-reviewer"]).toMatchObject({ mode: "subagent", model: "opencode-go/kimi-k3.1-pro" })
-      expect(config.agent?.["coder-lite"]).toMatchObject({ mode: "subagent", model: "opencode-go/glm-5.3-flash" })
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
     }
@@ -463,12 +504,12 @@ describe("createJanusConfigHook", () => {
   })
 
 
-  it("omits coder-lite when coder_lite_enabled=false", async () => {
+  it("omits the tech-lead when tech_lead_enabled=false", async () => {
     // given
     const tmpHome = makeTempHome()
-    const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-coderliteoff-"))
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-tloff-"))
     const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, '{\n  "coder_lite_enabled": false\n}')
+    writeFileSync(configPath, '{\n  "tech_lead_enabled": false\n}')
     process.env.HOME = tmpHome
     process.env.JANUS_CONFIG = configPath
     delete process.env.XDG_CONFIG_HOME
@@ -482,9 +523,40 @@ describe("createJanusConfigHook", () => {
       await hook(config)
 
       // then
-      expect(config.agent?.["coder-lite"]).toBeUndefined()
-      const coder = config.agent?.["coder"] as { prompt: string }
-      expect(coder.prompt).toContain("coder-lite DISABLED by configuration")
+      expect(config.agent?.["tech-lead"]).toBeUndefined()
+      const janus = config.agent?.["janus"] as { prompt: string }
+      expect(janus.prompt).toContain("tech-lead DISABLED by configuration")
+      const architect = config.agent?.["architect"] as { prompt: string }
+      expect(architect.prompt).toContain("Implementation handoff: tech-lead DISABLED by configuration")
+    } finally {
+      delete process.env.XDG_DATA_HOME
+      rmSync(tmpHome, { recursive: true, force: true })
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
+  })
+
+  it("omits the solution-reviewer when solution_reviewer_enabled=false", async () => {
+    // given
+    const tmpHome = makeTempHome()
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-sroff-"))
+    const configPath = join(tmpConfigDir, "config.jsonc")
+    writeFileSync(configPath, '{\n  "solution_reviewer_enabled": false\n}')
+    process.env.HOME = tmpHome
+    process.env.JANUS_CONFIG = configPath
+    delete process.env.XDG_CONFIG_HOME
+    delete process.env.XDG_DATA_HOME
+    process.env.OPENCODE_CONFIG_DIR = tmpHome
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
+
+    try {
+      // when
+      await hook(config)
+
+      // then
+      expect(config.agent?.["solution-reviewer"]).toBeUndefined()
+      const architect = config.agent?.["architect"] as { prompt: string }
+      expect(architect.prompt).toContain("solution-reviewer DISABLED by configuration")
     } finally {
       delete process.env.XDG_DATA_HOME
       rmSync(tmpHome, { recursive: true, force: true })

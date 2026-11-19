@@ -1,4 +1,4 @@
-import { DISPATCH_ROLES, PRODUCTION_WAIT_BUDGET_MS, createKeyedMutex, serializeOutcome, type Clock, type DispatchOutcome, type DispatchRole, type DispatchSdk, type JobSpec, type KeyedMutex } from "./dispatch-contract.ts"
+import { DISPATCH_ROLES, LEGACY_JOURNAL_ROLES, PRODUCTION_WAIT_BUDGET_MS, createKeyedMutex, serializeOutcome, type Clock, type DispatchOutcome, type DispatchProtocol, type DispatchRole, type DispatchSdk, type DispatchStage, type JobSpec, type JournalRole, type KeyedMutex } from "./dispatch-contract.ts"
 import { createJob, loadJob } from "./dispatch-journal.ts"
 import { STARTUP_GRACE_MS } from "./dispatch-observer.ts"
 import { buildChainFailureMessage, embedsProviderErrorText, errorText, formatModel, isProviderErrorText, makeEnvelope, modelFailureHint, observationToOutcome } from "./dispatch-helpers.ts"
@@ -16,6 +16,10 @@ export interface LaunchInput {
   readonly waitMs?: number
   readonly startupGraceMs?: number
   readonly signal?: AbortSignal
+  /** Protocol whose card prefixed the turn-1 prompt, persisted in the job spec. */
+  readonly protocol?: DispatchProtocol
+  /** Caller-declared review stage, persisted in the job spec for audit. */
+  readonly stage?: DispatchStage
   /**
    * When true, a successful launch returns a completed JSON envelope
    * (job_id, session_id, attempt, waited_ms, text) instead of plain text,
@@ -115,6 +119,8 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
     readonly directory: string
     readonly waitMs?: number
     readonly startupGraceMs?: number
+    readonly protocol?: DispatchProtocol
+    readonly stage?: DispatchStage
     readonly signal?: AbortSignal
   }
 
@@ -142,6 +148,8 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
     const created = await createJob(sdk, {
       parentID: request.parentID, directory: request.directory,
       role: request.role, agentName: request.agentName, modelChain, prompt: request.prompt, clock,
+      ...(request.protocol !== undefined ? { protocol: request.protocol } : {}),
+      ...(request.stage !== undefined ? { stage: request.stage } : {}),
       ...(continuation !== undefined ? { sessionID: continuation.sessionID, continuedFrom: continuation.continuedFrom } : {}),
     })
     if (!created.ok) {
@@ -153,6 +161,8 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
       v: 1, kind: "job-spec", role: request.role, prompt: request.prompt,
       agent_name: request.agentName, model_chain: modelChain, parent_id: request.parentID,
       directory: request.directory, created_at: clock.now(),
+      ...(request.protocol !== undefined ? { protocol: request.protocol } : {}),
+      ...(request.stage !== undefined ? { stage: request.stage } : {}),
       ...(continuation !== undefined ? { session_id: continuation.sessionID, continued_from: continuation.continuedFrom } : {}),
     }
     const startTime = clock.now()
@@ -213,12 +223,14 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
           // Transient transport failure reading the journal, not an invalid job or
           // a specialist failure. Retain job identity and surface a recoverable
           // nonterminal envelope so the caller retries rather than degrading.
-          let role: DispatchRole = "consultant-analyst"
+          let role: JournalRole = "consultant-analyst"
           try {
             const got = await sdk.session.get({ path: { id: request.jobID }, query: { directory: request.directory } })
             if (got.error === undefined && got.data !== undefined && got.data.title.startsWith("[consultation-dispatch:v1] ")) {
               const candidate = got.data.title.slice("[consultation-dispatch:v1] ".length)
-              if ((DISPATCH_ROLES as readonly string[]).includes(candidate)) role = candidate as DispatchRole
+              if ((DISPATCH_ROLES as readonly string[]).includes(candidate) || (LEGACY_JOURNAL_ROLES as readonly string[]).includes(candidate)) {
+                role = candidate as JournalRole
+              }
             }
           } catch { /* best-effort role recovery on read outage */ }
           return serializeOutcome(makeEnvelope("unknown", request.jobID, role, { index: 0, model: null }, request.jobID, clock.now() - startTime, "job read failed; recovery unavailable, retry wait"))

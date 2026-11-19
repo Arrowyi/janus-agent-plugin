@@ -29,7 +29,9 @@ export const CONFIG_ROLES = [
   "simple",
   "consultant",
   "architect",
+  "tech-lead",
   "coder",
+  "solution-reviewer",
   "author",
   "common-explorer",
   "consultant-auditor",
@@ -38,7 +40,6 @@ export const CONFIG_ROLES = [
   "coder-reviewer",
   "author-writer",
   "author-reviewer",
-  "coder-lite",
 ] as const
 
 export const CONFIG_MODES = ["select", "verify", "roadmap", "research", "guide", "design", "doc"] as const
@@ -83,9 +84,19 @@ export const JanusPluginConfigSchema = z
   architect_agent: z.string().default("architect"),
   architect_model: z.string().optional(),
   architect_enabled: z.boolean().default(true),
+  // R&D team: the tech-lead is the thin controller that plans milestones and
+  // dispatches the coder seats.
+  tech_lead_agent: z.string().default("tech-lead"),
+  tech_lead_model: z.string().optional(),
+  tech_lead_enabled: z.boolean().default(true),
   coder_agent: z.string().default("coder"),
   coder_model: z.string().optional(),
   coder_enabled: z.boolean().default(true),
+  // The solution-reviewer is the independent read-only gate for the design
+  // pre-mortem and the plan / final-diff review.
+  solution_reviewer_agent: z.string().default("solution-reviewer"),
+  solution_reviewer_model: z.string().optional(),
+  solution_reviewer_enabled: z.boolean().default(true),
   // Author: the documentation-team entry that writes the author brief.
   author_agent: z.string().default("author"),
   author_model: z.string().optional(),
@@ -124,9 +135,6 @@ export const JanusPluginConfigSchema = z
   writer_docs_roots: z.array(z.string().min(1)).default(["userdoc"]),
   writer_delegate_agent: z.string().optional(),
   writer_delegate_model: z.string().optional(),
-  coder_lite_agent: z.string().default("coder-lite"),
-  coder_lite_model: z.string().optional(),
-  coder_lite_enabled: z.boolean().default(true),
   // Optional per-mode and per-tier model overrides. Precedence at dispatch:
   // mode_models[mode][role] > tier_models[tier][role] > <role>_model >
   // TIER_MODEL_DEFAULTS[tier][role] > MODEL_DEFAULTS[role].
@@ -185,18 +193,26 @@ export type JanusPluginConfig = z.infer<typeof JanusPluginConfigSchema>
 // `gemini-4-argon` (AA index 53, lowest AA-Omniscience hallucination rate,
 // 1M context, TB4.0 57.6% Vals); consultant-analyst is Moonshot
 // `kimi-k3.1-pro` (AA-LCR 86.3%, GDPval-AA 1846, TB4.0 63.6% Vals);
-// consultant-critic, coder-reviewer, and author-writer are Anthropic
-// `claude-sonnet-5-5` (Vals Index 70.85%, TB4.0 64.1% Vals / 70.6% vendor,
-// clean prose); consultant-auditor is xAI `grok-4.7` (AA-Briefcase 1657,
-// AA-Omniscience hallucination 29% — the fourth family). The documentation
-// team closes a three-family loop: Google editor-in-chief (`author`),
-// Anthropic writer (`author-writer`), Moonshot reviewer (`author-reviewer`,
-// `kimi-k3.1-pro` long-context close reading at one call per document).
+// consultant-critic, author-writer, and solution-reviewer are
+// Anthropic `claude-sonnet-5-5` (Vals Index 70.85%, TB4.0 64.1% Vals / 70.6%
+// vendor, clean prose); coder-reviewer — the Senior per-milestone patch
+// reviewer — is Moonshot `kimi-k3.1-pro` on the Go Plus pool;
+// consultant-auditor is xAI `grok-4.7` (AA-Briefcase
+// 1657, AA-Omniscience hallucination 29% — the fourth family). The
+// documentation team closes a three-family loop: Google editor-in-chief
+// (`author`), Anthropic writer (`author-writer`), Moonshot reviewer
+// (`author-reviewer`, `kimi-k3.1-pro` long-context close reading at one call
+// per document).
 //
-// Coding: `coder` is `glm-5.3` (TB4.0 38.9% Vals) with a shipped deep-tier
-// uplift to `kimi-k3.1-pro` for L3 work (see TIER_MODEL_DEFAULTS);
-// `coder-lite` is `glm-5.3-flash` (TB4.0 37.4% Vals at $1.22 per run), the
-// strongest small junior/mid engineer lane. Entry/retrieval: `janus` is
+// Coding: `tech-lead` and `coder` share `glm-5.3` (TB4.0 38.9% Vals) on the
+// senior line. The shipped fast tier runs the junior execution seat — `coder`
+// on `glm-5.3-flash` (TB4.0 37.4% Vals at $1.22 per run), the strongest small
+// junior/mid lane — with `coder-reviewer` on `opencode-go/claude-haiku-5-5`,
+// both in the Go Plus pool (see TIER_MODEL_DEFAULTS); the standard and deep
+// tiers fall back to the scalar defaults. `solution-reviewer` is the one gate
+// seat on Zen pay-per-use `claude-sonnet-5-5`, called only for the design
+// pre-mortem
+// and the plan / final-diff review gates. Entry/retrieval: `janus` is
 // `glm-5.3-flash` (latency and tool-call stability at a flat $0.15/$0.50) and
 // `simple`/`common-explorer` are `deepseek-v4.1-flash` (1M context, largest Go
 // Plus cap). Every role resolves to a single model with no fallback. An
@@ -208,16 +224,17 @@ export const MODEL_DEFAULTS = {
   simple: "opencode-go/deepseek-v4.1-flash",
   consultant: "opencode-go/gemini-4-argon",
   architect: "opencode-go/gemini-4-argon",
+  "tech-lead": "opencode-go/glm-5.3",
   coder: "opencode-go/glm-5.3",
+  "solution-reviewer": "opencode/claude-sonnet-5-5",
   author: "opencode-go/gemini-4-argon",
   "common-explorer": "opencode-go/deepseek-v4.1-flash",
   "consultant-auditor": "opencode-go/grok-4.7",
   "consultant-analyst": "opencode-go/kimi-k3.1-pro",
   "consultant-critic": "opencode/claude-sonnet-5-5",
-  "coder-reviewer": "opencode/claude-sonnet-5-5",
+  "coder-reviewer": "opencode-go/kimi-k3.1-pro",
   "author-writer": "opencode/claude-sonnet-5-5",
   "author-reviewer": "opencode-go/kimi-k3.1-pro",
-  "coder-lite": "opencode-go/glm-5.3-flash",
 } as const
 
 export type ModelRole = keyof typeof MODEL_DEFAULTS
@@ -228,14 +245,17 @@ export type RoleModelMap = Partial<Record<ModelRole, string>>
 /**
  * Shipped per-tier model routing. A user `tier_models` entry or an explicit
  * `<role>_model` still wins; this only supplies the default the plugin runs
- * when the user has configured nothing. The single entry is coder's L3
- * uplift: L0-L2 coding stays on `glm-5.3` (`coder`'s scalar default) and a
- * `tier: "deep"` dispatch uses `kimi-k3.1-pro`, the strongest coding model in
- * the Go Plus pool (TB4.0 63.6% Vals).
+ * when the user has configured nothing. The fast tier ships the junior double
+ * seat — `coder` on `glm-5.3-flash` and `coder-reviewer` on
+ * `claude-haiku-5-5`, both in the Go Plus pool — for L1/L2 milestones and
+ * their patch review. The standard and deep tiers ship no defaults and fall
+ * back to the `MODEL_DEFAULTS` scalars (the senior `glm-5.3` coder line);
+ * L3 work uses those scalars.
  */
 export const TIER_MODEL_DEFAULTS: Partial<Record<ConfigTier, RoleModelMap>> = {
-  deep: {
-    coder: "opencode-go/kimi-k3.1-pro",
+  fast: {
+    coder: "opencode-go/glm-5.3-flash",
+    "coder-reviewer": "opencode-go/claude-haiku-5-5",
   },
 }
 
@@ -264,6 +284,10 @@ function resolveUserScalarRoleModel(
       return config.architect_model ?? config.consultant_model
     case "coder":
       return config.coder_model
+    case "tech-lead":
+      return config.tech_lead_model
+    case "solution-reviewer":
+      return config.solution_reviewer_model
     case "author":
       return config.author_model ?? config.consultant_model
     case "common-explorer":
@@ -280,8 +304,6 @@ function resolveUserScalarRoleModel(
       return config.author_writer_model
     case "author-reviewer":
       return config.author_reviewer_model
-    case "coder-lite":
-      return config.coder_lite_model
   }
 }
 
@@ -457,6 +479,87 @@ export function formatZodError(error: z.ZodError): string {
     .join("\n")
 }
 
+const CODER_LITE_TOP_LEVEL_TARGETS: Record<string, string> = {
+  coder_lite_agent: "coder_agent",
+  coder_lite_model: "tier_models.fast.coder",
+  coder_lite_enabled: "coder_enabled",
+}
+
+function formatRemovedCoderLiteHint(lines: string[]): string {
+  return [
+    "janus-agent config: removed coder-lite keys detected; migrate them:",
+    ...lines,
+    "The controller entry moved to the tech_lead_* keys (tech_lead_agent / tech_lead_model / tech_lead_enabled).",
+  ].join("\n")
+}
+
+/**
+ * Detect removed `coder-lite` keys in raw config text and return a migration
+ * hint, or an empty string when nothing needs migrating. Detection covers the
+ * top-level `coder_lite_agent` / `coder_lite_model` / `coder_lite_enabled`
+ * keys and nested `"coder-lite"` role keys under `tier_models` and
+ * `mode_models`. Unparseable text yields an empty string.
+ */
+export function formatRemovedCoderLiteMigrationHint(rawText: string): string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripJsonc(rawText))
+  } catch {
+    return ""
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return ""
+  const root = parsed as Record<string, unknown>
+
+  const lines: string[] = []
+  for (const [key, target] of Object.entries(CODER_LITE_TOP_LEVEL_TARGETS)) {
+    if (key in root) lines.push(`- ${key} → ${target}`)
+  }
+  const nestedGroups: readonly [string, unknown][] = [
+    ["tier_models", root.tier_models],
+    ["mode_models", root.mode_models],
+  ]
+  for (const [group, tiers] of nestedGroups) {
+    if (typeof tiers !== "object" || tiers === null) continue
+    for (const [name, roles] of Object.entries(tiers as Record<string, unknown>)) {
+      if (typeof roles !== "object" || roles === null) continue
+      if ("coder-lite" in (roles as Record<string, unknown>)) {
+        lines.push(`- ${group}.${name}["coder-lite"] → ${group}.${name}["coder"]`)
+      }
+    }
+  }
+  if (lines.length === 0) return ""
+  return formatRemovedCoderLiteHint(lines)
+}
+
+/**
+ * Key-level sibling of `formatRemovedCoderLiteMigrationHint`: recognize a
+ * single removed coder-lite config key — the top-level `coder_lite_agent` /
+ * `coder_lite_model` / `coder_lite_enabled` keys (dashes normalized to
+ * underscores) and the nested `tier_models.<tier>.coder-lite` /
+ * `mode_models.<mode>.coder-lite` shapes — and return the same per-key
+ * migration guidance, or an empty string for any other key.
+ */
+export function formatRemovedCoderLiteKeyHint(key: string): string {
+  const segments = key.trim().split(".").filter((segment) => segment.length > 0)
+  if (segments.length === 1) {
+    const normalized = segments[0]!.replace(/-/g, "_")
+    const target = CODER_LITE_TOP_LEVEL_TARGETS[normalized]
+    if (target !== undefined) {
+      return formatRemovedCoderLiteHint([`- ${normalized} → ${target}`])
+    }
+  }
+  if (
+    segments.length === 3 &&
+    (segments[0] === "tier_models" || segments[0] === "mode_models") &&
+    segments[2] === "coder-lite"
+  ) {
+    return formatRemovedCoderLiteHint([
+      `- ${segments[0]}.${segments[1]}["coder-lite"] → ${segments[0]}.${segments[1]}["coder"]`,
+    ])
+  }
+  return ""
+}
+
 /**
  * Load and validate the janus-agent plugin config.
  *
@@ -488,8 +591,11 @@ export async function loadPluginConfig(env: NodeJS.ProcessEnv): Promise<JanusPlu
 
   const result = JanusPluginConfigSchema.safeParse(parsed)
   if (!result.success) {
+    const hint = formatRemovedCoderLiteMigrationHint(rawText)
     throw new Error(
-      `janus-agent config: invalid configuration in ${configPath}:\n${formatZodError(result.error)}`,
+      `janus-agent config: invalid configuration in ${configPath}:\n${formatZodError(result.error)}${
+        hint.length > 0 ? `\n\n${hint}` : ""
+      }`,
     )
   }
 

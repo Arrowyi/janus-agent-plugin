@@ -48,7 +48,7 @@ Record each result in `biasChecks`; leave `missingCases` empty when no case is m
 
 ## Protocol Cards
 
-The first turn header names one of `counter_evidence`, `hypothesis_matrix`, or `plan_robustness`. Follow that card exactly; it supplies the method for this pass, including the bounded local repair and the top-three failure signals. Design pre-mortems are owned by `coder-reviewer`, not by this role.
+The first turn header names one of `counter_evidence`, `hypothesis_matrix`, or `plan_robustness`. Follow that card exactly; it supplies the method for this pass, including the bounded local repair and the top-three failure signals. Design pre-mortems are owned by `solution-reviewer`, not by this role.
 
 ## Output
 

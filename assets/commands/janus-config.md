@@ -11,7 +11,7 @@ This is an operations task, not a consultation: execute directly, do not dispatc
 
 Every read and write goes through the `janus_config` tool. It owns the field catalog, value conversion, validation, comment-preserving writes, and backups. Group 10 (provider keys) goes through the `janus_provider_keys` tool instead.
 
-- If the current agent has no `janus_config` / `janus_provider_keys` tool (leaf subagents are denied both), stop and ask the user to switch to `janus`, `consultant`, `architect`, `coder`, or `author` and re-run. Do not edit the files by hand as a workaround.
+- If the current agent has no `janus_config` / `janus_provider_keys` tool (leaf subagents are denied both), stop and ask the user to switch to `janus`, `consultant`, `architect`, `tech-lead`, or `author` and re-run. Do not edit the files by hand as a workaround.
 - Never edit `config.jsonc`, OpenCode's `auth.json`, or the provider key vault with the edit tool or a shell command; never write `opencode.jsonc`, the install prefix, `assets/`, `dist/`, or `packages/`.
 - Treat the tool's text as the source of truth for paths, current values, defaults, and choices. Do not invent fields or values.
 
@@ -35,7 +35,7 @@ User arguments: $ARGUMENTS
 - `退出` / `exit` / `0`: exit.
 - Any other free text: map it to the above by meaning. Examples: `关掉 author-writer` → set `author_writer_enabled` false; `coder 用 acme/x` → set `coder_model` `acme/x`; `深度档的反证者开 3 个` → set `tier_role_caps.deep.consultant_critic` 3. Ask one question only when it is genuinely ambiguous.
 
-Role names accept Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `审计`=consultant-auditor, `轻量`/`初级`/`机械`=coder-lite, `写作`=author-writer, `审稿`=author-reviewer. A role's fields use its name with `-` turned into `_`: `<role>_enabled`, `<role>_agent`, `<role>_model`. `consultant` has no `_enabled` field.
+Role names accept Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `主控`=tech-lead, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `方案审查`=solution-reviewer, `审计`=consultant-auditor, `写作`=author-writer, `审稿`=author-reviewer. `轻量`/`初级`/`机械` name the coder's `fast` tier (configurable at `tier_models.fast.coder`), not a separate role. A role's fields use its name with `-` turned into `_`: `<role>_enabled`, `<role>_agent`, `<role>_model`. `consultant` has no `_enabled` field.
 
 ## Main menu
 

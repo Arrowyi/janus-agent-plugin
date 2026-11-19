@@ -10,18 +10,29 @@ import {
 } from "./plugin-config.ts"
 import {
   DISPATCH_ROLES,
+  DISPATCH_STAGES,
+  isLegacyJournalRole,
   parseDispatchRole,
+  parseOutcomeEnvelope,
   createKeyedMutex,
   parseContinueArgs,
   parseWaitArgs,
   type Clock,
   type DispatchRole,
   type DispatchSdk,
+  type JournalRole,
   type KeyedMutex,
 } from "./dispatch-contract.ts"
 import { createDispatchLifecycle, createSystemClock, type DispatchLifecycle } from "./dispatch-lifecycle.ts"
 import { createDispatchCancel } from "./dispatch-cancel.ts"
 import { loadJob } from "./dispatch-journal.ts"
+import {
+  CODER_HARD_CEILING_TOKENS,
+  CONTEXT_WATERMARK_TOKENS,
+  enforceContinueReviewGuard,
+  enforceDispatchReviewGuard,
+  readCallerContextTokens,
+} from "./dispatch-guard.ts"
 import { splitModel, errorText, isRetryableModelError } from "./dispatch-helpers.ts"
 import {
   DISPATCH_PROTOCOLS,
@@ -34,16 +45,56 @@ import path from "node:path"
 export { splitModel, errorText, isRetryableModelError }
 
 /**
- * The twelve dispatch roles: the shared research floor, the four consultation /
- * R&D specialists, the documentation executor and its independent reviewer,
- * the three entry delegates (consultant, coder, author), the economical leaf
- * (simple), and the junior/mid engineer lane (coder-lite). `janus` and
- * `architect` are primary entries and are intentionally not dispatchable.
+ * The thirteen dispatch roles: the shared research floor, the four
+ * consultation / R&D specialists, the R&D team's tech-lead entry and its
+ * independent solution reviewer, the documentation executor and its
+ * independent reviewer, and the three entry delegates (consultant, coder,
+ * author) plus the economical leaf (simple). `janus` and `architect` are
+ * primary entries and are intentionally not dispatchable.
  */
 export { DISPATCH_ROLES }
 export type { DispatchRole }
 
 const DISPATCH_MARKER = "[consultation-dispatch:v1] "
+
+/**
+ * Rejection text for a dispatched sub-session trying to dispatch a primary
+ * coordinator role; undefined for every other role, which keeps their call
+ * trace free of the extra session.get.
+ */
+function dagGuardRejection(role: DispatchRole): string | undefined {
+  switch (role) {
+    case "consultant":
+      return "Error: dispatched session cannot dispatch consultant; return the consultation request to the primary caller"
+    case "tech-lead":
+      return "Error: dispatched session cannot dispatch tech-lead; return the coding task to the primary caller"
+    case "author":
+      return "Error: dispatched session cannot dispatch author; return the documentation request to the primary caller"
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Decorate a `janus_dispatch`, `janus_dispatch_wait`, or
+ * `janus_dispatch_continue` completion return with the caller context
+ * watermark. Plain-text forms (success and `Error:` text) get one appended
+ * marker line; envelope forms get a `context_watermark` field instead —
+ * appending free text would break `parseOutcomeEnvelope` consumers. A
+ * cancelled envelope and any context below the threshold pass through
+ * unchanged; an unreadable context never decorates.
+ */
+function applyContextWatermark(text: string, callerTokens: number | undefined): string {
+  if (callerTokens === undefined || callerTokens < CONTEXT_WATERMARK_TOKENS) return text
+  const parsed = parseOutcomeEnvelope(text)
+  if (parsed.ok) {
+    if (parsed.value.status === "cancelled") return text
+    const envelope = JSON.parse(text) as Record<string, unknown>
+    envelope.context_watermark = callerTokens
+    return JSON.stringify(envelope)
+  }
+  return `${text}\n[context-watermark: ${callerTokens} tokens >= ${CONTEXT_WATERMARK_TOKENS}; checkpoint at milestone boundary]`
+}
 
 export interface RoleTarget {
   agentName: string
@@ -82,10 +133,12 @@ export function resolveRoleTarget(
       return { agentName: config.author_reviewer_agent, model: resolveRoleModel(config, "author-reviewer", options) }
     case "coder":
       return { agentName: config.coder_agent, model: resolveRoleModel(config, "coder", options) }
+    case "tech-lead":
+      return { agentName: config.tech_lead_agent, model: resolveRoleModel(config, "tech-lead", options) }
+    case "solution-reviewer":
+      return { agentName: config.solution_reviewer_agent, model: resolveRoleModel(config, "solution-reviewer", options) }
     case "simple":
       return { agentName: config.simple_agent, model: resolveRoleModel(config, "simple", options) }
-    case "coder-lite":
-      return { agentName: config.coder_lite_agent, model: resolveRoleModel(config, "coder-lite", options) }
     case "consultant":
       return { agentName: config.consultant_agent, model: resolveRoleModel(config, "consultant", options) }
     case "author":
@@ -102,10 +155,10 @@ export interface DispatchToolDeps {
 /**
  * Build the four consultation job tools with one shared coordinator set.
  *
- * It dispatches ONLY to the twelve dispatchable roles (`consultant`, `coder`,
- * `author`, `simple`, `common-explorer`, `consultant-analyst`,
- * `consultant-critic`, `coder-reviewer`, `consultant-auditor`,
- * `author-writer`, `author-reviewer`, `coder-lite`)
+ * It dispatches ONLY to the thirteen dispatchable roles (`consultant`,
+ * `tech-lead`, `author`, `simple`, `common-explorer`, `consultant-analyst`,
+ * `consultant-critic`, `consultant-auditor`, `solution-reviewer`, `coder`,
+ * `coder-reviewer`, `author-writer`, `author-reviewer`)
  * using the recoverable lifecycle coordinator. `janus_dispatch_continue`
  * reuses an existing dispatch session from the same caller. It is additive:
  * it neither shadows nor interferes with the built-in `task` tool or any
@@ -125,7 +178,7 @@ export function createJanusDispatchTools(
 
   const dispatch = tool({
     description:
-      "Dispatch ONLY to a dispatchable role (consultant, coder, author, simple, common-explorer, consultant-analyst, consultant-critic, coder-reviewer, consultant-auditor, author-writer, author-reviewer, coder-lite). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Optional mode, tier, and protocol select the model and prepend a methodology card to the first turn. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
+      "Dispatch ONLY to a dispatchable role (consultant, tech-lead, author, simple, common-explorer, consultant-analyst, consultant-critic, consultant-auditor, solution-reviewer, coder, coder-reviewer, author-writer, author-reviewer). Returns its result or a recoverable job id if still working after a soft wait; call janus_dispatch_wait with that job id to continue waiting. Optional mode, tier, and protocol select the model and prepend a methodology card to the first turn. Pass return_handle: true to receive a completed JSON envelope (job_id, session_id, attempt, text) instead of plain text on success, whose session_id can be reused with janus_dispatch_continue; pending and failed results are unchanged.",
     args: {
       role: tool.schema.string(),
       prompt: tool.schema.string(),
@@ -133,6 +186,8 @@ export function createJanusDispatchTools(
       mode: tool.schema.string().optional(),
       tier: tool.schema.enum(["fast", "standard", "deep"]).optional(),
       protocol: tool.schema.enum(DISPATCH_PROTOCOLS).optional(),
+      reviews_job_ids: tool.schema.string().array().optional(),
+      stage: tool.schema.enum(DISPATCH_STAGES).optional(),
     },
     async execute(args, context: ToolContext): Promise<string> {
       const roleResult = parseDispatchRole(args.role)
@@ -160,26 +215,47 @@ export function createJanusDispatchTools(
         "author-reviewer": config.author_reviewer_enabled,
         simple: config.simple_enabled,
         coder: config.coder_enabled,
-        "coder-lite": config.coder_lite_enabled,
+        "tech-lead": config.tech_lead_enabled,
+        "solution-reviewer": config.solution_reviewer_enabled,
         consultant: true,
         author: config.author_enabled,
       }
       if (!enabled[role]) return `Error: ${role} is disabled by configuration`
 
-      // Caller DAG guard (author only): a session that is itself a dispatched
-      // sub-session must not dispatch the author team, so primary entries can
-      // delegate documents without author <-> coder recursion. The other
-      // eleven roles keep their existing call trace (no extra session.get).
-      if (role === "author") {
+      // Caller context watermark: one read of the caller session's newest
+      // completed assistant usage. An unreadable context never blocks a
+      // dispatch — it only skips decoration.
+      const callerTokens = await readCallerContextTokens(sdk, context.sessionID, context.directory)
+
+      // Hard ceiling for the coding lane: a controller past 350k tokens
+      // must checkpoint its state instead of piling more work onto a coder
+      // sub-session. Fail-fast before any job session is created.
+      if (role === "coder" && callerTokens !== undefined && callerTokens >= CODER_HARD_CEILING_TOKENS) {
+        return applyContextWatermark(
+          `Error: controller context exceeded ${CODER_HARD_CEILING_TOKENS} tokens hard ceiling; checkpoint to plan.md and handoff.md before continuing. Recovery: update the plan.md ledger and write handoff.md, resume from a fresh controller session with 继续交接, or reduce context and retry.`,
+          callerTokens,
+        )
+      }
+
+      // Caller DAG guard: a session that is itself a dispatched sub-session
+      // must not dispatch a primary coordinator role (consultant, tech-lead,
+      // author), so the coordination chain stays free of sub-session ->
+      // coordinator recursion. The other ten roles keep their existing call
+      // trace (no extra session.get).
+      const rejection = dagGuardRejection(role)
+      if (rejection !== undefined) {
         const callerResult = await sdk.session.get({
           path: { id: context.sessionID },
           query: { directory: context.directory },
         })
         if (callerResult.error !== undefined) {
-          return `Error: failed to read caller session: ${context.sessionID} in ${context.directory} (${errorText(callerResult.error)}); retry janus_dispatch`
+          return applyContextWatermark(
+            `Error: failed to read caller session: ${context.sessionID} in ${context.directory} (${errorText(callerResult.error)}); retry janus_dispatch`,
+            callerTokens,
+          )
         }
         if (callerResult.data?.title.startsWith(DISPATCH_MARKER)) {
-          return "Error: dispatched session cannot dispatch author; return the documentation request to the primary caller"
+          return applyContextWatermark(rejection, callerTokens)
         }
       }
 
@@ -189,16 +265,36 @@ export function createJanusDispatchTools(
           ? [model ?? null]
           : resolveRoleModelChain(config, role, { mode, tier }).map((m) => m ?? null)
 
-      return lifecycle.launch({
+      // Author ≠ reviewer guard: a review seat must not share a model or
+      // model family with the author it reviews. Fail-fast before any
+      // session is created or prompted; non-reviewer roles short-circuit
+      // without SDK access.
+      const guard = await enforceDispatchReviewGuard(sdk, {
         role,
-        prompt,
-        agentName,
-        modelChain,
-        parentID: context.sessionID,
+        protocol: args.protocol,
+        stage: args.stage,
+        reviewsJobIDs: args.reviews_job_ids,
+        reviewerModel: model,
+        config,
         directory: context.directory,
-        signal: context.abort,
-        returnHandle: args.return_handle,
       })
+      if (!guard.ok) return applyContextWatermark(`Error: ${guard.message}`, callerTokens)
+
+      return applyContextWatermark(
+        await lifecycle.launch({
+          role,
+          prompt,
+          agentName,
+          modelChain,
+          parentID: context.sessionID,
+          directory: context.directory,
+          signal: context.abort,
+          returnHandle: args.return_handle,
+          protocol: args.protocol,
+          stage: args.stage,
+        }),
+        callerTokens,
+      )
     },
   })
 
@@ -209,6 +305,7 @@ export function createJanusDispatchTools(
       session_id: tool.schema.string(),
       prompt: tool.schema.string(),
       role: tool.schema.string().optional(),
+      reviews_job_ids: tool.schema.string().array().optional(),
     },
     async execute(args, context: ToolContext): Promise<string> {
       const parsed = parseContinueArgs(args)
@@ -242,7 +339,7 @@ export function createJanusDispatchTools(
       // spec carries session_id) is rejected: callers must continue the
       // original session, not a continuation job.
       let jobRootID: string
-      let role: DispatchRole
+      let role: JournalRole
       if (target.parentID === context.sessionID) {
         jobRootID = target.id
       } else if (target.parentID === undefined) {
@@ -266,6 +363,11 @@ export function createJanusDispatchTools(
         return `Error: ${targetSessionID} is a continuation job${target.parentID === context.sessionID ? "" : " attempt"}; use the original dispatch session_id, not a continuation job_id`
       }
       role = loaded.spec.role
+      // A retired role's historical session is read-only: wait and cancel keep
+      // working, but continuation is blocked with migration guidance.
+      if (isLegacyJournalRole(role)) {
+        return `Error: the ${role} role is retired; continue the same lane with role "coder" (tier: "fast"); migrate config keys per tier_models.fast.coder`
+      }
       if (target.parentID !== context.sessionID) {
         if (!loaded.children.some((child) => child.id === targetSessionID)) {
           return "Error: target session is not an attempt of an owned dispatch job"
@@ -288,11 +390,33 @@ export function createJanusDispatchTools(
         "author-reviewer": config.author_reviewer_enabled,
         simple: config.simple_enabled,
         coder: config.coder_enabled,
-        "coder-lite": config.coder_lite_enabled,
+        "tech-lead": config.tech_lead_enabled,
+        "solution-reviewer": config.solution_reviewer_enabled,
         consultant: true,
         author: config.author_enabled,
       }
       if (!enabled[role]) return `Error: ${role} is disabled by configuration`
+
+      // Author ≠ reviewer guard for continuations: a coder-reviewer session,
+      // or a solution-reviewer session carrying the code_plan_review
+      // contract, must again prove reviewer ≠ author before the target
+      // session is prompted.
+      const guard = await enforceContinueReviewGuard(sdk, {
+        targetRole: role,
+        targetProtocol: loaded.spec.protocol,
+        targetModel: loaded.spec.model_chain[0] ?? null,
+        reviewsJobIDs: parsed.value.reviews_job_ids,
+        config,
+        directory: context.directory,
+      })
+      if (!guard.ok) return `Error: ${guard.message}`
+
+      // Caller context watermark on the completion return: same decoration
+      // contract as janus_dispatch (cancelled envelopes pass through, an
+      // unreadable context never decorates). Validation/ownership errors
+      // above stay undecorated, and the coder hard ceiling does not apply
+      // to continue.
+      const callerTokens = await readCallerContextTokens(sdk, context.sessionID, context.directory)
 
       // Idle check + continue under one per-target lock. The host can keep
       // reporting a session idle for a sub-second window after the previous
@@ -340,7 +464,7 @@ export function createJanusDispatchTools(
         }
         throw error
       }
-      return outcome
+      return applyContextWatermark(outcome, callerTokens)
     },
   })
 
@@ -354,13 +478,21 @@ export function createJanusDispatchTools(
     async execute(args, context: ToolContext): Promise<string> {
       const parsed = parseWaitArgs(args)
       if (!parsed.ok) return `Error: ${parsed.error.message}`
-      return lifecycle.wait({
-        jobID: parsed.value.job_id,
-        waitMs: parsed.value.wait_ms,
-        parentID: context.sessionID,
-        directory: context.directory,
-        signal: context.abort,
-      })
+      // Caller context watermark on the completion return: same decoration
+      // contract as janus_dispatch (cancelled envelopes pass through, an
+      // unreadable context never decorates). The coder hard ceiling does not
+      // apply to wait.
+      const callerTokens = await readCallerContextTokens(sdk, context.sessionID, context.directory)
+      return applyContextWatermark(
+        await lifecycle.wait({
+          jobID: parsed.value.job_id,
+          waitMs: parsed.value.wait_ms,
+          parentID: context.sessionID,
+          directory: context.directory,
+          signal: context.abort,
+        }),
+        callerTokens,
+      )
     },
   })
 

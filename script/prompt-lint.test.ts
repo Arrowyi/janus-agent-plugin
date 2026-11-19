@@ -32,6 +32,10 @@ const DEFAULT_AGENT_BUDGET = 1500
 const AGENT_BUDGETS: Record<string, number> = {
   "consultant.md": 4500,
   "coder.md": 3600,
+  "tech-lead.md": 3600,
+  // architect.md: the gated 交接单 relay rule replaced the shorter watermark bullet,
+  // adding net words to an already dense dispatch-safety section; compression would cut rules.
+  "architect.md": 1560,
 }
 
 const FRAGMENT_BUDGET = 500
@@ -64,6 +68,8 @@ const INTENTIONAL_DUPLICATES = [
   "Leaked or pirated material may be collected and used when it is the best available route; flag that channel and its risk, grade it `lead_only`/`suspect`, and corroborate it before treating it as proof, but never present it as the sole source.",
   // The auditor prompt and the skill's intent-audit section both warn about this zone.
   "Leaked documents and pirated content are a high-fabrication zone.",
+  // The watermark caution mirrors across the two dispatch hubs (janus, architect).
+  "A `[context-watermark: ...]` marker on a return reflects your own context level — a caution, never the relay trigger.",
 ] as const
 
 function sentences(text: string): string[] {
@@ -221,5 +227,89 @@ describe("cross-file duplicate sentences", () => {
 
     const stale = INTENTIONAL_DUPLICATES.filter((sentence) => (counts.get(sentence) ?? 0) < 2)
     expect(stale).toEqual([])
+  })
+})
+
+describe("prompt layering discipline", () => {
+  // A model prompt is shared by every role that runs the model, so it must
+  // stay role-agnostic; a role asset is shared by every model that drives the
+  // role, so it must stay model-agnostic. The 15 tokens are the 15 registered
+  // role names (the coder-lite alias has been removed with the role).
+  const ROLE_NAME_PATTERNS: RegExp[] = [
+    /\bjanus\b/i,
+    /\bsimple\b/i,
+    /\bconsultant\b/i,
+    /\barchitect\b/i,
+    /\btech-lead\b/i,
+    /\bauthor\b/i,
+    /\bcommon-explorer\b/i,
+    /\bconsultant-analyst\b/i,
+    /\bconsultant-critic\b/i,
+    /\bconsultant-auditor\b/i,
+    /\bsolution-reviewer\b/i,
+    /\bcoder\b/i,
+    /\bcoder-reviewer\b/i,
+    /\bauthor-writer\b/i,
+    /\bauthor-reviewer\b/i,
+  ]
+
+  test("model prompts carry zero role information", async () => {
+    const dir = join(ASSETS, "model-prompts")
+
+    for (const file of readdirSync(dir).filter((name) => name.endsWith(".md"))) {
+      const text = await readText(join(dir, file))
+      for (const pattern of ROLE_NAME_PATTERNS) {
+        if (pattern.test(text)) {
+          throw new Error(`assets/model-prompts/${file} carries a role name (${pattern.source})`)
+        }
+        expect(pattern.test(text)).toBe(false)
+      }
+    }
+  })
+
+  test("agent role assets carry no model-driving keys", async () => {
+    const modelKeys = readdirSync(join(ASSETS, "model-prompts"))
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => file.replace(/\.md$/, ""))
+
+    for (const file of readdirSync(join(ASSETS, "agents")).filter((name) => name.endsWith(".md"))) {
+      const text = await readText(join(ASSETS, "agents", file))
+      for (const key of modelKeys) {
+        if (text.includes(key)) {
+          throw new Error(
+            `assets/agents/${file} carries the model key "${key}"; model driving notes live in assets/model-prompts/`,
+          )
+        }
+        expect(text).not.toContain(key)
+      }
+    }
+  })
+
+  test("R&D role assets carry no consultation-mode methodology", async () => {
+    const markers = [
+      "`select`",
+      "`verify`",
+      "`roadmap`",
+      "`research`",
+      "`guide`",
+      "Mode Stack",
+      "open-pool",
+      "Open-pool",
+      "Recon-Map-Gate",
+      "Source Criteria",
+      "证据策略",
+      "结论：",
+      "把握：",
+    ]
+
+    for (const file of ["tech-lead.md", "solution-reviewer.md", "coder.md", "coder-reviewer.md"]) {
+      const text = await readText(join(ASSETS, "agents", file))
+      for (const marker of markers) {
+        if (text.includes(marker)) {
+          throw new Error(`assets/agents/${file} carries consultation methodology: ${marker}`)
+        }
+        expect(text.includes(marker)).toBe(false)
+      }
+    }
   })
 })

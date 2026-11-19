@@ -10,6 +10,8 @@ import {
   type DispatchRole,
   type DispatchSdk,
   type JobSpec,
+  type JournalRole,
+  type LegacyJournalRole,
   type SdkAssistantMessage,
   type SdkMessageWithParts,
   type SdkSession,
@@ -24,7 +26,7 @@ export const FAKE_MESSAGE_ID = "msg-attempt-1"
 export const FAKE_DIRECTORY = "/tmp/project"
 
 export function makeJobSpec(
-  overrides: Partial<JobSpec> & { role?: DispatchRole } = {},
+  overrides: Partial<JobSpec> & { role?: JournalRole } = {},
 ): JobSpec {
   return {
     v: 1,
@@ -36,6 +38,8 @@ export function makeJobSpec(
     parent_id: overrides.parent_id ?? FAKE_PARENT_ID,
     directory: overrides.directory ?? FAKE_DIRECTORY,
     created_at: overrides.created_at ?? 1_000_000,
+    ...(overrides.protocol !== undefined ? { protocol: overrides.protocol } : {}),
+    ...(overrides.stage !== undefined ? { stage: overrides.stage } : {}),
     ...(overrides.session_id !== undefined ? { session_id: overrides.session_id } : {}),
     ...(overrides.continued_from !== undefined ? { continued_from: overrides.continued_from } : {}),
   }
@@ -53,9 +57,13 @@ export const validRoleSpecs: Array<{ label: string; role: DispatchRole; record: 
   { label: "author-reviewer", role: "author-reviewer", record: makeJobSpec({ role: "author-reviewer", agent_name: "author-reviewer", model_chain: ["opencode-go/kimi-k3.1-pro"] }) },
   { label: "simple", role: "simple", record: makeJobSpec({ role: "simple", agent_name: "simple", model_chain: ["opencode-go/deepseek-v4.1-flash"] }) },
   { label: "coder", role: "coder", record: makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3"] }) },
-  { label: "coder-lite", role: "coder-lite", record: makeJobSpec({ role: "coder-lite", agent_name: "coder-lite", model_chain: ["opencode-go/glm-5.3-flash"] }) },
   { label: "consultant", role: "consultant", record: makeJobSpec({ role: "consultant", agent_name: "consultant", model_chain: ["opencode-go/glm-5.3"] }) },
   { label: "author", role: "author", record: makeJobSpec({ role: "author", agent_name: "author", model_chain: ["opencode-go/gemini-4-argon"] }) },
+]
+
+/** Journal roles retired from DISPATCH_ROLES that historical journals still record. */
+export const legacyRoleSpecs: Array<{ label: string; role: LegacyJournalRole; record: JobSpec }> = [
+  { label: "coder-lite", role: "coder-lite", record: makeJobSpec({ role: "coder-lite", agent_name: "coder-lite", model_chain: ["opencode-go/glm-5.3-flash"] }) },
 ]
 
 export function makeAttemptReservation(overrides: Partial<AttemptReservation> = {}): AttemptReservation {

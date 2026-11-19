@@ -18,6 +18,7 @@ import {
   FAKE_MESSAGE_ID,
   FAKE_PARENT_ID,
   createFakeClock,
+  legacyRoleSpecs,
   makeAttemptReceipt,
   makeAttemptReservation,
   makeCancelIntent,
@@ -30,6 +31,7 @@ import {
   createAttemptSession,
   createJob,
   loadJob,
+  loadJobModelForGuard,
 } from "./dispatch-journal.ts"
 
 type JournalFakeSdk = DispatchSdk & {
@@ -651,6 +653,24 @@ describe("loadJob", () => {
     expect(error.reason).toBe("job-unavailable")
   })
 
+  it("loads a historical job whose spec records the retired coder-lite role", async () => {
+    const sdk = createJournalFakeSdk()
+    const root = await sdk.session.create({
+      body: { parentID: FAKE_PARENT_ID, title: "[consultation-dispatch:v1] coder-lite" },
+      query: { directory: FAKE_DIRECTORY },
+    })
+    if (root.data === undefined) throw new Error("missing root")
+    await sdk.session.prompt({
+      path: { id: root.data.id },
+      body: { noReply: true, messageID: "msg-legacy-spec", parts: [{ type: "text", synthetic: true, ignored: true, text: JSON.stringify(legacyRoleSpecs[0]!.record) }] },
+      query: { directory: FAKE_DIRECTORY },
+    })
+
+    const loaded = assertOk(await loadJob(sdk, { jobID: root.data.id, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID }))
+    expect(loaded.spec.role).toBe("coder-lite")
+    expect(loaded.spec.agent_name).toBe("coder-lite")
+  })
+
   it("rejects a cross-parent lookup with job-unavailable and no record contents", async () => {
     const sdk = createJournalFakeSdk()
     const clock = createFakeClock(1_000_000)
@@ -894,5 +914,198 @@ describe("directory presence and zero generating requests", () => {
     const rootMessages = sdk.messages.get(jobID) ?? []
     const assistantMessages = rootMessages.filter((m) => "role" in m.info && m.info.role === "assistant")
     expect(assistantMessages).toHaveLength(0)
+  })
+})
+
+describe("loadJobModelForGuard", () => {
+  it("returns model_chain[0] of a coder job root", async () => {
+    const sdk = createJournalFakeSdk()
+    const { jobID } = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
+    }))
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    expect(result).toEqual({ ok: true, model: "opencode-go/glm-5.3" })
+  })
+
+  it("returns a null model for a coder root whose chain pins none", async () => {
+    const sdk = createJournalFakeSdk()
+    const { jobID } = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: [null], prompt: "implement the milestone", clock: createFakeClock(),
+    }))
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    expect(result).toEqual({ ok: true, model: null })
+  })
+
+  it("rejects an unknown job id with not-found and a root job_id hint", async () => {
+    const sdk = createJournalFakeSdk()
+    const result = await loadJobModelForGuard(sdk, { jobID: "ses_missing", directory: FAKE_DIRECTORY })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe("not-found")
+      expect(result.message).toContain("root job_id")
+    }
+  })
+
+  it("rejects an attempt session id with not-found (no spec to read)", async () => {
+    const sdk = createJournalFakeSdk()
+    const { jobID } = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
+    }))
+    const attempt = assertOk(await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "coder" }))
+    const result = await loadJobModelForGuard(sdk, { jobID: attempt.sessionID, directory: FAKE_DIRECTORY })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe("not-found")
+      expect(result.message).toContain("root job_id")
+    }
+  })
+
+  it("rejects a foreign workspace with not-found", async () => {
+    const sdk = createJournalFakeSdk()
+    const { jobID } = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
+    }))
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: "/other/workspace" })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe("not-found")
+  })
+
+  it("rejects a non-dispatch session with not-found", async () => {
+    const sdk = createJournalFakeSdk()
+    const plain = await sdk.session.create({
+      body: { parentID: FAKE_PARENT_ID, title: "plain chat session" },
+      query: { directory: FAKE_DIRECTORY },
+    })
+    const result = await loadJobModelForGuard(sdk, { jobID: plain.data!.id, directory: FAKE_DIRECTORY })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe("not-found")
+      expect(result.message).toContain("root job_id")
+    }
+  })
+
+  it("rejects a transport failure on the root read with read-error", async () => {
+    const sdk = createJournalFakeSdk()
+    sdk.session.get = async () => ({ error: new Error("transport") })
+    const result = await loadJobModelForGuard(sdk, { jobID: "ses_job", directory: FAKE_DIRECTORY })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe("read-error")
+  })
+
+  it("rejects a transport failure on the messages read with read-error", async () => {
+    const sdk = createJournalFakeSdk()
+    const { jobID } = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
+    }))
+    sdk.session.messages = async () => ({ error: new Error("transport") })
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe("read-error")
+  })
+
+  it("rejects a corrupt journal record with invalid-job", async () => {
+    const sdk = createJournalFakeSdk()
+    const { jobID } = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
+    }))
+    await sdk.session.prompt({
+      path: { id: jobID },
+      body: { parts: [{ type: "text", text: "not valid json", ignored: true, synthetic: true }], noReply: true, messageID: "msg-guard-corrupt" },
+      query: { directory: FAKE_DIRECTORY },
+    })
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe("invalid-job")
+  })
+
+  it("rejects multiple job specs with invalid-job", async () => {
+    const sdk = createJournalFakeSdk()
+    const clock = createFakeClock()
+    const { jobID } = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock,
+    }))
+    assertOk(await appendRecord(sdk, {
+      jobID, directory: FAKE_DIRECTORY,
+      record: makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3-flash"], created_at: clock.now() + 1 }),
+    }))
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe("invalid-job")
+  })
+
+  it("rejects a root title that does not match the spec role with invalid-job", async () => {
+    const sdk = createJournalFakeSdk()
+    const root = await sdk.session.create({
+      body: { parentID: FAKE_PARENT_ID, title: "[consultation-dispatch:v1] consultant-analyst" },
+      query: { directory: FAKE_DIRECTORY },
+    })
+    if (root.data === undefined) throw new Error("missing root")
+    await sdk.session.prompt({
+      path: { id: root.data.id },
+      body: {
+        noReply: true, messageID: "msg-guard-mismatch",
+        parts: [{ type: "text", text: JSON.stringify(makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3"] })), synthetic: true, ignored: true }],
+      },
+      query: { directory: FAKE_DIRECTORY },
+    })
+    const result = await loadJobModelForGuard(sdk, { jobID: root.data.id, directory: FAKE_DIRECTORY })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe("invalid-job")
+  })
+
+  it("rejects a continuation job root with not-coder-root and names the original root job_id", async () => {
+    const sdk = createJournalFakeSdk()
+    const clock = createFakeClock()
+    const original = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock,
+    }))
+    const continuation = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "more milestone work", clock,
+      sessionID: original.jobID, continuedFrom: original.jobID,
+    }))
+    const result = await loadJobModelForGuard(sdk, { jobID: continuation.jobID, directory: FAKE_DIRECTORY })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe("not-coder-root")
+      expect(result.message).toContain("continuation job root")
+      expect(result.message).toContain(original.jobID)
+    }
+  })
+
+  it("rejects a non-coder job root with not-coder-root", async () => {
+    const sdk = createJournalFakeSdk()
+    const { jobID } = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "consultant-analyst", agentName: "consultant-analyst",
+      modelChain: ["opencode-go/qwen3.8-max"], prompt: "analyze this", clock: createFakeClock(),
+    }))
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe("not-coder-root")
+      expect(result.message).toContain("consultant-analyst")
+      expect(result.message).toContain("coder")
+    }
+  })
+
+  it("does not require the caller session to own the job (cross-session read)", async () => {
+    // A later controller session must still be able to verify a coder job
+    // dispatched by an earlier controller: ownership is deliberately not
+    // part of the guard query.
+    const sdk = createJournalFakeSdk()
+    const { jobID } = assertOk(await createJob(sdk, {
+      parentID: "ses_earlier_controller", directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
+    }))
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    expect(result).toEqual({ ok: true, model: "opencode-go/glm-5.3" })
   })
 })

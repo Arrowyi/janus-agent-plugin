@@ -1176,6 +1176,27 @@ describe("journal read outage", () => {
       }
     }
   })
+
+  it("recovers a legacy coder-lite job identity by title when the journal read fails", async () => {
+    const fake = createFakeSdk()
+    const clock = createFakeClock()
+    const root = await fake.session.create({
+      body: { parentID: FAKE_PARENT_ID, title: "[consultation-dispatch:v1] coder-lite" },
+      query: { directory: FAKE_DIRECTORY },
+    })
+    if (root.data === undefined) throw new Error("missing root")
+    fake.session.messages = async () => ({ error: { name: "APIError", data: { statusCode: 503 } } })
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    const result = await lifecycle.wait({ jobID: root.data.id, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })
+    const parsed = parseOutcomeEnvelope(result)
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.value.status).toBe("unknown")
+      if (parsed.value.status === "unknown" || parsed.value.status === "pending" || parsed.value.status === "cancelling") {
+        expect(parsed.value.role).toBe("coder-lite")
+      }
+    }
+  })
 })
 
 describe("continuation lifecycle", () => {
@@ -1440,5 +1461,69 @@ describe("return_handle launch results", () => {
     expect(envelope.status).toMatch(/pending|unknown/)
     expect(envelope.job_id).toMatch(/^ses_fake_/)
     expect("text" in envelope).toBe(false)
+  })
+})
+
+describe("job spec stage persistence", () => {
+  it("persists the caller-declared stage beside the protocol on the launch job spec", async () => {
+    const clock = createFakeClock()
+    const fake = createAutoCompletingFake("review done", clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+
+    const result = await lifecycle.launch({
+      role: "solution-reviewer", prompt: "review the final diff", agentName: "solution-reviewer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 1_000, protocol: "code_plan_review", stage: "final",
+    })
+
+    expect(result).toBe("review done")
+    const loaded = await loadJob(fake, { jobID: "ses_fake_1", directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+    if (!loaded.ok) throw loaded.error
+    expect(loaded.value.spec.protocol).toBe("code_plan_review")
+    expect(loaded.value.spec.stage).toBe("final")
+  })
+
+  it("omits stage when the launch does not declare one", async () => {
+    const clock = createFakeClock()
+    const fake = createAutoCompletingFake("review done", clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+
+    const result = await lifecycle.launch({
+      role: "solution-reviewer", prompt: "review", agentName: "solution-reviewer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 1_000,
+    })
+
+    expect(result).toBe("review done")
+    const loaded = await loadJob(fake, { jobID: "ses_fake_1", directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+    if (!loaded.ok) throw loaded.error
+    expect(loaded.value.spec.protocol).toBeUndefined()
+    expect(loaded.value.spec.stage).toBeUndefined()
+  })
+
+  it("does not copy stage onto a continuation job spec", async () => {
+    const clock = createFakeClock()
+    const fake = createAutoCompletingFake("plan reviewed", clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    const first = await lifecycle.launch({
+      role: "solution-reviewer", prompt: "review the plan", agentName: "solution-reviewer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 1_000, protocol: "code_plan_review", stage: "plan",
+    })
+    expect(first).toBe("plan reviewed")
+
+    await lifecycle.continue({
+      role: "solution-reviewer", prompt: "scoped re-review", agentName: "solution-reviewer",
+      modelChain: ["opencode/claude-sonnet-5-5"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      sessionID: "ses_fake_1", continuedFrom: "ses_fake_1", waitMs: 1_000,
+    })
+
+    // The continuation root's spec records the reuse only: the stage stays on
+    // the original job's spec, the durable audit trail a continuation reads back.
+    const loaded = await loadJob(fake, { jobID: "ses_fake_2", directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+    if (!loaded.ok) throw loaded.error
+    expect(loaded.value.spec.session_id).toBe("ses_fake_1")
+    expect(loaded.value.spec.protocol).toBeUndefined()
+    expect(loaded.value.spec.stage).toBeUndefined()
   })
 })

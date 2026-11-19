@@ -1,17 +1,10 @@
 import { readFile } from "node:fs/promises"
 
 import { resolveAsset } from "./asset-paths.ts"
-import type { DispatchRole } from "./dispatch-contract.ts"
+import { DISPATCH_PROTOCOLS, type DispatchProtocol, type DispatchRole } from "./dispatch-contract.ts"
 
-export const DISPATCH_PROTOCOLS = [
-  "counter_evidence",
-  "hypothesis_matrix",
-  "plan_robustness",
-  "design_premortem",
-  "code_plan_review",
-] as const
-
-export type DispatchProtocol = (typeof DISPATCH_PROTOCOLS)[number]
+export { DISPATCH_PROTOCOLS }
+export type { DispatchProtocol }
 
 const PROTOCOL_ASSETS: Readonly<Record<DispatchProtocol, string>> = {
   counter_evidence: "protocols/counter_evidence.md",
@@ -21,13 +14,18 @@ const PROTOCOL_ASSETS: Readonly<Record<DispatchProtocol, string>> = {
   code_plan_review: "protocols/code_plan_review.md",
 }
 
-/** Protocol → the review roles that carry the matching output contract. */
+/**
+ * Protocol → the review roles that carry the matching output contract.
+ * solution-reviewer's assets and registration land in a later milestone;
+ * until then these table entries exist only at the contract layer (real
+ * dispatch capability is guaranteed by the registration milestone).
+ */
 export const PROTOCOL_ROLES: Readonly<Record<DispatchProtocol, readonly DispatchRole[]>> = {
   counter_evidence: ["consultant-critic"],
   hypothesis_matrix: ["consultant-critic"],
   plan_robustness: ["consultant-critic"],
-  design_premortem: ["coder-reviewer"],
-  code_plan_review: ["coder-reviewer"],
+  design_premortem: ["solution-reviewer"],
+  code_plan_review: ["solution-reviewer", "coder-reviewer"],
 }
 
 export class ProtocolCardError extends Error {

@@ -2,7 +2,7 @@
 
 ### Purpose
 
-A handoff moves one topic between the primary agents — `janus`, `consultant`, `architect`, `coder`, `author` — or carries it across hosts and sessions (OpenCode, Cursor, Claude Code). The whole state is one Markdown file per topic, `handoff.md`: there is no status field and no state machine, pickup never writes, and the file is created or updated only when a turn hands the topic on. Load this skill when the user triggers `继续 <handoff-id>` or `继续交接`, when the session must pass a topic to another primary agent, or when the user asks to save a handoff checkpoint. Leaf subagents never write it.
+A handoff moves one topic between the primary agents — `janus`, `consultant`, `architect`, `tech-lead`, `author` — or carries it across hosts and sessions (OpenCode, Cursor, Claude Code). The whole state is one Markdown file per topic, `handoff.md`: there is no status field and no state machine, pickup never writes, and the file is created or updated only when a turn hands the topic on. Load this skill when the user triggers `继续 <handoff-id>` or `继续交接`, when the session must pass a topic to another primary agent, or when the user asks to save a handoff checkpoint. Leaf subagents never write it.
 
 ### Storage path
 

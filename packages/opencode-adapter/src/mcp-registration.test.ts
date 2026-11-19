@@ -21,8 +21,12 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     consultant_agent: "consultant",
     architect_agent: "architect",
     architect_enabled: true,
+    tech_lead_agent: "tech-lead",
+    tech_lead_enabled: true,
     coder_agent: "coder",
     coder_enabled: true,
+    solution_reviewer_agent: "solution-reviewer",
+    solution_reviewer_enabled: true,
     author_agent: "author",
     author_enabled: true,
     common_explorer_agent: "common-explorer",
@@ -40,8 +44,6 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     author_reviewer_agent: "author-reviewer",
     author_reviewer_enabled: true,
     writer_docs_roots: ["userdoc"],
-    coder_lite_agent: "coder-lite",
-    coder_lite_enabled: true,
     ...overrides,
   }
 }

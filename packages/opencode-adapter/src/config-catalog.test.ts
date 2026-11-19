@@ -66,7 +66,8 @@ describe("config catalog", () => {
   })
 
   test("hyphenated role prefixes resolve to the underscore key", () => {
-    expect(resolveField("coder-lite_model")?.path).toEqual(["coder_lite_model"])
+    expect(resolveField("tech-lead_model")?.path).toEqual(["tech_lead_model"])
+    expect(resolveField("solution-reviewer_model")?.path).toEqual(["solution_reviewer_model"])
   })
 
   test("defaults come from the shipped constants", () => {
@@ -74,7 +75,11 @@ describe("config catalog", () => {
     expect(coder && fieldDefault(coder)).toBe("opencode-go/glm-5.3")
     const cap = resolveField("tier_role_caps.deep.consultant_analyst")
     expect(cap && fieldDefault(cap)).toBe(3)
-    const tierCoder = resolveField("tier_models.deep.coder")
-    expect(tierCoder && fieldDefault(tierCoder)).toBe("opencode-go/kimi-k3.1-pro")
+    const fastCoder = resolveField("tier_models.fast.coder")
+    expect(fastCoder && fieldDefault(fastCoder)).toBe("opencode-go/glm-5.3-flash")
+    const fastReviewer = resolveField("tier_models.fast.coder-reviewer")
+    expect(fastReviewer && fieldDefault(fastReviewer)).toBe("opencode-go/claude-haiku-5-5")
+    const deepCoder = resolveField("tier_models.deep.coder")
+    expect(deepCoder && fieldDefault(deepCoder)).toBeUndefined()
   })
 })

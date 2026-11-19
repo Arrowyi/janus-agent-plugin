@@ -93,7 +93,9 @@ export const ROLE_INFO: readonly RoleInfo[] = [
   { role: "simple", label: "经济型快答", hasEnabled: true },
   { role: "consultant", label: "咨询团队入口（选型/核实/路线/研究/指南）", hasEnabled: false },
   { role: "architect", label: "设计入口，写 design.md（不可派发）", hasEnabled: true },
+  { role: "tech-lead", label: "研发技术主控（计划制定与里程碑调度）", hasEnabled: true },
   { role: "coder", label: "编码入口", hasEnabled: true },
+  { role: "solution-reviewer", label: "架构事前验尸与方案/计划/diff 独立审查", hasEnabled: true },
   { role: "author", label: "文档团队入口（可派发）", hasEnabled: true },
   { role: "common-explorer", label: "共享检索（只读）", hasEnabled: true },
   { role: "consultant-analyst", label: "咨询解读专家", hasEnabled: true },
@@ -102,7 +104,6 @@ export const ROLE_INFO: readonly RoleInfo[] = [
   { role: "coder-reviewer", label: "设计事前验尸、计划/diff 审查", hasEnabled: true },
   { role: "author-writer", label: "文档正文唯一执笔人", hasEnabled: true },
   { role: "author-reviewer", label: "文档独立审稿（只读）", hasEnabled: true },
-  { role: "coder-lite", label: "初中级编码车道（里程碑/规格完备编码/单测）", hasEnabled: true },
 ]
 
 const ROLE_CAP_KEYS = Object.keys(TIER_ROLE_CAPS_DEFAULTS.fast)
@@ -173,7 +174,7 @@ export const CONFIG_FIELDS: readonly ConfigField[] = [
     group: "routing",
     type: "object",
     summary: "按深度档位（fast/standard/deep）为角色指定模型",
-    defaultNote: `出厂档位默认 deep.coder = ${TIER_MODEL_DEFAULTS.deep?.coder ?? "(无)"}，排在 <role>_model 之后`,
+    defaultNote: `出厂档位默认 fast.coder = ${TIER_MODEL_DEFAULTS.fast?.coder ?? "(无)"}、fast.coder-reviewer = ${TIER_MODEL_DEFAULTS.fast?.["coder-reviewer"] ?? "(无)"}，排在 <role>_model 之后；standard/deep 档无出厂默认，回落 <role>_model 的标量默认`,
   },
   {
     key: "tier_models.<tier>.<role>",

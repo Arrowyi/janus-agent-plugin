@@ -83,27 +83,32 @@ describe("agent prompt contracts", () => {
     expectFields(prompt, ["unresolvedGaps", "planReview", "residualUncertainty"])
   })
 
-  it("coder-reviewer exposes the design-review half of the critique contract", async () => {
-    const prompt = await readAgentPrompt("coder-reviewer.md")
+  it("solution-reviewer exposes the design-review half and coder-reviewer the code-plan half of the critique contract", async () => {
+    const solution = await readAgentPrompt("solution-reviewer.md")
+    const codeReviewer = await readAgentPrompt("coder-reviewer.md")
 
-    expectFields(prompt, ["designReview", "preMortem", "unmetQualityScenarios", "reversibilityProblems", "missingOptions"])
-    expectFields(prompt, Object.keys(CodePlanReviewSchema.shape))
-    expect(prompt).toContain("codePlanReview")
-    expect(prompt).not.toContain("Return `clean`")
+    expectFields(solution, ["designReview", "preMortem", "unmetQualityScenarios", "reversibilityProblems", "missingOptions"])
+    expectFields(solution, Object.keys(CodePlanReviewSchema.shape))
+    expectFields(codeReviewer, Object.keys(CodePlanReviewSchema.shape))
+    for (const prompt of [solution, codeReviewer]) {
+      expect(prompt).toContain("codePlanReview")
+      expect(prompt).not.toContain("Return `clean`")
+    }
   })
 
-  it("CritiqueDraftSchema and the two critique prompts agree on every field", async () => {
+  it("CritiqueDraftSchema and the critique prompts agree on every field", async () => {
     const critic = await readAgentPrompt("consultant-critic.md")
     const archCritic = await readAgentPrompt("coder-reviewer.md")
-    const combined = `${critic}\n${archCritic}`
+    const solution = await readAgentPrompt("solution-reviewer.md")
+    const combined = `${critic}\n${archCritic}\n${solution}`
 
     for (const field of Object.keys(CritiqueDraftSchema.shape)) {
       expect(combined).toContain(field)
     }
     for (const field of Object.keys(CritiqueDraftSchema.shape)) {
       expect(
-        critic.includes(field) || archCritic.includes(field),
-        `schema field ${field} is absent from both critique prompts`,
+        critic.includes(field) || archCritic.includes(field) || solution.includes(field),
+        `schema field ${field} is absent from every critique prompt`,
       ).toBe(true)
     }
   })
@@ -224,15 +229,14 @@ describe("agent prompt contracts", () => {
     expect(writer).toContain("mixed lists split into separate packets")
   })
 
-  it("architect and coder carry the documentation delegation threshold", async () => {
+  it("architect and tech-lead carry the documentation delegation threshold", async () => {
     const architect = await readAgentPrompt("architect.md")
-    const coder = await readAgentPrompt("coder.md")
+    const techLead = await readAgentPrompt("tech-lead.md")
 
     expect(architect).toContain("documentation handoff: dispatch new reader-facing documents or ≥3-edit document rewrites")
-    expect(architect).toContain("≤2-edit document syncs stay with `coder`")
-    expect(coder).toContain("documentation lane: hand new reader-facing documents and ≥3-edit document rewrites to the author team")
-    expect(coder).toContain("keep `AGENTS.md` edits and ≤2-edit document syncs")
-    expect(coder).toContain("never edit a document file concurrently with a running author dispatch")
+    expect(architect).toContain("≤2-edit document syncs stay with `tech-lead`")
+    expect(techLead).toContain("New reader-facing documents and ≥3-edit document rewrites go to the `author` team")
+    expect(techLead).toContain("code-adjacent `AGENTS.md` edits and ≤2-edit document syncs ride along inside a coder milestone")
   })
 
   it("author-writer carries the code-graph navigation rule and the briefWaived guard without the moved term rule", async () => {
@@ -358,28 +362,33 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("option selection")
   })
 
-  it("coder binds coder-reviewer to code_plan_review for plan and diff review", async () => {
-    const prompt = await readAgentPrompt("coder.md")
+  it("tech-lead binds the reviewer seats to code_plan_review with stage and reviews_job_ids", async () => {
+    const prompt = await readAgentPrompt("tech-lead.md")
 
     expect(prompt).toContain('protocol: "code_plan_review"')
+    expect(prompt).toContain('stage: "plan"')
+    expect(prompt).toContain('stage: "final"')
+    expect(prompt).toContain("reviews_job_ids")
     expect(prompt).toContain("janus_dispatch_continue")
     expect(prompt).not.toContain("have a fresh-context subagent")
   })
 
-  it("coder-reviewer and the code_plan_review card carry the dual-baseline contract", async () => {
-    const prompt = await readAgentPrompt("coder-reviewer.md")
+  it("the code_plan_review card and both reviewer prompts carry the dual-baseline contract", async () => {
     const card = await readFile(
       new URL("../../../assets/protocols/code_plan_review.md", import.meta.url),
       "utf8",
     )
+    const solution = await readAgentPrompt("solution-reviewer.md")
+    const codeReviewer = await readAgentPrompt("coder-reviewer.md")
 
     expectFields(card, Object.keys(CodePlanReviewSchema.shape))
     for (const text of ["Stage 1", "Stage 2", "verbatim", "Confirmed paths"]) {
       expect(card).toContain(text)
-      expect(prompt).toContain(text)
+      expect(solution).toContain(text)
     }
-    expect(prompt).toContain("code-graph or structural index tools")
-    expect(prompt).toContain("stale index")
+    for (const text of ["verbatim", "Confirmed paths"]) {
+      expect(codeReviewer).toContain(text)
+    }
   })
 
   it("architect routes pre-mortems with mode, tier, and anti-anchoring sessions", async () => {
@@ -393,120 +402,102 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("stale index")
   })
 
-  it("coder states the routing thresholds, baseline-first dispatch, and the scope-expansion gate", async () => {
-    const prompt = await readAgentPrompt("coder.md")
+  it("coder states the leaf scope contract and tech-lead the tier routing", async () => {
+    const coder = await readAgentPrompt("coder.md")
+    const techLead = await readAgentPrompt("tech-lead.md")
 
-    expect(prompt).toContain("no more than two edit-tool calls")
-    expect(prompt).toContain("three or more edit operations")
-    expect(prompt).toContain("git status --porcelain --untracked-files=all")
-    expect(prompt).toContain("Baseline-first")
-    expect(prompt).toContain("Scope-Expansion Gate")
-    expect(prompt).toContain("deferred to coder")
-    expect(prompt).toContain("code-graph or structural index tools")
-    expect(prompt).toContain("stale index")
-    expect(prompt).toContain("verbatim")
+    // the leaf: scope discipline, graph navigation, reset re-read
+    expect(coder).toContain("Scope-Expansion Gate")
+    expect(coder).toContain("deferred to the controller")
+    expect(coder).toContain("code-graph or structural index tools")
+    expect(coder).toContain("stale index")
+    expect(coder).toContain("git status")
+    expect(coder).toContain("git diff")
+
+    // the controller: milestone weight routes the tier
+    expect(techLead).toContain('tier: "fast"')
+    expect(techLead).toContain('tier: "standard"')
+    expect(techLead).toContain("L3 milestones")
   })
 
-  it("coder delegates L2 milestones serially, runs the two-tier review, and restores baselines to exact pre-dispatch content", async () => {
+  it("tech-lead carries the tree-snapshot orchestration protocol and coder the leaf execution contract", async () => {
+    const techLead = await readAgentPrompt("tech-lead.md")
     const coder = await readAgentPrompt("coder.md")
-    const lite = await readAgentPrompt("coder-lite.md")
 
-    // D1.2: milestone delegation; planning reads never exempt Phase 2
-    expect(coder).toContain("one milestone at a time")
-    expect(coder).toContain("independently green and revertible")
-    expect(coder).toContain("Reading target files in Phase 1 never exempts Phase 2 from delegation")
-    expect(coder).toContain("Reading target files while writing `plan.md` is never a reason to keep Phase 2 inline")
-
-    // D1.3: two-tier review — coder reviews L0/L1 and every milestone
-    expect(coder).toContain("Tier 1 is you")
-    expect(coder).toContain("Never call `coder-reviewer` for L0, L1, or a single milestone")
-    expect(coder).toContain("exactly twice per L2/L3 task")
-    expect(coder).toContain("git diff --no-index -- /dev/null <file>")
-
-    // D1.4: baseline artifacts, exact-content restore, one bounded re-do
+    // D3.1 tree snapshots via a temporary index — never the real .git/index
     for (const text of [
-      "Baseline-first",
+      "PRE_TREE",
+      "POST_TREE",
+      ".baseline-mK",
       "0700",
-      "status.txt",
-      "dirty.patch",
-      "untracked.tar",
-      "snapshot.tar",
-      "git diff HEAD --stat",
-      "git diff HEAD --binary",
-      "git ls-files -o --exclude-standard -z | tar --null -T - -cf untracked.tar",
-      "git apply --include=<path> dirty.patch",
-      "git checkout HEAD -- <path>",
-      "quarantine",
-      "clean stale `.baseline-*`",
-      "delete it on milestone acceptance or task end",
-      "skipped when the untracked list is empty",
-      "apply only to untracked or ignored entries",
-      "at most one `janus_dispatch_continue`",
-      "requiring a re-read before re-editing",
-      "split a narrowed spec against only the unfinished files",
-      "never re-roll the failed spec",
-      "deferred to coder",
+      "GIT_INDEX_FILE",
+      "write-tree",
+      "generated_exclusions",
+      "=== EOF .review-mK.patch ===",
+      "long_line_files",
+      "diff --binary",
     ]) {
-      expect(coder).toContain(text)
+      expect(techLead).toContain(text)
     }
 
-    // D1.1: ephemeral verification fast path
-    expect(coder).toContain("L0 (ephemeral verification)")
-    expect(coder).toContain(".scratch-<id>/")
-    expect(coder).toContain("reclassify to the regular L0–L3 process")
+    // D3.3 ledger, restore incantation, and the AGENTS.md guard
+    expect(techLead).toContain("pre_tree: <PRE_TREE>, post_tree: <POST_TREE>")
+    expect(techLead).toContain('git -C "$ROOT" apply')
+    expect(techLead).toContain("AGENTS.md")
 
-    // language-agnostic execution and the coder-lite side of the contract
-    expect(coder).toContain("project-native")
-    expect(lite).toContain("Unplanned cross-module refactors or changes with unclear blast radius")
-    expect(lite).toContain("re-read every reset file")
-    expect(lite).not.toContain("package.json")
-    expect(lite).not.toContain(".baseline-")
+    // the leaf: pattern following, Confirmed-paths self-check, reset re-read
+    expect(coder).toContain("Follow the repo's pattern")
+    expect(coder).toContain("re-read every reset file")
+    expect(coder).toContain("You are a leaf")
+    expect(coder).toContain("Unplanned cross-module refactors or changes with unclear blast radius")
+    expect(coder).not.toContain("package.json")
+    expect(coder).not.toContain(".baseline-")
   })
 
-  it("coder-lite self-checks Confirmed paths with read-only git and defers verification", async () => {
-    const prompt = await readAgentPrompt("coder-lite.md")
+  it("coder self-checks Confirmed paths with read-only git and defers verification", async () => {
+    const prompt = await readAgentPrompt("coder.md")
 
     expect(prompt).toContain("Confirmed paths")
     expect(prompt).toContain("git status")
     expect(prompt).toContain("git diff")
-    expect(prompt).toContain("deferred to coder")
+    expect(prompt).toContain("deferred to the controller")
   })
 
-  it("the R&D prompts carry the engineer tiers, ROI-first delegation, TDD integrity, and the dual-mode handoff", async () => {
+  it("the R&D prompts carry the two-tier contract, TDD integrity, and the dual-mode handoff", async () => {
     const coder = await readAgentPrompt("coder.md")
-    const lite = await readAgentPrompt("coder-lite.md")
     const architect = await readAgentPrompt("architect.md")
     const card = await readFile(
       new URL("../../../assets/protocols/code_plan_review.md", import.meta.url),
       "utf8",
     )
 
-    // tier positioning (D2)
-    expect(coder).toContain("module architect and senior engineer")
-    expect(coder).toContain("junior/mid engineer")
-    expect(lite).toContain("junior/mid engineer")
-    expect(lite).toContain("Scoped and pattern- or spec-guided")
-    expect(lite).toContain("unit tests from a given scenario checklist or exemplar")
+    // two-tier execution (D1/D2): the dispatcher's tier routes the model; one prompt for both tiers
+    expect(coder).toContain("Senior Coder")
+    expect(coder).toContain("Junior Coder")
+    expect(coder).toContain('tier: "standard"')
+    expect(coder).toContain('tier: "fast"')
+    expect(coder).toContain("names no model")
 
-    // ROI-first delegation (D2)
-    expect(coder).toContain("Route by cost-performance")
-    expect(coder).toContain("never dispatch to offload, only to save")
-
-    // Option B+ TDD integrity and the L0/L1 self-check (D1/D3)
+    // TDD integrity (B10) lives with the execution leaf
     expect(coder).toContain("Test integrity:")
     expect(coder).toContain("never reach green by deleting a failing test")
-    expect(coder).toContain("test-integrity self-check")
-    expect(coder).toContain("existing-test or test-config changes")
+    expect(coder).toContain("existing-test adjustments in one line")
 
-    // dispatched design-record scope (D4, coder side)
-    expect(coder).toContain("a dispatcher-supplied accepted `design.md` with `Confirmed paths`")
-
-    // dual-mode clean-context handoff and same-session continuation (D4, architect side)
-    expect(architect).toContain('role: "coder"')
+    // dual-mode clean-context handoff and same-session continuation (E1/E2, architect side)
+    expect(architect).toContain('role: "tech-lead"')
     expect(architect).toContain("/new")
     expect(architect).toContain("janus_dispatch_continue")
     expect(architect).toContain("records or updates `handoff.md` per the `handoff` skill")
     expect(architect).toContain("交接单: <handoff-id>")
+    expect(architect).toContain(
+      "When a dispatched `tech-lead` return carries a `交接单: <handoff-id>` line",
+    )
+    expect(architect).toContain(
+      "neither the return nor the hop reports a stop, block, circuit breaker, or a decision awaiting the user",
+    )
+    expect(architect).toContain("otherwise surface the handoff to the user instead of re-dispatching")
+    expect(architect).toContain("never the relay trigger")
+    expect(architect).not.toContain("return carries `[context-watermark")
 
     // Stage 2 test-surface review (D3)
     expect(card).toContain("Review the test surface")
@@ -546,33 +537,101 @@ describe("agent prompt contracts", () => {
     }
   })
 
-  it("design.md is architect-owned and 100% read-only for the coder; a landed plan.md deletes freely", async () => {
-    const coder = await readAgentPrompt("coder.md")
+  it("design.md is architect-owned and 100% read-only for the tech-lead; a landed plan.md deletes freely", async () => {
+    const techLead = await readAgentPrompt("tech-lead.md")
     const architect = await readAgentPrompt("architect.md")
     const skill = await readSkill("consultation-design")
 
     for (const text of ["100% read-only", "never edit any line of it"]) {
-      expect(coder).toContain(text)
+      expect(techLead).toContain(text)
     }
-    expect(coder).toContain("never rewrite it to match the code")
-    expect(coder).not.toContain("lifecycle")
-    expect(coder).toContain(
-      "Deleting that `plan.md` once the work lands — all milestones verified, review resolved, and the final report delivered — is the one persistent-file deletion that needs no confirmation",
+    expect(techLead).not.toContain("lifecycle")
+    expect(techLead).toContain(
+      "The landed `plan.md` — all milestones verified, review resolved, final report delivered — deletes without confirmation",
     )
-    expect(coder).toContain("follow the `handoff` skill")
+    expect(techLead).toContain("per the `handoff` skill")
     expect(architect).toContain("sole author of `design.md`")
     expect(architect).toContain("交接单: <handoff-id>")
     expect(skill).toContain("The architect is the sole writer of the record")
     expect(skill).toContain("no lifecycle or status line")
   })
 
-  it("janus and writer route code-adjacent maintenance to the coder", async () => {
+  it("tech-lead carries the circuit-breaker, patch-size, and fail-closed anchors", async () => {
+    const prompt = await readAgentPrompt("tech-lead.md")
+
+    // a patch over 120 KB upgrades the reviewer or splits the milestone — never truncates
+    expect(prompt).toContain("120 KB")
+    expect(prompt).toContain("never truncate")
+    // a coder session that hits the step cap continues in a fresh session, counted against the cap
+    expect(prompt).toContain("80-step cap")
+    expect(prompt).toContain("counts toward the milestone's three-round cap")
+    // disabled or quota-exhausted seats stop the task
+    expect(prompt).toContain("fail-closed")
+    expect(prompt).toContain("never write the code inline and never self-approve")
+    // Stage-2 repair budget
+    expect(prompt).toContain("at most two repair rounds")
+    // a Stage-1 re-review is a fresh dispatch, never a continuation
+    expect(prompt).toContain("a fresh dispatch, never a continuation")
+  })
+
+  it("tech-lead carries the D3.3 restore, stage2 ledger, reviewer inputs, P0 overrides, and the incremental patch sentinel", async () => {
+    const prompt = await readAgentPrompt("tech-lead.md")
+
+    // D3.3 out-of-scope reconciliation: name-only check, current snapshot, restore, RESTORED_TREE snapshot, incantation, re-read continue
+    expect(prompt).toContain('git -C "$ROOT" diff --name-only "$PRE_TREE" "$POST_TREE"')
+    expect(prompt).toContain("snapshot the restored tree as `RESTORED_TREE`")
+    expect(prompt).toContain('git -C "$ROOT" diff --binary "$RESTORED_TREE" "$CURRENT_TREE" | git -C "$ROOT" apply')
+    expect(prompt).not.toContain('git -C "$ROOT" diff --binary "$POST_TREE" "$CURRENT_TREE" | git -C "$ROOT" apply')
+    expect(prompt).toContain("requiring a re-read before it continues")
+    expect(prompt).toContain("writing that checkpoint hop's `建议下一跳` as `tech-lead`")
+    expect(prompt).toContain("continues plan.md from the next unfinished milestone")
+    expect(prompt).toContain("states the pending decision in the `默认接力任务`")
+    // the stage2 ledger block carries every Stage-2 round across checkpoint relays
+    expect(prompt).toContain("stage2: { round: <R>, reviewed_tree: <TREE>, verdict: <V> }")
+    // reviewer dispatch inputs: the baseline excerpt and the executor's real output
+    expect(prompt).toContain("verbatim baseline excerpt")
+    expect(prompt).toContain("actual verification output")
+    // P0 overrides: plan placement, confirmation before writing, approved-spec precedence
+    expect(prompt).toContain("design-record path")
+    expect(prompt).toContain("list it for confirmation before writing")
+    expect(prompt).toContain("skip brainstorming's spec/design conversation")
+    expect(prompt).toContain("the design record is the approved spec")
+    // the fix-round incremental patch carries its own sentinel
+    expect(prompt).toContain("=== EOF .review-mK-rN.patch ===")
+  })
+
+  it("the reviewers and the code_plan_review card carry the sentinel and long-line gates", async () => {
+    const solution = await readAgentPrompt("solution-reviewer.md")
+    const codeReviewer = await readAgentPrompt("coder-reviewer.md")
+    const card = await readFile(
+      new URL("../../../assets/protocols/code_plan_review.md", import.meta.url),
+      "utf8",
+    )
+
+    expect(solution).toContain("=== EOF .review-final.patch ===")
+    expect(codeReviewer).toContain("=== EOF .review-mK.patch ===")
+    expect(codeReviewer).toContain("=== EOF .review-mK-rN.patch ===")
+    expect(card).toContain("=== EOF .review-mK.patch ===")
+    expect(card).toContain("=== EOF .review-mK-rN.patch ===")
+    expect(card).toContain("=== EOF .review-final.patch ===")
+    for (const text of ["total_lines > 1800", "long_line_files"]) {
+      expect(solution).toContain(text)
+      expect(codeReviewer).toContain(text)
+      expect(card).toContain(text)
+    }
+    for (const prompt of [solution, codeReviewer]) {
+      expect(prompt).toContain("revise")
+      expect(prompt).toContain("block")
+    }
+  })
+
+  it("janus and writer route code-adjacent maintenance to the tech-lead", async () => {
     const janus = await readAgentPrompt("janus.md")
     const writer = await readAgentPrompt("author-writer.md")
 
     expect(janus).toContain("`AGENTS.md` maintenance")
     expect(janus).toContain("≤2-edit document syncs")
-    expect(writer).toContain("those changes route to `coder`")
+    expect(writer).toContain("those changes route to `tech-lead`")
     expect(writer).toContain("do not teach from survivors only")
   })
 
@@ -584,6 +643,20 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("结论：")
     expect(prompt).toContain("下一步：")
     expect(prompt).toContain("Do not rewrite it into Janus's short style")
+  })
+
+  it("janus relays a tech-lead checkpoint on the 交接单 line, gated on the newest hop with a stop veto, never the watermark marker", async () => {
+    const prompt = await readAgentPrompt("janus.md")
+
+    expect(prompt).toContain(
+      "When a `tech-lead` dispatch return carries a `交接单: <handoff-id>` line",
+    )
+    expect(prompt).toContain(
+      "neither the return nor the hop reports a stop, block, circuit breaker, or a decision awaiting the user",
+    )
+    expect(prompt).toContain("otherwise surface the handoff to the user instead of re-dispatching")
+    expect(prompt).toContain("never the relay trigger")
+    expect(prompt).not.toContain("dispatch return carries `[context-watermark")
   })
 
   it("shared common-base asset carries the baseline epistemic, untrusted-input, and scope rules", async () => {
@@ -634,7 +707,7 @@ describe("agent prompt contracts", () => {
     const agentDir = new URL("../../../assets/agents/", import.meta.url)
     const files = (await readdir(agentDir)).filter((file) => file.endsWith(".md")).sort()
 
-    expect(files.length).toBe(14)
+    expect(files.length).toBe(15)
     for (const file of files) {
       const prompt = await readFile(new URL(file, agentDir), "utf8")
       if (prompt.includes("## File Change Confirmation")) {

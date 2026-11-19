@@ -1,21 +1,49 @@
 import { z } from "zod"
 
 export const DISPATCH_ROLES = [
+  "consultant",
+  "tech-lead",
+  "author",
+  "simple",
   "common-explorer",
   "consultant-analyst",
   "consultant-critic",
-  "coder-reviewer",
   "consultant-auditor",
+  "solution-reviewer",
+  "coder",
+  "coder-reviewer",
   "author-writer",
   "author-reviewer",
-  "simple",
-  "coder-lite",
-  "coder",
-  "consultant",
-  "author",
 ] as const
 export type DispatchRole = (typeof DISPATCH_ROLES)[number]
-export type JournalRole = DispatchRole
+
+/** Retired dispatch roles that historical journals still record. */
+export const LEGACY_JOURNAL_ROLES = ["coder-lite"] as const
+export type LegacyJournalRole = (typeof LEGACY_JOURNAL_ROLES)[number]
+export type JournalRole = DispatchRole | LegacyJournalRole
+
+export function isLegacyJournalRole(role: JournalRole): role is LegacyJournalRole {
+  return (LEGACY_JOURNAL_ROLES as readonly string[]).includes(role)
+}
+
+export const DISPATCH_PROTOCOLS = [
+  "counter_evidence",
+  "hypothesis_matrix",
+  "plan_robustness",
+  "design_premortem",
+  "code_plan_review",
+] as const
+
+export type DispatchProtocol = (typeof DISPATCH_PROTOCOLS)[number]
+
+/**
+ * The review stage a `solution-reviewer` + `code_plan_review` dispatch
+ * declares: "plan" reviews the approved plan only (no coder job ids);
+ * "final" reviews the integrated final diff and must list the coder job
+ * ids it covers. Runtime enforcement lives at the dispatch boundary.
+ */
+export const DISPATCH_STAGES = ["plan", "final"] as const
+export type DispatchStage = (typeof DISPATCH_STAGES)[number]
 
 export const PRODUCTION_WAIT_BUDGET_MS = 1_800_000
 export const DEFAULT_WAIT_MS = PRODUCTION_WAIT_BUDGET_MS
@@ -36,7 +64,16 @@ const roleSchema = z.string().transform((value, ctx): DispatchRole => {
   return normalized
 })
 
-const journalRoleSchema = z.enum(DISPATCH_ROLES)
+const journalRoleSchema = z.string().transform((value, ctx): JournalRole => {
+  if ((DISPATCH_ROLES as readonly string[]).includes(value) || (LEGACY_JOURNAL_ROLES as readonly string[]).includes(value)) {
+    return value as JournalRole
+  }
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: `expected one of: ${[...DISPATCH_ROLES, ...LEGACY_JOURNAL_ROLES].join(", ")}`,
+  })
+  return z.NEVER
+})
 
 /** Public role argument schema: canonical dispatch names only. */
 export const DispatchRoleSchema = roleSchema
@@ -80,6 +117,11 @@ export const JobSpecSchema = journalRecord("job-spec", {
   parent_id: sessionIdSchema,
   directory: z.string().min(1),
   created_at: z.number().int(),
+  protocol: z.enum(DISPATCH_PROTOCOLS).optional(),
+  // Caller-declared review stage for solution-reviewer + code_plan_review
+  // jobs, persisted for the record (see dispatch-guard.ts for the trust
+  // boundary and runtime enforcement).
+  stage: z.enum(DISPATCH_STAGES).optional(),
   // Continuation fields. `session_id` is the existing dispatch session a
   // continuation job reuses as its attempt-0 target; it is not a child of the
   // continuation job root. `continued_from` is the original job root that
@@ -152,8 +194,17 @@ const envelopeBaseSchema = z
   })
   .strict()
 
+/**
+ * Caller context watermark carried inside an envelope return: the token
+ * count of the calling session when it crossed the soft threshold. Envelope
+ * forms must never append free text (it would break `parseOutcomeEnvelope`
+ * consumers), so the watermark rides as this optional field instead.
+ */
+const contextWatermarkSchema = z.number().int().nonnegative()
+
 export const DispatchEnvelopeSchema = envelopeBaseSchema.extend({
   status: z.enum(["pending", "unknown", "cancelling"], { message: "unsupported envelope status" }),
+  context_watermark: contextWatermarkSchema.optional(),
 })
 
 export type DispatchEnvelope = z.infer<typeof DispatchEnvelopeSchema>
@@ -179,6 +230,7 @@ export const DispatchCompletedEnvelopeSchema = z
     session_id: sessionIdSchema,
     waited_ms: z.number().int().nonnegative(),
     text: z.string(),
+    context_watermark: contextWatermarkSchema.optional(),
   })
   .strict()
 
@@ -246,6 +298,8 @@ export const ContinueArgsSchema = z
     session_id: sessionIdSchema,
     prompt: z.string(),
     role: roleSchema.optional(),
+    // Accepted but not yet validated/used; the mandatory guard ships later.
+    reviews_job_ids: z.array(z.string()).optional(),
   })
   .strict()
 
@@ -273,6 +327,21 @@ export interface SdkSession {
   readonly time: { readonly created: number; readonly updated: number }
 }
 
+/**
+ * Token usage of an assistant message, in the host SDK's field names
+ * (`@opencode-ai/sdk` 1.18.18 `AssistantMessage.tokens`: `input`, `output`,
+ * `reasoning`, `cache.read`, `cache.write` — all required there, and no
+ * `total`). Every field stays optional here: the context watermark read
+ * must skip a message whose usage is absent or malformed, never fail.
+ */
+export interface SdkTokenUsage {
+  readonly input?: number
+  readonly output?: number
+  readonly reasoning?: number
+  readonly total?: number
+  readonly cache?: { readonly read?: number; readonly write?: number }
+}
+
 export interface SdkAssistantMessage {
   readonly id: string
   readonly sessionID: string
@@ -282,6 +351,7 @@ export interface SdkAssistantMessage {
   readonly parentID: string
   readonly modelID: string
   readonly providerID: string
+  readonly tokens?: SdkTokenUsage
   readonly finish?: string
 }
 
@@ -301,6 +371,8 @@ export interface SdkMessageWithParts {
 }
 
 export type SdkQuery = { readonly directory?: string }
+/** Session message list query; `limit` takes the session's tail messages. */
+export type SdkMessagesQuery = SdkQuery & { readonly limit?: number }
 export type SdkPath = { readonly id: string }
 export type SdkResult<T> = { readonly data?: T; readonly error?: unknown }
 export type SdkPromptBody = {
@@ -325,7 +397,7 @@ export interface DispatchSdk {
     abort(input: { path: SdkPath; query?: SdkQuery }): Promise<SdkResult<boolean>>
     get(input: { path: SdkPath; query?: SdkQuery }): Promise<SdkResult<SdkSession>>
     children(input: { path: SdkPath; query?: SdkQuery }): Promise<SdkResult<ReadonlyArray<SdkSession>>>
-    messages(input: { path: SdkPath; query?: SdkQuery }): Promise<SdkResult<ReadonlyArray<SdkMessageWithParts>>>
+    messages(input: { path: SdkPath; query?: SdkMessagesQuery }): Promise<SdkResult<ReadonlyArray<SdkMessageWithParts>>>
     status(input: { query?: SdkQuery }): Promise<SdkResult<Readonly<Record<string, SdkSessionStatus>>>>
   }
 }

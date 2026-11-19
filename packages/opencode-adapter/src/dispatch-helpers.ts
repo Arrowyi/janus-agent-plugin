@@ -1,4 +1,4 @@
-import type { DispatchEnvelope, DispatchOutcome, DispatchRole, JournalRole } from "./dispatch-contract.ts"
+import { isLegacyJournalRole, type DispatchEnvelope, type DispatchOutcome, type DispatchRole, type JournalRole } from "./dispatch-contract.ts"
 import type { ObservationOutcome } from "./dispatch-observer.ts"
 
 export const RETRYABLE_MODEL_ERROR_CODES = ["402", "429", "500", "502", "503", "504"] as const
@@ -62,30 +62,35 @@ export function embedsProviderErrorText(text: string): boolean {
 }
 
 /**
- * Role → plugin-config model-field map. Explicit because "coder-lite" maps to
- * the underscored `coder_lite_model` (role-name interpolation would be wrong).
+ * Role → plugin-config model-field map. Explicit so hyphenated role names
+ * map to their underscored config fields.
  */
 export const ROLE_MODEL_FIELDS: Record<DispatchRole, string> = {
+  consultant: "consultant_model",
+  "tech-lead": "tech_lead_model",
+  author: "author_model",
+  simple: "simple_model",
   "common-explorer": "common_explorer_model",
   "consultant-analyst": "consultant_analyst_model",
   "consultant-critic": "consultant_critic_model",
-  "coder-reviewer": "coder_reviewer_model",
   "consultant-auditor": "consultant_auditor_model",
+  "solution-reviewer": "solution_reviewer_model",
+  coder: "coder_model",
+  "coder-reviewer": "coder_reviewer_model",
   "author-writer": "author_writer_model",
   "author-reviewer": "author_reviewer_model",
-  simple: "simple_model",
-  coder: "coder_model",
-  "coder-lite": "coder_lite_model",
-  consultant: "consultant_model",
-  author: "author_model",
 }
 
 /**
  * Remediation hint appended to provider/model dispatch failures so a
- * non-Go user immediately knows how to fix the default model set.
+ * non-Go user immediately knows how to fix the default model set. A legacy
+ * journal role carries migration guidance instead of a config field.
  */
 export function modelFailureHint(role: JournalRole, model: string | null | undefined): string {
   const label = model !== undefined && model !== null && model.length > 0 ? ` (model: ${model})` : ""
+  if (isLegacyJournalRole(role)) {
+    return `${label}. Hint: the ${role} role is retired; dispatch role "coder" (tier: "fast") for the same lane and migrate config keys per tier_models.fast.coder.`
+  }
   const field = ROLE_MODEL_FIELDS[role]
   return `${label}. Hint: default models assume an OpenCode Go subscription. If this provider is not configured on this machine, set "${field}" in ~/.config/janus-agent/config.jsonc (or point $JANUS_CONFIG at your config), then retry the dispatch.`
 }

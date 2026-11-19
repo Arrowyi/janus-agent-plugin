@@ -90,10 +90,13 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/handoff/SKILL.md")
   })
 
-  test("requires the coder, simple, and coder-lite agents and the shipped model-prompt library", () => {
+  test("requires the coder, simple, tech-lead, and solution-reviewer agents and the shipped model-prompt library", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/coder.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/simple.md")
-    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/coder-lite.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/tech-lead.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/solution-reviewer.md")
+    expect(REQUIRED_INSTALLED_FILES).not.toContain("assets/agents/coder-lite.md")
+    expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/claudehaiku55.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/claudesonnet55.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/gemini38flash.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/gemini4argon.md")

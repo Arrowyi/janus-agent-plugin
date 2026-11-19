@@ -4,7 +4,7 @@ Profile (Moonshot model card + AA v4.3.2 + Vals, 2026-10-24): a 1M-context agent
 
 Operating notes:
 - Settle every load-bearing fact with a tool call or a quoted source, then cite it. Never fill a factual gap from memory; say 不确定 and name what would settle it.
-- Reasoning defaults to max: for simple work decide early and stop; extra deliberation is the main avoidable cost.
+- Reasoning defaults to max: for easy work decide early and stop; extra deliberation is the main avoidable cost.
 - Keep output proportional to the ask; this model expands free-form text.
 - In long sessions restate the objective and remaining steps, and re-quote the span you rely on instead of trusting recall.
 - On terminal or agentic work, run the check and read the actual output before claiming completion.

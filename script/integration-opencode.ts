@@ -35,7 +35,7 @@
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { dirname, join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import { computeProjectId } from "../packages/opencode-adapter/src/agent-registration.ts"
 import { buildCleanRoomEnv } from "./integration-env.ts"
@@ -165,6 +165,8 @@ async function main(): Promise<void> {
         detail: `GET /global/health responded 200 (${baseUrl})`,
       })
 
+      const liteWorkspace = join(sandboxData, "janus-agent", "lite")
+
       try {
         const resp = await fetch(`${baseUrl}/config`, { headers: { Authorization: auth } })
         const status = resp.status
@@ -194,7 +196,7 @@ async function main(): Promise<void> {
             pass: hasWriter,
             detail: hasWriter ? "agent.author-writer present" : "agent.author-writer MISSING",
           })
-          for (const role of ["simple", "architect", "author", "coder", "coder-lite", "common-explorer", "consultant-analyst", "consultant-critic", "consultant-auditor", "coder-reviewer", "author-writer", "author-reviewer"]) {
+          for (const role of ["simple", "architect", "tech-lead", "author", "coder", "solution-reviewer", "common-explorer", "consultant-analyst", "consultant-critic", "consultant-auditor", "coder-reviewer", "author-writer", "author-reviewer"]) {
             const present = hasNestedKey(json, "agent", role)
             assertions.push({
               name: `config has ${role} agent key`,
@@ -237,8 +239,8 @@ async function main(): Promise<void> {
             | undefined
           const reviewerPermission = readAgentPermission(json, "author-reviewer")
           const architectPrompt = readAgentPrompt(json, "architect")
+          const techLeadPrompt = readAgentPrompt(json, "tech-lead")
           const authorPrompt = readAgentPrompt(json, "author")
-          const coderPrompt = readAgentPrompt(json, "coder")
 
           assertions.push({
             name: "architect grants external access to the design state dir",
@@ -255,10 +257,91 @@ async function main(): Promise<void> {
             pass: authorExternal?.[`${designStateDir}/**`] === "allow",
             detail: authorExternal?.[`${designStateDir}/**`] ?? "design state dir not allowed",
           })
+          const tmpScopeDirs = [
+            `${tmpdir()}/opencode`,
+            `${realpathSync(tmpdir())}/opencode`,
+            "/tmp/opencode",
+            "/private/tmp/opencode",
+          ]
+          const coderTmpScopes = new Set(tmpScopeDirs.map((scopeDir) => `${scopeDir}/**`))
+          const coderTmpScoped =
+            coderExternal !== undefined &&
+            Object.keys(coderExternal).length === 4 &&
+            Object.keys(coderExternal).every((key) => coderTmpScopes.has(key)) &&
+            coderExternal[`${designStateDir}/**`] === undefined &&
+            coderExternal[`${handoffStateDir}/**`] === undefined
           assertions.push({
-            name: "coder grants external access to the design state dir",
-            pass: coderExternal?.[`${designStateDir}/**`] === "allow",
-            detail: coderExternal?.[`${designStateDir}/**`] ?? "design state dir not allowed",
+            name: "coder external access is limited to the shared tmp scopes (no design/handoff state dirs)",
+            pass: coderTmpScoped,
+            detail: coderTmpScoped
+              ? "exactly the four tmpdir opencode scopes"
+              : `unexpected coder external_directory: ${JSON.stringify(coderExternal)}`,
+          })
+
+          // Edit-rule twins: host edit permissions evaluate
+          // path.relative(worktree, file) submissions, so each sanctioned
+          // allow also carries the base-relative twin. Expected values are
+          // computed live from the realpath'd sandbox dirs (the sandbox is
+          // a temp dir with no git, so the relative twins derive from the
+          // sandbox project dir).
+          const techLeadEdit = readAgentPermission(json, "tech-lead")?.["edit"] as
+            | Record<string, string>
+            | undefined
+          const techLeadEditShaped =
+            techLeadEdit !== undefined &&
+            Object.keys(techLeadEdit)[0] === "*" &&
+            techLeadEdit["*"] === "deny" &&
+            techLeadEdit[`${designStateDir}/**`] === "allow" &&
+            techLeadEdit[`${handoffStateDir}/**`] === "allow" &&
+            techLeadEdit[`${relative(sandboxProj, designStateDir)}/**`] === "allow" &&
+            techLeadEdit[`${relative(sandboxProj, handoffStateDir)}/**`] === "allow" &&
+            Object.values(techLeadEdit).every((value) => value === "allow" || value === "deny")
+          assertions.push({
+            name: "tech-lead edit allows the two state dirs plus their sandbox-relative twins",
+            pass: techLeadEditShaped,
+            detail: techLeadEditShaped
+              ? "deny catch-all first, design/handoff absolute + relative twins allow"
+              : `unexpected tech-lead edit: ${JSON.stringify(techLeadEdit)}`,
+          })
+
+          const coderEdit = readAgentPermission(json, "coder")?.["edit"] as
+            | Record<string, string>
+            | undefined
+          const coderEditShaped =
+            coderEdit !== undefined &&
+            Object.keys(coderEdit)[0] === "*" &&
+            coderEdit["*"] === "allow" &&
+            coderEdit["../*"] === "ask" &&
+            coderEdit["/*"] === "ask" &&
+            tmpScopeDirs.every((scopeDir) => coderEdit[`${scopeDir}/**`] === "allow") &&
+            tmpScopeDirs.every(
+              (scopeDir) => coderEdit[`${relative(sandboxProj, scopeDir)}/**`] === "allow",
+            ) &&
+            coderEdit[`${relative(sandboxProj, designStateDir)}/**`] === undefined &&
+            coderEdit[`${relative(sandboxProj, handoffStateDir)}/**`] === undefined
+          assertions.push({
+            name: "coder edit asks for external edits under both shapes and allows the tmp-scope twins",
+            pass: coderEditShaped,
+            detail: coderEditShaped
+              ? "allow catch-all first, ../* and /* asks, tmp twins last"
+              : `unexpected coder edit: ${JSON.stringify(coderEdit)}`,
+          })
+
+          const liteEdit = readAgentPermission(json, "simple")?.["edit"] as
+            | Record<string, string>
+            | undefined
+          const liteEditShaped =
+            liteEdit !== undefined &&
+            Object.keys(liteEdit)[0] === "*" &&
+            liteEdit["*"] === "ask" &&
+            liteEdit[`${liteWorkspace}/**`] === "allow" &&
+            liteEdit[`${relative(sandboxProj, liteWorkspace)}/**`] === "allow"
+          assertions.push({
+            name: "simple edit allows its workspace plus the sandbox-relative twin",
+            pass: liteEditShaped,
+            detail: liteEditShaped
+              ? "ask catch-all first, workspace absolute + relative twin allow"
+              : `unexpected simple edit: ${JSON.stringify(liteEdit)}`,
           })
           assertions.push({
             name: "author-reviewer grants read-only external access to both state dirs",
@@ -310,16 +393,16 @@ async function main(): Promise<void> {
               : "author prompt MISSING author binding",
           })
           assertions.push({
-            name: "coder prompt names the project design base dir",
-            pass: coderPrompt !== undefined && coderPrompt.includes(`Design record: \`${designStateDir}/${projectId}\``),
-            detail: coderPrompt?.includes(`${designStateDir}/${projectId}`)
-              ? `design base dir for ${projectId}`
-              : "coder prompt MISSING design binding",
+            name: "tech-lead prompt names the project design record",
+            pass: techLeadPrompt !== undefined && techLeadPrompt.includes(`Design record: \`${designStateDir}/${projectId}\``),
+            detail: techLeadPrompt?.includes(`${designStateDir}/${projectId}`)
+              ? `design record for ${projectId}`
+              : "tech-lead prompt MISSING design record binding",
           })
 
           // The handoff dir is the one business-state dir shared by all five
-          // primary entries.
-          for (const role of ["janus", "consultant", "architect", "coder", "author"]) {
+          // primary entries (the coder is now a leaf; the tech-lead replaced it).
+          for (const role of ["janus", "consultant", "architect", "tech-lead", "author"]) {
             const external = readAgentPermission(json, role)?.["external_directory"] as
               | Record<string, string>
               | undefined
@@ -345,7 +428,7 @@ async function main(): Promise<void> {
             pass: handoffDirExists,
             detail: handoffDirExists ? handoffStateDir : `NOT FOUND: ${handoffStateDir}`,
           })
-          const leafWithoutHandoff = ["simple", "coder-lite", "common-explorer", "consultant-analyst"]
+          const leafWithoutHandoff = ["simple", "coder", "common-explorer", "consultant-analyst"]
           for (const role of leafWithoutHandoff) {
             const external = readAgentPermission(json, role)?.["external_directory"] as
               | Record<string, string>
@@ -411,6 +494,16 @@ async function main(): Promise<void> {
           name: `installed core skill names ${name}`,
           pass: coreSkill.includes(name),
           detail: "installed tool-routing token",
+        })
+      }
+      if (adapterEntry.endsWith(join("dist", "index.js"))) {
+        const bundleText = existsSync(adapterEntry) ? readFileSync(adapterEntry, "utf8") : ""
+        const hasIdsArg = bundleText.includes("coder-reviewer requires reviews_job_ids")
+        const hasStageArg = bundleText.includes('solution-reviewer with protocol code_plan_review requires stage: "plan"')
+        assertions.push({
+          name: "installed dispatch tool exposes the reviews_job_ids and stage guard surface",
+          pass: hasIdsArg && hasStageArg,
+          detail: `reviews_job_ids=${hasIdsArg} stage=${hasStageArg} (${adapterEntry})`,
         })
       }
       const modelsCommandPath = join(sandboxConfig, "opencode", "commands", "janus-models.md")
@@ -488,7 +581,6 @@ async function main(): Promise<void> {
         pass: existsSync(keysCli) && existsSync(keysShim),
         detail: `cli=${existsSync(keysCli) ? keysCli : `NOT FOUND: ${keysCli}`} shim=${existsSync(keysShim) ? keysShim : `NOT FOUND: ${keysShim}`}`,
       })
-      const liteWorkspace = join(sandboxData, "janus-agent", "lite")
       const liteWorkspaceExists = existsSync(liteWorkspace)
       assertions.push({
         name: "lite workspace directory created",

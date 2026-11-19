@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test"
+import { DISPATCH_ROLES } from "./dispatch-contract.ts"
 import {
+  ROLE_MODEL_FIELDS,
   buildChainFailureMessage,
   embedsProviderErrorText,
   isProviderErrorText,
@@ -35,11 +37,28 @@ describe("modelFailureHint", () => {
   })
 
   it("maps hyphenated roles to their underscored config fields", () => {
-    expect(modelFailureHint("coder-lite", "opencode-go/glm-5.3-flash")).toContain('set "coder_lite_model"')
     expect(modelFailureHint("coder", "opencode-go/glm-5.3")).toContain('set "coder_model"')
+    expect(modelFailureHint("tech-lead", "opencode-go/glm-5.3")).toContain('set "tech_lead_model"')
+    expect(modelFailureHint("solution-reviewer", "opencode/claude-sonnet-5-5")).toContain('set "solution_reviewer_model"')
     expect(modelFailureHint("simple", null)).toContain('set "simple_model"')
     expect(modelFailureHint("consultant", null)).toContain('set "consultant_model"')
     expect(modelFailureHint("author", null)).toContain('set "author_model"')
+  })
+
+  it("maps every dispatch role to a model config field", () => {
+    for (const role of DISPATCH_ROLES) {
+      expect(ROLE_MODEL_FIELDS[role].length).toBeGreaterThan(0)
+    }
+  })
+
+  it("gives a legacy journal role migration guidance instead of an undefined field hint", () => {
+    const hint = modelFailureHint("coder-lite", "opencode-go/glm-5.3-flash")
+    expect(hint).not.toContain('set "undefined"')
+    expect(hint).not.toContain("undefined")
+    expect(hint).toContain("coder-lite")
+    expect(hint).toContain('role "coder"')
+    expect(hint).toContain('tier: "fast"')
+    expect(hint).toContain("tier_models.fast.coder")
   })
 
   it("omits the model label when the model is null", () => {

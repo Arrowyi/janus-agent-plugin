@@ -96,4 +96,27 @@ describe("janus_config tool", () => {
     const out = await runConfigAction({ action: "set", key: "model_prompts.glm53", value: '""', apply: true }, env)
     expect(out).toContain("下一轮对话即生效")
   })
+
+  test("removed coder-lite keys return the migration guidance on describe/get/set", async () => {
+    const described = await runConfigAction({ action: "describe", key: "coder_lite_model" }, env)
+    expect(described).toContain("removed coder-lite keys detected")
+    expect(described).toContain("coder_lite_model → tier_models.fast.coder")
+    expect(described).toContain("tech_lead_")
+
+    const got = await runConfigAction({ action: "get", key: "coder_lite_model" }, env)
+    expect(got).toContain("removed coder-lite keys detected")
+
+    const nested = await runConfigAction({ action: "get", key: "tier_models.fast.coder-lite" }, env)
+    expect(nested).toContain('tier_models.fast["coder-lite"] → tier_models.fast["coder"]')
+
+    const set = await runConfigAction({ action: "set", key: "coder_lite_model", value: "a/b" }, env)
+    expect(set).toContain("removed coder-lite keys detected")
+    expect(existsSync(configPath)).toBe(false)
+  })
+
+  test("unknown keys keep the out-of-catalog refusal", async () => {
+    expect(await runConfigAction({ action: "describe", key: "no_such_key" }, env)).toContain("未知配置项")
+    expect(await runConfigAction({ action: "get", key: "no_such_key" }, env)).toContain("不在目录中的键")
+    expect(await runConfigAction({ action: "set", key: "no_such_key", value: "x" }, env)).toContain("未知配置项")
+  })
 })

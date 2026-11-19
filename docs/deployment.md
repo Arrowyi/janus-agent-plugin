@@ -132,6 +132,7 @@ bun run install:local
   - `stage: "plan"`（Stage-1，评审已批准的 `plan.md`）：仅校验审查席模型与 `tech-lead` 模型的独立性，**禁带** `reviews_job_ids`（带了被拒）。
   - `stage: "final"`（Stage-2，评审集成终 diff）：**必带** `reviews_job_ids`，并与 `tech-lead` 模型及全部列出的 coder job 逐一校验。
 - `solution-reviewer` + 协议 `design_premortem`（设计事前验尸）：校验审查席与 `architect` 模型的独立性。
+- 档位下限：job spec 按角色范围（`coder`/`coder-reviewer`/`solution-reviewer`）持久化派发时的 `tier`；显式 `tier: "fast"` 派 `coder-reviewer` 而 `reviews_job_ids` 列出的 coder job 中有 standard/deep 档时被拒（下限取所列 job 的最高档位）。不带 `tier` 参数的默认席派发与旧 job spec 不受此限；无 `tier` 参数派发的 coder job 落盘没有 tier 字段、与历史记录不可区分，下限规则对其不生效（由 `tech-lead` 规程约束 coder 派发必带档位补齐）。
 - `solution-reviewer` 不带协议：守卫不触发；席位用法由注册与提示词约束。
 - 家族校验：审查席与被审方同模型或同模型家族即拒绝。模型 ID 规范化后按前缀映射家族——`glm`、`gemini`、`kimi`、`claude`、`gpt`/`o1`/`o3`/`o4`、`deepseek`、`grok`、`qwen`、`minimax`、`mimo`、`hy`、`step` 分别映射到 glm/gemini/kimi/anthropic/openai/deepseek/xai/qwen/minimax/mimo/hunyuan/stepfun；未匹配前缀的模型自成一个家族，两个未知模型绝不折叠进共享家族。冲突错误消息会点名两侧模型并给出可改的配置键（`solution_reviewer_model`/`coder_reviewer_model`/`tech_lead_model`/`coder_model` 或 `tier_models`）。
 

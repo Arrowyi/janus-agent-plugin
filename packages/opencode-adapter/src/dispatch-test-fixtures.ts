@@ -40,6 +40,7 @@ export function makeJobSpec(
     created_at: overrides.created_at ?? 1_000_000,
     ...(overrides.protocol !== undefined ? { protocol: overrides.protocol } : {}),
     ...(overrides.stage !== undefined ? { stage: overrides.stage } : {}),
+    ...(overrides.tier !== undefined ? { tier: overrides.tier } : {}),
     ...(overrides.session_id !== undefined ? { session_id: overrides.session_id } : {}),
     ...(overrides.continued_from !== undefined ? { continued_from: overrides.continued_from } : {}),
   }

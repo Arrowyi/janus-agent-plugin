@@ -6,6 +6,7 @@ import type {
   DispatchRole,
   DispatchSdk,
   DispatchStage,
+  DispatchTier,
   JournalRole,
   SdkAssistantMessage,
   SdkMessageWithParts,
@@ -173,6 +174,25 @@ function modelConflictMessage(
   return `${seat} model conflict: reviewer ${reviewerModel} vs ${authorLabel} ${authorModel}${detail} — the review seat must not share a model or model family with the author it reviews; ${guidance}`
 }
 
+/**
+ * Review-seat tier floor: a fast-tier reviewer must not review a coder job
+ * that ran on a stronger tier. Only an explicit `fast` reviewer is
+ * constrained — an absent tier (the default senior seat) or an equal/upgraded
+ * tier passes — and a historical coder job with no recorded tier never
+ * triggers the floor. When true, narrows `coderTier` to the violated tier.
+ */
+function reviewerUndercutsCoderTier(
+  reviewerTier: DispatchTier | undefined,
+  coderTier: DispatchTier | undefined,
+): coderTier is DispatchTier {
+  if (reviewerTier !== "fast") return false
+  return coderTier === "standard" || coderTier === "deep"
+}
+
+function tierFloorMessage(seat: string, coderTier: DispatchTier, jobID: string, guidance: string): string {
+  return `${seat} tier floor: the review seat runs tier "fast" but coder job ${jobID} ran on tier "${coderTier}" — a fast-tier review seat must not undercut a standard or deep coder job; ${guidance}`
+}
+
 export interface DispatchReviewGuardInput {
   readonly role: DispatchRole
   readonly protocol: DispatchProtocol | undefined
@@ -180,6 +200,8 @@ export interface DispatchReviewGuardInput {
   readonly reviewsJobIDs: ReadonlyArray<string> | undefined
   /** The model this dispatch actually runs (this call's mode/tier options applied). */
   readonly reviewerModel: string | undefined
+  /** The tier this dispatch explicitly requested; undefined means the default senior seat. */
+  readonly reviewerTier?: DispatchTier
   readonly config: JanusPluginConfig
   readonly directory: string
 }
@@ -311,6 +333,16 @@ async function enforceAgainstCoderJobs(
   for (const jobID of ids) {
     const loaded = await loadJobModelForGuard(sdk, { jobID, directory: input.directory })
     if (!loaded.ok) return fail(`reviews_job_ids entry ${jobID} rejected: ${loaded.message}`)
+    if (reviewerUndercutsCoderTier(input.reviewerTier, loaded.tier)) {
+      return fail(
+        tierFloorMessage(
+          check.seat,
+          loaded.tier,
+          jobID,
+          're-dispatch the review at tier: "standard" (or omit tier to run the default senior seat) and retry',
+        ),
+      )
+    }
     if (loaded.model === null || loaded.model.length === 0) {
       return fail(
         `coder job ${jobID} pins no model (model_chain[0] is null), so the reviewer cannot be verified against it; pin the coder model via coder_model or tier_models and retry`,
@@ -337,6 +369,8 @@ export interface ContinueReviewGuardInput {
   readonly targetProtocol: DispatchProtocol | undefined
   /** The target session's durable pinned model (its job spec's model_chain[0]). */
   readonly targetModel: string | null
+  /** The target session's durable pinned tier; undefined for historical specs and the senior seat. */
+  readonly targetTier?: DispatchTier
   readonly reviewsJobIDs: ReadonlyArray<string> | undefined
   readonly config: JanusPluginConfig
   readonly directory: string
@@ -392,6 +426,16 @@ export async function enforceContinueReviewGuard(
   for (const jobID of ids) {
     const loaded = await loadJobModelForGuard(sdk, { jobID, directory: input.directory })
     if (!loaded.ok) return fail(`reviews_job_ids entry ${jobID} rejected: ${loaded.message}`)
+    if (reviewerUndercutsCoderTier(input.targetTier, loaded.tier)) {
+      return fail(
+        tierFloorMessage(
+          seat,
+          loaded.tier,
+          jobID,
+          'a continuation cannot raise the session\'s pinned tier; start a fresh review dispatch at tier: "standard" (or omit tier to run the default senior seat)',
+        ),
+      )
+    }
     if (loaded.model === null || loaded.model.length === 0) {
       return fail(
         `coder job ${jobID} pins no model (model_chain[0] is null), so the reviewer cannot be verified against it; start a fresh review dispatch`,

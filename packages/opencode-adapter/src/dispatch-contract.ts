@@ -45,6 +45,15 @@ export type DispatchProtocol = (typeof DISPATCH_PROTOCOLS)[number]
 export const DISPATCH_STAGES = ["plan", "final"] as const
 export type DispatchStage = (typeof DISPATCH_STAGES)[number]
 
+/**
+ * Execution tiers a dispatch can request. Persisted on the coder and review
+ * job specs so the review-seat floor can compare a reviewer's tier with the
+ * coder jobs it reviews (see dispatch-guard.ts). The values mirror
+ * `CONFIG_TIERS`; `dispatch-contract.test.ts` asserts the enum stays in sync.
+ */
+export const DISPATCH_TIERS = ["fast", "standard", "deep"] as const
+export type DispatchTier = (typeof DISPATCH_TIERS)[number]
+
 export const PRODUCTION_WAIT_BUDGET_MS = 1_800_000
 export const DEFAULT_WAIT_MS = PRODUCTION_WAIT_BUDGET_MS
 
@@ -122,6 +131,9 @@ export const JobSpecSchema = journalRecord("job-spec", {
   // jobs, persisted for the record (see dispatch-guard.ts for the trust
   // boundary and runtime enforcement).
   stage: z.enum(DISPATCH_STAGES).optional(),
+  // Execution tier the dispatch requested, persisted for the review-seat
+  // floor. Absent on historical specs and on roles the guard never reads back.
+  tier: z.enum(DISPATCH_TIERS).optional(),
   // Continuation fields. `session_id` is the existing dispatch session a
   // continuation job reuses as its attempt-0 target; it is not a child of the
   // continuation job root. `continued_from` is the original job root that

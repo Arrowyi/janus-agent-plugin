@@ -245,6 +245,22 @@ describe("createJob", () => {
     }
   })
 
+  it("persists a declared tier and omits the field when none is declared", async () => {
+    const sdk = createJournalFakeSdk()
+    const clock = createFakeClock(1_000_000)
+    const withTier = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/deepseek-v4.1-flash"], prompt: "implement the milestone", clock, tier: "standard",
+    }))
+    expect(getJobSpec(sdk, withTier.jobID).tier).toBe("standard")
+
+    const withoutTier = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock,
+    }))
+    expect("tier" in getJobSpec(sdk, withoutTier.jobID)).toBe(false)
+  })
+
   it("persists session_id and continued_from on a continuation job and omits them on a normal job", async () => {
     const sdk = createJournalFakeSdk()
     const clock = createFakeClock(1_000_000)
@@ -925,7 +941,24 @@ describe("loadJobModelForGuard", () => {
       modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
     }))
     const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
-    expect(result).toEqual({ ok: true, model: "opencode-go/glm-5.3" })
+    expect(result).toEqual({ ok: true, model: "opencode-go/glm-5.3", tier: undefined })
+  })
+
+  it("returns the persisted tier and undefined for a spec without one", async () => {
+    const sdk = createJournalFakeSdk()
+    const withTier = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/deepseek-v4.1-flash"], prompt: "implement the milestone", clock: createFakeClock(), tier: "standard",
+    }))
+    const tiered = await loadJobModelForGuard(sdk, { jobID: withTier.jobID, directory: FAKE_DIRECTORY })
+    expect(tiered).toEqual({ ok: true, model: "opencode-go/deepseek-v4.1-flash", tier: "standard" })
+
+    const withoutTier = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
+    }))
+    const legacy = await loadJobModelForGuard(sdk, { jobID: withoutTier.jobID, directory: FAKE_DIRECTORY })
+    expect(legacy).toEqual({ ok: true, model: "opencode-go/glm-5.3", tier: undefined })
   })
 
   it("returns a null model for a coder root whose chain pins none", async () => {
@@ -935,7 +968,7 @@ describe("loadJobModelForGuard", () => {
       modelChain: [null], prompt: "implement the milestone", clock: createFakeClock(),
     }))
     const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
-    expect(result).toEqual({ ok: true, model: null })
+    expect(result).toEqual({ ok: true, model: null, tier: undefined })
   })
 
   it("rejects an unknown job id with not-found and a root job_id hint", async () => {
@@ -1106,6 +1139,6 @@ describe("loadJobModelForGuard", () => {
       modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
     }))
     const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
-    expect(result).toEqual({ ok: true, model: "opencode-go/glm-5.3" })
+    expect(result).toEqual({ ok: true, model: "opencode-go/glm-5.3", tier: undefined })
   })
 })

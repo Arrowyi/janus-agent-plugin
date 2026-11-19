@@ -6,7 +6,7 @@ import { setImmediate } from "node:timers/promises"
 import type { PluginInput, ToolContext } from "@opencode-ai/plugin"
 
 import { createJanusDispatchTool, createJanusDispatchTools, resolveRoleTarget, splitModel } from "./dispatch-tool.ts"
-import { appendRecord, createAttemptSession, createJob } from "./dispatch-journal.ts"
+import { appendRecord, createAttemptSession, createJob, loadJob } from "./dispatch-journal.ts"
 import { JanusPluginConfigSchema, type JanusPluginConfig } from "./plugin-config.ts"
 import { CODER_HARD_CEILING_TOKENS, CONTEXT_WATERMARK_TOKENS } from "./dispatch-guard.ts"
 import { createFakeClock, createFakeSdk, legacyRoleSpecs, makeCancelledEnvelope, makeCompletedEnvelope, makeEnvelope, makeJobSpec, type FakeSdk } from "./dispatch-test-fixtures.ts"
@@ -1787,6 +1787,20 @@ describe("review seat dispatch guards", () => {
     return seedJobRoot(fake, makeJobSpec({ role: "coder", agent_name: "coder", model_chain: [model] }))
   }
 
+  async function seedCoderJobAtTier(fake: FakeSdk, tier: "fast" | "standard"): Promise<string> {
+    return seedJobRoot(fake, makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3"], tier }))
+  }
+
+  async function findJobByRole(fake: FakeSdk, role: string): Promise<string> {
+    const children = await fake.session.children({
+      path: { id: "ses_parent" },
+      query: { directory: "/tmp/project" },
+    })
+    const match = children.data?.find((session) => session.title === `[consultation-dispatch:v1] ${role}`)
+    if (match === undefined) throw new Error(`missing ${role} job root`)
+    return match.id
+  }
+
   function createCount(fake: FakeSdk): number {
     return fake.calls.filter((c) => (c as { method: string }).method === "create").length
   }
@@ -2115,6 +2129,55 @@ describe("review seat dispatch guards", () => {
     expect(captured[0]!.stage).toBe("plan")
     expect(captured[1]!.stage).toBeUndefined()
   })
+
+  it("persists a coder's standard tier and enforces the review-seat floor end to end", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("done", clock)
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+
+    const coderResult = await tools.janus_dispatch.execute(
+      { role: "coder", prompt: "implement the milestone", tier: "standard" },
+      fakeContext(),
+    )
+    expect(coderResult).toBe("done")
+    const coderJobID = await findJobByRole(fake, "coder")
+    const loaded = await loadJob(fake, { jobID: coderJobID, directory: "/tmp/project", expectedParentID: "ses_parent" })
+    if (!loaded.ok) throw loaded.error
+    expect(loaded.value.spec.tier).toBe("standard")
+
+    const before = promptAsyncCount(fake)
+    const rejected = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the milestone", tier: "fast", reviews_job_ids: [coderJobID] },
+      fakeContext(),
+    )
+    expect(rejected).toMatch(/^Error: /)
+    expect(rejected).toContain("tier floor")
+    expect(rejected).toContain('tier: "standard"')
+    expect(promptAsyncCount(fake)).toBe(before)
+
+    const passed = await tools.janus_dispatch.execute(
+      { role: "coder-reviewer", prompt: "review the milestone", tier: "standard", reviews_job_ids: [coderJobID] },
+      fakeContext(),
+    )
+    expect(passed).toBe("done")
+    expect(promptAsyncCount(fake)).toBe(before + 1)
+  })
+
+  it("keeps consultation role specs free of the tier field", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("done", clock)
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+
+    const result = await tools.janus_dispatch.execute(
+      { role: "consultant-analyst", prompt: "analyze this", tier: "fast" },
+      fakeContext(),
+    )
+    expect(result).toBe("done")
+    const jobID = await findJobByRole(fake, "consultant-analyst")
+    const loaded = await loadJob(fake, { jobID, directory: "/tmp/project", expectedParentID: "ses_parent" })
+    if (!loaded.ok) throw loaded.error
+    expect("tier" in loaded.value.spec).toBe(false)
+  })
 })
 
 describe("review seat continuation guards", () => {
@@ -2139,7 +2202,7 @@ describe("review seat continuation guards", () => {
     rmSync(tmpConfigDir, { recursive: true, force: true })
   })
 
-  async function seedCoderJob(fake: FakeSdk, model: string | null): Promise<string> {
+  async function seedCoderJob(fake: FakeSdk, model: string | null, tier?: "fast" | "standard"): Promise<string> {
     const root = await fake.session.create({
       body: { parentID: "ses_parent", title: "[consultation-dispatch:v1] coder" },
       query: { directory: "/tmp/project" },
@@ -2152,7 +2215,7 @@ describe("review seat continuation guards", () => {
         messageID: `msg-spec-${root.data.id}`,
         parts: [{
           type: "text",
-          text: JSON.stringify(makeJobSpec({ role: "coder", agent_name: "coder", model_chain: [model] })),
+          text: JSON.stringify(makeJobSpec({ role: "coder", agent_name: "coder", model_chain: [model], tier })),
           synthetic: true,
           ignored: true,
         }],
@@ -2268,5 +2331,27 @@ describe("review seat continuation guards", () => {
 
     expect(result).toBe("pre-mortem done")
     expect(promptAsyncCount(fake)).toBe(2)
+  })
+
+  it("rejects continuing a fast coder-reviewer session against a standard coder job", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("done", clock)
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+    const fastJob = await seedCoderJob(fake, "opencode-go/glm-5.3", "fast")
+    const standardJob = await seedCoderJob(fake, "opencode-go/deepseek-v4.1-flash", "standard")
+    const { sessionID } = await dispatchWithHandle(fake, tools, {
+      role: "coder-reviewer", prompt: "review the milestone", tier: "fast", reviews_job_ids: [fastJob],
+    })
+    const before = promptAsyncCount(fake)
+
+    const rejected = await tools.janus_dispatch_continue.execute(
+      { session_id: sessionID, prompt: "re-check the diff", reviews_job_ids: [standardJob] },
+      fakeContext(),
+    )
+
+    expect(rejected).toMatch(/^Error: /)
+    expect(rejected).toContain("tier floor")
+    expect(rejected).toContain("start a fresh review dispatch")
+    expect(promptAsyncCount(fake)).toBe(before)
   })
 })

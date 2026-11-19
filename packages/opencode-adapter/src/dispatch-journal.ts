@@ -9,6 +9,7 @@ import {
   type DispatchRole,
   type DispatchSdk,
   type DispatchStage,
+  type DispatchTier,
   type JobSpec,
   type JournalRecord,
   type JournalRole,
@@ -64,6 +65,8 @@ export interface CreateJobInput {
   readonly protocol?: DispatchProtocol
   /** Caller-declared review stage, persisted for the record (see dispatch-guard.ts). */
   readonly stage?: DispatchStage
+  /** Execution tier the dispatch requested, persisted for the review-seat floor. */
+  readonly tier?: DispatchTier
   /** Existing dispatch session a continuation job reuses as its attempt-0 target. */
   readonly sessionID?: string
   /** Original job root that owned the reused target session. */
@@ -105,7 +108,7 @@ export interface LoadJobInput {
  * rejected as not-found with a root job_id hint.
  */
 export type JobModelGuardResult =
-  | { readonly ok: true; readonly model: string | null }
+  | { readonly ok: true; readonly model: string | null; readonly tier: DispatchTier | undefined }
   | {
       readonly ok: false
       readonly reason: "not-found" | "read-error" | "not-coder-root" | "invalid-job"
@@ -203,7 +206,7 @@ export async function loadJobModelForGuard(
       message: `job ${input.jobID} records dispatch role ${spec.role}; reviews_job_ids must reference coder task jobs`,
     }
   }
-  return { ok: true, model: spec.model_chain[0] ?? null }
+  return { ok: true, model: spec.model_chain[0] ?? null, tier: spec.tier }
 }
 
 const MARKER = "[consultation-dispatch:v1] "
@@ -242,6 +245,7 @@ export async function createJob(
     created_at: input.clock.now(),
     ...(input.protocol !== undefined ? { protocol: input.protocol } : {}),
     ...(input.stage !== undefined ? { stage: input.stage } : {}),
+    ...(input.tier !== undefined ? { tier: input.tier } : {}),
     ...(input.sessionID !== undefined ? { session_id: input.sessionID } : {}),
     ...(input.continuedFrom !== undefined ? { continued_from: input.continuedFrom } : {}),
   }

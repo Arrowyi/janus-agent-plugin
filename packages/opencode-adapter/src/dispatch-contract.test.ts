@@ -3,6 +3,7 @@ import { getEventListeners } from "node:events"
 
 import {
   DISPATCH_ROLES,
+  DISPATCH_TIERS,
   DEFAULT_WAIT_MS,
   PRODUCTION_WAIT_BUDGET_MS,
   parseContinueArgs,
@@ -32,6 +33,8 @@ import {
   makeJobSpec,
   validRoleSpecs,
 } from "./dispatch-test-fixtures.ts"
+
+import { CONFIG_TIERS } from "./plugin-config.ts"
 
 function assertOk<T>(result: { ok: true; value: T } | { ok: false; error: Error }): T {
   if (!result.ok) throw new Error(`expected ok, got error: ${result.error.message}`)
@@ -287,6 +290,32 @@ describe("job spec stage field", () => {
 
   it("rejects an unknown stage value", () => {
     expect(parseJournalRecord({ ...makeJobSpec(), stage: "draft" }).ok).toBe(false)
+  })
+})
+
+describe("job spec tier field", () => {
+  it("round-trips an optional tier on a job spec", () => {
+    for (const tier of ["fast", "standard", "deep"] as const) {
+      const parsed = assertOk(parseJournalRecord(makeJobSpec({ tier })))
+      expect(parsed.kind).toBe("job-spec")
+      if (parsed.kind === "job-spec") expect(parsed.tier).toBe(tier)
+    }
+  })
+
+  it("still parses historical job specs without a tier field", () => {
+    for (const { record } of [...validRoleSpecs, ...legacyRoleSpecs]) {
+      const parsed = assertOk(parseJournalRecord(record))
+      expect(parsed.kind).toBe("job-spec")
+      if (parsed.kind === "job-spec") expect(parsed.tier).toBeUndefined()
+    }
+  })
+
+  it("rejects an unknown tier value", () => {
+    expect(parseJournalRecord({ ...makeJobSpec(), tier: "senior" }).ok).toBe(false)
+  })
+
+  it("keeps DISPATCH_TIERS in lockstep with the config tier enum", () => {
+    expect([...DISPATCH_TIERS]).toEqual([...CONFIG_TIERS])
   })
 })
 

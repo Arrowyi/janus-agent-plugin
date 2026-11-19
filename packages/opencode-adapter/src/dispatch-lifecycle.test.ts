@@ -1527,3 +1527,67 @@ describe("job spec stage persistence", () => {
     expect(loaded.value.spec.stage).toBeUndefined()
   })
 })
+
+describe("job spec tier persistence", () => {
+  it("persists the caller-declared tier on the launch job spec", async () => {
+    const clock = createFakeClock()
+    const fake = createAutoCompletingFake("milestone done", clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+
+    const result = await lifecycle.launch({
+      role: "coder", prompt: "implement the milestone", agentName: "coder",
+      modelChain: ["opencode-go/deepseek-v4.1-flash"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 1_000, tier: "standard",
+    })
+
+    expect(result).toBe("milestone done")
+    const loaded = await loadJob(fake, { jobID: "ses_fake_1", directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+    if (!loaded.ok) throw loaded.error
+    expect(loaded.value.spec.tier).toBe("standard")
+    // The persisted spec and the in-memory mirror share one field construction
+    // in runJob, so the durable record is the single source the guards read.
+    expect(loaded.value.spec.role).toBe("coder")
+  })
+
+  it("omits tier when the launch does not declare one", async () => {
+    const clock = createFakeClock()
+    const fake = createAutoCompletingFake("milestone done", clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+
+    const result = await lifecycle.launch({
+      role: "coder", prompt: "implement the milestone", agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 1_000,
+    })
+
+    expect(result).toBe("milestone done")
+    const loaded = await loadJob(fake, { jobID: "ses_fake_1", directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+    if (!loaded.ok) throw loaded.error
+    expect("tier" in loaded.value.spec).toBe(false)
+  })
+
+  it("does not copy tier onto a continuation job spec", async () => {
+    const clock = createFakeClock()
+    const fake = createAutoCompletingFake("review done", clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    const first = await lifecycle.launch({
+      role: "coder-reviewer", prompt: "review the milestone", agentName: "coder-reviewer",
+      modelChain: ["opencode-go/kimi-k3.1-pro"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      waitMs: 1_000, tier: "standard",
+    })
+    expect(first).toBe("review done")
+
+    await lifecycle.continue({
+      role: "coder-reviewer", prompt: "re-check the diff", agentName: "coder-reviewer",
+      modelChain: ["opencode-go/kimi-k3.1-pro"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      sessionID: "ses_fake_1", continuedFrom: "ses_fake_1", waitMs: 1_000,
+    })
+
+    // The continuation root records the reuse only; the tier stays on the
+    // original job's spec, which the continue guard reads back.
+    const loaded = await loadJob(fake, { jobID: "ses_fake_2", directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+    if (!loaded.ok) throw loaded.error
+    expect(loaded.value.spec.session_id).toBe("ses_fake_1")
+    expect("tier" in loaded.value.spec).toBe(false)
+  })
+})

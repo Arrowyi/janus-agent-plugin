@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test"
 
 import { JanusPluginConfigSchema, MODEL_DEFAULTS, resolveRoleModelChain, type ModelRole } from "./plugin-config.ts"
-import { resolveModelFamily, readCallerContextTokens, CONTEXT_WATERMARK_TOKENS, CODER_HARD_CEILING_TOKENS, CALLER_CONTEXT_MESSAGES_LIMIT } from "./dispatch-guard.ts"
-import { createFakeSdk, type FakeSdk } from "./dispatch-test-fixtures.ts"
-import type { DispatchSdk, SdkAssistantMessage, SdkMessageWithParts } from "./dispatch-contract.ts"
+import { resolveModelFamily, readCallerContextTokens, enforceDispatchReviewGuard, enforceContinueReviewGuard, CONTEXT_WATERMARK_TOKENS, CODER_HARD_CEILING_TOKENS, CALLER_CONTEXT_MESSAGES_LIMIT } from "./dispatch-guard.ts"
+import { FAKE_DIRECTORY, createFakeSdk, makeJobSpec, type FakeSdk } from "./dispatch-test-fixtures.ts"
+import type { DispatchSdk, DispatchTier, SdkAssistantMessage, SdkMessageWithParts } from "./dispatch-contract.ts"
 
 describe("resolveModelFamily", () => {
   it("maps normalized model keys to their vendor families", () => {
@@ -233,5 +233,212 @@ describe("readCallerContextTokens", () => {
     const tokens = await readCallerContextTokens(fake as unknown as DispatchSdk, CALLER_SESSION, CALLER_DIRECTORY)
 
     expect(tokens).toBeUndefined()
+  })
+})
+
+describe("review-seat tier floor", () => {
+  const guardConfig = JanusPluginConfigSchema.parse({})
+  const reviewerModel = "opencode-go/kimi-k3.1-pro"
+
+  function guardSdk(fake: FakeSdk): DispatchSdk {
+    return fake as unknown as DispatchSdk
+  }
+
+  async function seedCoderJob(fake: FakeSdk, tier?: DispatchTier): Promise<string> {
+    const spec = makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3"], tier })
+    const root = await fake.session.create({
+      body: { parentID: spec.parent_id, title: `[consultation-dispatch:v1] ${spec.role}` },
+      query: { directory: spec.directory },
+    })
+    if (root.data === undefined) throw new Error("missing seeded root")
+    await fake.session.prompt({
+      path: { id: root.data.id },
+      body: {
+        noReply: true,
+        messageID: `msg-spec-${root.data.id}`,
+        parts: [{ type: "text", text: JSON.stringify(spec), synthetic: true, ignored: true }],
+      },
+      query: { directory: spec.directory },
+    })
+    return root.data.id
+  }
+
+  async function dispatchGuard(
+    fake: FakeSdk,
+    overrides: Partial<Parameters<typeof enforceDispatchReviewGuard>[1]>,
+  ) {
+    return enforceDispatchReviewGuard(guardSdk(fake), {
+      role: "coder-reviewer",
+      protocol: undefined,
+      stage: undefined,
+      reviewsJobIDs: undefined,
+      reviewerModel,
+      config: guardConfig,
+      directory: FAKE_DIRECTORY,
+      ...overrides,
+    })
+  }
+
+  async function continueGuard(
+    fake: FakeSdk,
+    overrides: Partial<Parameters<typeof enforceContinueReviewGuard>[1]>,
+  ) {
+    return enforceContinueReviewGuard(guardSdk(fake), {
+      targetRole: "coder-reviewer",
+      targetProtocol: undefined,
+      targetModel: reviewerModel,
+      reviewsJobIDs: undefined,
+      config: guardConfig,
+      directory: FAKE_DIRECTORY,
+      ...overrides,
+    })
+  }
+
+  it("rejects a fast reviewer against a standard coder job with re-dispatch guidance", async () => {
+    const fake = createFakeSdk()
+    const jobID = await seedCoderJob(fake, "standard")
+
+    const outcome = await dispatchGuard(fake, { reviewsJobIDs: [jobID], reviewerTier: "fast" })
+
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) {
+      expect(outcome.message).toContain("tier floor")
+      expect(outcome.message).toContain(jobID)
+      expect(outcome.message).toContain('tier: "standard"')
+    }
+  })
+
+  it("rejects a fast reviewer against a deep coder job", async () => {
+    const fake = createFakeSdk()
+    const jobID = await seedCoderJob(fake, "deep")
+
+    const outcome = await dispatchGuard(fake, { reviewsJobIDs: [jobID], reviewerTier: "fast" })
+
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain('"deep"')
+  })
+
+  it("passes a fast reviewer against a fast coder job", async () => {
+    const fake = createFakeSdk()
+    const jobID = await seedCoderJob(fake, "fast")
+
+    const outcome = await dispatchGuard(fake, { reviewsJobIDs: [jobID], reviewerTier: "fast" })
+
+    expect(outcome).toEqual({ ok: true })
+  })
+
+  it("passes a standard reviewer against a standard coder job", async () => {
+    const fake = createFakeSdk()
+    const jobID = await seedCoderJob(fake, "standard")
+
+    const outcome = await dispatchGuard(fake, { reviewsJobIDs: [jobID], reviewerTier: "standard" })
+
+    expect(outcome).toEqual({ ok: true })
+  })
+
+  it("passes an unspecified reviewer tier against a standard coder job (default senior seat)", async () => {
+    const fake = createFakeSdk()
+    const jobID = await seedCoderJob(fake, "standard")
+
+    const outcome = await dispatchGuard(fake, { reviewsJobIDs: [jobID] })
+
+    expect(outcome).toEqual({ ok: true })
+  })
+
+  it("passes a fast reviewer against a historical job with no recorded tier", async () => {
+    const fake = createFakeSdk()
+    const jobID = await seedCoderJob(fake)
+
+    const outcome = await dispatchGuard(fake, { reviewsJobIDs: [jobID], reviewerTier: "fast" })
+
+    expect(outcome).toEqual({ ok: true })
+  })
+
+  it("rejects mixed-tier ids when any listed job is stronger than the fast reviewer, regardless of order", async () => {
+    for (const order of ["fast-first", "standard-first"] as const) {
+      const fake = createFakeSdk()
+      const fastJob = await seedCoderJob(fake, "fast")
+      const standardJob = await seedCoderJob(fake, "standard")
+      const ids = order === "fast-first" ? [fastJob, standardJob] : [standardJob, fastJob]
+
+      const outcome = await dispatchGuard(fake, { reviewsJobIDs: ids, reviewerTier: "fast" })
+
+      expect(outcome.ok).toBe(false)
+      if (!outcome.ok) expect(outcome.message).toContain("tier floor")
+    }
+
+    const allFast = createFakeSdk()
+    const first = await seedCoderJob(allFast, "fast")
+    const second = await seedCoderJob(allFast, "fast")
+    expect(await dispatchGuard(allFast, { reviewsJobIDs: [first, second], reviewerTier: "fast" })).toEqual({ ok: true })
+  })
+
+  it("applies the same floor to a solution-reviewer stage final dispatch", async () => {
+    const fake = createFakeSdk()
+    const jobID = await seedCoderJob(fake, "standard")
+
+    const outcome = await dispatchGuard(fake, {
+      role: "solution-reviewer",
+      protocol: "code_plan_review",
+      stage: "final",
+      reviewsJobIDs: [jobID],
+      reviewerModel: "opencode/claude-sonnet-5-5",
+      reviewerTier: "fast",
+    })
+
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("tier floor")
+  })
+
+  it("leaves stage plan and design_premortem solution-reviewer dispatches ungated by the floor", async () => {
+    const planFake = createFakeSdk()
+    const plan = await dispatchGuard(planFake, {
+      role: "solution-reviewer",
+      protocol: "code_plan_review",
+      stage: "plan",
+      reviewerModel: "opencode/claude-sonnet-5-5",
+      reviewerTier: "fast",
+    })
+    expect(plan).toEqual({ ok: true })
+
+    const premortemFake = createFakeSdk()
+    const premortem = await dispatchGuard(premortemFake, {
+      role: "solution-reviewer",
+      protocol: "design_premortem",
+      reviewerModel: "opencode/claude-sonnet-5-5",
+      reviewerTier: "fast",
+    })
+    expect(premortem).toEqual({ ok: true })
+  })
+
+  it("rejects a fast continuation against a standard coder job and points at a fresh dispatch", async () => {
+    const fake = createFakeSdk()
+    const jobID = await seedCoderJob(fake, "standard")
+
+    const outcome = await continueGuard(fake, { reviewsJobIDs: [jobID], targetTier: "fast" })
+
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) {
+      expect(outcome.message).toContain("tier floor")
+      expect(outcome.message).toContain("start a fresh review dispatch")
+    }
+  })
+
+  it("passes a standard continuation against a standard coder job", async () => {
+    const fake = createFakeSdk()
+    const jobID = await seedCoderJob(fake, "standard")
+
+    const outcome = await continueGuard(fake, { reviewsJobIDs: [jobID], targetTier: "standard" })
+
+    expect(outcome).toEqual({ ok: true })
+  })
+
+  it("passes a continuation with no pinned tier against a standard coder job", async () => {
+    const fake = createFakeSdk()
+    const jobID = await seedCoderJob(fake, "standard")
+
+    const outcome = await continueGuard(fake, { reviewsJobIDs: [jobID] })
+
+    expect(outcome).toEqual({ ok: true })
   })
 })

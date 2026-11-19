@@ -58,6 +58,14 @@ export type { DispatchRole }
 const DISPATCH_MARKER = "[consultation-dispatch:v1] "
 
 /**
+ * Roles whose job spec records the dispatch tier. Only the jobs the
+ * review-seat floor reads back — coder tasks and the two review seats — write
+ * it; every other role keeps its historical spec shape even when the caller
+ * passes a tier.
+ */
+const TIER_PERSISTING_ROLES: ReadonlySet<DispatchRole> = new Set(["coder", "coder-reviewer", "solution-reviewer"])
+
+/**
  * Rejection text for a dispatched sub-session trying to dispatch a primary
  * coordinator role; undefined for every other role, which keeps their call
  * trace free of the extra session.get.
@@ -275,6 +283,7 @@ export function createJanusDispatchTools(
         stage: args.stage,
         reviewsJobIDs: args.reviews_job_ids,
         reviewerModel: model,
+        reviewerTier: tier,
         config,
         directory: context.directory,
       })
@@ -292,6 +301,7 @@ export function createJanusDispatchTools(
           returnHandle: args.return_handle,
           protocol: args.protocol,
           stage: args.stage,
+          ...(tier !== undefined && TIER_PERSISTING_ROLES.has(role) ? { tier } : {}),
         }),
         callerTokens,
       )
@@ -405,6 +415,7 @@ export function createJanusDispatchTools(
         targetRole: role,
         targetProtocol: loaded.spec.protocol,
         targetModel: loaded.spec.model_chain[0] ?? null,
+        targetTier: loaded.spec.tier,
         reviewsJobIDs: parsed.value.reviews_job_ids,
         config,
         directory: context.directory,

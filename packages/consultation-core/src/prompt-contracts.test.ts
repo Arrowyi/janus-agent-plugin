@@ -463,6 +463,26 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("deferred to the controller")
   })
 
+  it("coder separates external design decisions from bounded preparatory refactoring (D2)", async () => {
+    const coder = await readAgentPrompt("coder.md")
+
+    expect(coder).toContain("No external or cross-module design decisions")
+    expect(coder).toContain("tiered refactoring radius")
+    expect(coder).toContain("Fully specified")
+    for (const text of [
+      "No design decisions",
+      "nothing on which you would take a stance",
+      "no inventing structure",
+      "No drive-by refactors",
+      "Architecture, tool/library selection, or interface design decisions",
+      "touch only what the task names",
+      "never invent a new one unasked",
+      "no opportunistic refactors",
+    ]) {
+      expect(coder).not.toContain(text)
+    }
+  })
+
   it("the R&D prompts carry the two-tier contract, TDD integrity, and the dual-mode handoff", async () => {
     const coder = await readAgentPrompt("coder.md")
     const architect = await readAgentPrompt("architect.md")
@@ -532,6 +552,9 @@ describe("agent prompt contracts", () => {
       "boolean flag parameters",
       "command-query separation",
       "fail fast",
+      "Continuous anti-decay",
+      "third-instance knowledge duplication",
+      "wins ties",
     ]) {
       expect(principles).toContain(text)
     }
@@ -623,6 +646,33 @@ describe("agent prompt contracts", () => {
       expect(prompt).toContain("revise")
       expect(prompt).toContain("block")
     }
+  })
+
+  it("the card and the reviewer seats carry the D3 review-convergence anchors", async () => {
+    const card = await readFile(
+      new URL("../../../assets/protocols/code_plan_review.md", import.meta.url),
+      "utf8",
+    )
+    const codeReviewer = await readAgentPrompt("coder-reviewer.md")
+    const solution = await readAgentPrompt("solution-reviewer.md")
+    const techLead = await readAgentPrompt("tech-lead.md")
+
+    // the card: structural findings, the Stage-2 repair sentinel, and the dead-helper test rule
+    expect(card).toContain(`"[structural] "`)
+    expect(card).toContain("=== EOF .review-final-rN.patch ===")
+    expect(card).toContain("or disclosed one-line removal of a test exclusive to a deleted dead internal helper")
+    // coder-reviewer: compact structural pointer and the dead-helper test rule
+    expect(codeReviewer).toContain(`"[structural] "`)
+    expect(codeReviewer).toContain("or disclosed removal of a test that exclusively exercised a deleted dead internal helper")
+    // solution-reviewer: Stage-2 repair sentinel, structural pointer, and the dead-helper test rule
+    expect(solution).toContain("=== EOF .review-final-rN.patch ===")
+    expect(solution).toContain(`"[structural] "`)
+    expect(solution).toContain("or disclosed removal of a test exclusive to a deleted dead internal helper")
+    // tech-lead: ledger debt relay, reviewer arbitration, and the Stage-2 repair patch
+    expect(techLead).toContain("debt: [...]")
+    expect(techLead).toContain("Never self-approve or convert a `revise` into a `pass`")
+    expect(techLead).toContain(`"[structural] "`)
+    expect(techLead).toContain("=== EOF .review-final-rN.patch ===")
   })
 
   it("janus and writer route code-adjacent maintenance to the tech-lead", async () => {

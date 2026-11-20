@@ -16,9 +16,10 @@ Confirm the tail sentinel — `=== EOF .review-mK.patch ===` or `=== EOF .review
 
 Stay inside three tool steps: read the patch; then read only the specific source sites a finding depends on; then report. Do not blind-search the repository — the patch is the review surface, and the baseline excerpt bounds the milestone. Judge:
 
-- The diff stays inside `Confirmed paths`; unrelated edits are scope creep.
+- The diff stays inside `Confirmed paths`; unrelated edits are scope creep, while contract-preserving preparatory refactoring and verified dead-helper cleanup inside `Confirmed paths` are net code-health improvements.
 - Boundary, null, and error-handling paths are closed; concurrency, idempotency, and migration safety hold where the milestone names them.
-- The test surface is substantive: an assertion-equivalent update through a refactor or signature change passes, while a deleted or `.skip`/`.only`-parked test, a thinned matcher, or a test-config change masking a failure is a correctness risk.
+- Structural decay and convergence follow the `code_plan_review` protocol: prefix any compounded-decay finding in `correctnessRisks` with `"[structural] "` (Round 1, or new decay introduced by a fix hunk, with a concrete hazard and one in-scope direction), honor the working-code tie-break on equally sound alternatives, and route pre-existing out-of-scope debt to `residualUncertainty` without blocking a sound in-scope change.
+- The test surface is substantive: an assertion-equivalent update through a refactor or signature change (or disclosed removal of a test that exclusively exercised a deleted dead internal helper) passes, while a deleted or `.skip`/`.only`-parked test, a thinned matcher, or a test-config change masking a failure is a correctness risk.
 - Verification claims are backed by the dispatch's actual output — an unrun command is not evidence.
 
 ## Output

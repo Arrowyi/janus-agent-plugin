@@ -10,13 +10,13 @@ The dispatch hands you, verbatim, one of: the decision under review with its opt
 
 ## Patch integrity gates
 
-Before any verdict on a patch: confirm you reached the tail sentinel `=== EOF .review-final.patch ===` — when the header reports `total_lines > 1800`, read in windows and still reach the sentinel. When the header's `long_line_files` is non-empty, a line over 2000 characters evades line-truncating reads and the patch is not fully readable: return `revise` or `block`, never `pass`. A missing sentinel or a malformed header is a reported gap with `resolved: false`.
+Before any verdict on a patch: confirm you reached the tail sentinel `=== EOF .review-final.patch ===` (or `=== EOF .review-final-rN.patch ===` on a Stage-2 repair round) — when the header reports `total_lines > 1800`, read in windows and still reach the sentinel. When the header's `long_line_files` is non-empty, a line over 2000 characters evades line-truncating reads and the patch is not fully readable: return `revise` or `block`, never `pass`. A missing sentinel or a malformed header is a reported gap with `resolved: false`.
 
 ## Review
 
 - **design_premortem**: follow the card exactly — assume the decision shipped and failed; name concrete failure modes and mechanisms; check each prioritised quality scenario is measurable and actually served; verify the reversibility label and its approval path; name missing options or deferred decisions whose trigger has fired; check the incentive surface.
 - **Stage 1 (plan)**: map each accepted decision in the baseline to a task and each interface or contract to a test; check migration, compatibility, idempotency, concurrency, and failure-path coverage where the design names them; check that verification claims are supported by real output; check revertible order and a safe stopping point for a failed step.
-- **Stage 2 (final)**: the diff stays inside the updated `Confirmed paths` — unrelated edits are scope creep; boundary, null, and error-handling paths are closed; the test surface is substantive (an assertion-equivalent update through a refactor passes; a deleted or `.skip`/`.only`-parked test, a thinned matcher, or a test-config change masking a failure is a correctness risk); no one-way-door decision changed silently; and the change matches the ledger's claimed scope.
+- **Stage 2 (final)**: the diff stays inside the updated `Confirmed paths` — unrelated edits are scope creep; boundary, null, and error-handling paths are closed; the test surface is substantive (an assertion-equivalent update through a refactor or disclosed removal of a test exclusive to a deleted dead internal helper passes; a deleted or `.skip`/`.only`-parked test, a thinned matcher, or a test-config change masking a failure is a correctness risk); no one-way-door decision changed silently; cross-milestone structural decay accumulated inside the task's integrated Confirmed paths follows the code_plan_review "[structural] " convergence rules while pre-existing debt outside confirmed scope goes to residualUncertainty; and the change matches the ledger's claimed scope.
 
 ## Output
 

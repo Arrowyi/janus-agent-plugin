@@ -26,15 +26,15 @@ import { registerMemoryMcp } from "./mcp-registration.ts"
 import { installConsultationSkills } from "./skill-installer.ts"
 import {
   installConfigCommand,
-  installHandoffCommand,
   installMemoryCommands,
   installModelsCommand,
+  pruneRetiredCommands,
 } from "./command-installer.ts"
 import { computeNamespace } from "./namespace.ts"
 
 /**
  * Create the config hook that registers the agent family, the
- * janus-memory MCP server, and the four skills.
+ * janus-memory MCP server, and the three skills.
  *
  * Exported separately from the plugin so tests can invoke the hook
  * without constructing a full `PluginInput`.
@@ -49,8 +49,8 @@ export function createJanusConfigHook(
     const pluginConfig = await loadPluginConfig(env)
     const namespace = computeNamespace(project.id, directory)
 
-    // The directory supplies the author-brief, design-record, and handoff
-    // project ids; directory plus worktree resolve the edit-permission
+    // The directory supplies the author-brief and design-record project
+    // ids; directory plus worktree resolve the edit-permission
     // bases that the twin-carrying permission sets are built from.
     const editBases = resolveEditBases(directory, worktree)
     await registerConsultantAgent(config, pluginConfig, namespace, directory, env)
@@ -122,8 +122,8 @@ export function createJanusConfigHook(
     if (pluginConfig.install_commands) {
       await installMemoryCommands(env)
       await installModelsCommand(env)
-      await installHandoffCommand(env)
       await installConfigCommand(env)
+      await pruneRetiredCommands(env)
     }
   }
 }
@@ -160,7 +160,7 @@ export function createSystemTransformHook(env: NodeJS.ProcessEnv = process.env) 
  * The janus-agent OpenCode plugin.
  *
  * Registers the agent family, the dispatch tools, the `janus-memory` MCP
- * server, the four skills, and the model-adaptation system hook.
+ * server, the three skills, and the model-adaptation system hook.
  * Contains no evidence, recommendation, or persistence logic.
  */
 export const JanusAgentPlugin: Plugin = async (input) => ({

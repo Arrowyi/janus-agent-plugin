@@ -35,7 +35,7 @@ User arguments: $ARGUMENTS
 - `退出` / `exit` / `0`: exit
 - Any other free text: map to the above modes by meaning; ask one question only when genuinely ambiguous
 
-Role names accept both English and Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `主控`=tech-lead, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `方案审查`=solution-reviewer, `审计`=consultant-auditor, `写作`=author-writer, `审稿`=author-reviewer. `轻量`/`初级`/`机械` name the coder's `fast` tier (`tier_models.fast.coder`), not a role. The family has 15 registered agents and 13 dispatch roles; `janus` and `architect` are primary entries and are not dispatchable, while `author` is a dispatchable primary entry.
+Role names accept both English and Chinese short forms: `入口`=janus, `快答`=simple, `顾问`=consultant, `架构`=architect, `主控`=tech-lead, `编码`=coder, `文档`=author, `检索`=common-explorer, `分析`=consultant-analyst, `反证`=consultant-critic, `审查`=coder-reviewer, `方案审查`=solution-reviewer, `审计`=consultant-auditor, `写作`=author-writer, `审稿`=author-reviewer. `轻量`/`初级`/`机械` name the coder's `fast` tier (`tier_models.fast.coder`), not a role; the same `fast`/`standard` tier words apply to the two-tier documentation seats `author-writer` and `author-reviewer`. The family has 15 registered agents and 13 dispatch roles; `janus` and `architect` are primary entries and are not dispatchable, while `author` is a dispatchable primary entry.
 
 ## No-argument flow
 
@@ -89,7 +89,7 @@ Read-only. Runtime truth takes precedence; do not cite any fixed snapshot.
 
    `architect_model` and `author_model` fall back to an explicitly configured `consultant_model`, then to the plugin default. Also inspect `mode_models` and `tier_models` (see "Advanced routing"). Non-model config fields use the same role prefix, e.g. `simple_enabled`, `architect_enabled`, `author_writer_enabled`.
 
-5. Get the resolved model with `opencode debug agent <name>`. When the config value and the CLI disagree, report it; do not silently pick one.
+5. Get the resolved model with `opencode debug agent <name>`. When the config value and the CLI disagree, report it; do not silently pick one. The CLI shows the registered (standard-seat) model; a tiered seat (coder, coder-reviewer, author-writer, author-reviewer) resolves its `fast` model per dispatch, so list both tiers for those roles from the config and the shipped tier defaults.
 6. Resolve the effective prompt block for each model:
    1. User config `model_prompts[normalizeModelKey(model)]` is non-empty → use it.
    2. That value is `""` → `disabled`; do not evaluate, and do not automatically suggest enabling it.
@@ -112,7 +112,9 @@ For example `opencode-go/deepseek-v4.1-flash` → `deepseekv41flash`, `opencode/
 
 Two optional nested maps let the user route a role differently per consultation mode and per depth tier. They apply to dispatched sessions (not to a direct agent selection), and precedence is:
 
-`mode_models[mode][role]` > `tier_models[tier][role]` > `<role>_model` > `TIER_MODEL_DEFAULTS[tier][role]` > plugin default. The plugin ships the fast-tier defaults (`fast.coder` = `glm-5.3-flash`, `fast.coder-reviewer` = `claude-haiku-5-5`) and the standard-tier default (`standard.coder` = `deepseek-v4.1-flash`); the deep tier ships no tier default and falls back to the plugin scalars, and an explicit `<role>_model` still beats any tier default.
+`mode_models[mode][role]` > `tier_models[tier][role]` > `<role>_model` > `TIER_MODEL_DEFAULTS[tier][role]` > plugin default. The plugin ships the fast-tier defaults (`fast.coder` = `glm-5.3-flash`, `fast.coder-reviewer` = `claude-haiku-5-5`, `fast.author-writer` = `claude-haiku-5-5`, `fast.author-reviewer` = `deepseek-v4.1-flash`) and the standard-tier default (`standard.coder` = `deepseek-v4.1-flash`); the deep tier ships no tier default and falls back to the plugin scalars. An explicit `<role>_model` beats every shipped tier default, so setting `author_writer_model` alone also replaces the shipped fast writer — to change one tier only, write `tier_models.<tier>.<role>`.
+
+`author-writer` and `author-reviewer` run only the `fast` and `standard` tiers: a `tier_models.deep` entry for either fails config load, and a `tier: "deep"` dispatch is rejected. The author picks the tier by document level (`D0`/`D1` fast writer; `D2`/`D3` and load-bearing `D1` edits standard writer; the reviewer's `reader` stage fast, its other stages standard).
 
 Example:
 
@@ -123,7 +125,8 @@ Example:
     "doc": { "author-writer": "provider/long-context-writer" }
   },
   "tier_models": {
-    "deep": { "coder": "provider/strong-coding" }
+    "deep": { "coder": "provider/strong-coding" },
+    "fast": { "author-writer": "provider/cheap-writer" }
   }
 }
 ```
@@ -140,9 +143,9 @@ Read-only. Answer: whether an agent's model should change, and why.
   - Judgment/audit (consultant, consultant-critic, solution-reviewer, coder-reviewer, consultant-auditor): hard-task capability first; challenger and challenged must stay in different model families.
   - Coding (coder, dual-tier): agentic/coding hard benchmarks + cost per task; the coder is a dual-tier execution leaf — `tier: "standard"` is the Senior lane for L3 core logic and its red-green tests, `tier: "fast"` the Junior lane for spec-complete milestones, unit tests, and batch mechanical edits; the dispatching tech-lead picks the tier.
   - Design (architect, solution-reviewer): long-context structure, trade-off reasoning, and independent review.
-  - Documentation (author, author-writer, author-reviewer): long-context editing, prose quality, and instruction adherence; author-reviewer is judged on close-reading accuracy — it must not share the writer's model family.
+  - Documentation (author, author-writer, author-reviewer): long-context editing, prose quality, and instruction adherence; the writer and reviewer are evaluated per tier — the `fast` seat on cost and bounded-edit fidelity for micro-fixes, local edits, and reader cold reads, the `standard` seat on long-document quality and close-reading accuracy. The reviewer must not share the writer's model family at either tier; the dispatch boundary rejects a same-family pair.
   - Entry/quick answer (janus, simple): latency, tool-call stability, price; janus must also be judged on orchestration/routing.
-  - Retrieval/writing (common-explorer, consultant-analyst, author-writer): long context, hallucination rate, output quality/verbosity.
+  - Retrieval/analysis (common-explorer, consultant-analyst): long context, hallucination rate, output quality/verbosity.
 - For cost, use actual cost per task = list price × verbosity factor; distinguish Zen pay-as-you-go vs Go subscription quota.
 - For each candidate, mark whether it has an effective prompt block (user override / shipped / none). Candidates without a block may still be recommended, but mark them as a prompt-adaptation risk.
 - Source grading:

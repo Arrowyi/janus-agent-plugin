@@ -9,8 +9,6 @@ import {
   JanusPluginConfigSchema,
   TEAM_CAPS_DEFAULTS,
   TIER_ROLE_CAPS_DEFAULTS,
-  formatRemovedCoderLiteKeyHint,
-  formatRemovedCoderLiteMigrationHint,
   loadPluginConfig,
   normalizeWriterDocsRoots,
   resolveCostGuardUsd,
@@ -28,17 +26,17 @@ function config(overrides: z.input<typeof JanusPluginConfigSchema> = {}): JanusP
   return JanusPluginConfigSchema.parse(overrides)
 }
 
-describe("removed legacy config keys are rejected", () => {
-  it("rejects an old top-level key", () => {
+describe("unknown config keys are rejected", () => {
+  it("rejects an unknown top-level key", () => {
     expect(() => JanusPluginConfigSchema.parse({ ask_lite_enabled: false })).toThrow()
   })
 
-  it("rejects old role and mode keys inside mode_models and tier_models", () => {
+  it("rejects unknown role and mode keys inside mode_models and tier_models", () => {
     expect(() => JanusPluginConfigSchema.parse({ mode_models: { roadmap: { analyst: "x" } } })).toThrow()
     expect(() => JanusPluginConfigSchema.parse({ tier_models: { deep: { lite: "x" } } })).toThrow()
   })
 
-  it("rejects an old tier_role_caps key", () => {
+  it("rejects an unknown tier_role_caps key", () => {
     expect(() =>
       JanusPluginConfigSchema.parse({ tier_role_caps: { fast: { explorer: 5 }, standard: {}, deep: {} } }),
     ).toThrow()
@@ -82,7 +80,7 @@ describe("resolveTierRoleCaps", () => {
     })
 
     // when // then
-    expect(resolveTierRoleCaps(cfg).standard).toEqual({ common_explorer: 5, consultant_analyst: 2, consultant_critic: 1, coder_reviewer: 0, consultant_auditor: 1, author_writer: 0 })
+    expect(resolveTierRoleCaps(cfg).standard).toEqual({ common_explorer: 5, consultant_analyst: 2, consultant_critic: 1, coder_reviewer: 0, consultant_auditor: 1 })
   })
 })
 
@@ -179,8 +177,6 @@ describe("author-writer role configuration", () => {
     expect(resolveRoleModelChain(cfg, "author-writer")).toEqual(["opencode/claude-sonnet-5-5"])
     expect(cfg.writer_delegate_agent).toBeUndefined()
     expect(cfg.writer_delegate_model).toBeUndefined()
-    expect(resolveTierRoleCaps(cfg).standard.author_writer).toBe(1)
-    expect(resolveTierRoleCaps(cfg).deep.author_writer).toBe(2)
   })
 
   it("overrides the writer model when author_writer_model is set", () => {
@@ -225,22 +221,6 @@ describe("author-writer role configuration", () => {
     // min(1) counts characters, so "  " passes the schema and is rejected
     // by normalizeWriterDocsRoots (trim -> empty) at config load instead.
     expect(() => normalizeWriterDocsRoots(["userdoc", "  "])).toThrow('invalid writer_docs_roots root "  "')
-  })
-
-  it("defaults writer to 0 when a tier matrix omits it", () => {
-    // given
-    const cfg = config({
-      tier_role_caps: {
-        fast: { common_explorer: 1, consultant_analyst: 0, consultant_critic: 0, consultant_auditor: 0 },
-        standard: { common_explorer: 2, consultant_analyst: 1, consultant_critic: 1, consultant_auditor: 1 },
-        deep: { common_explorer: 3, consultant_analyst: 2, consultant_critic: 2, consultant_auditor: 1 },
-      },
-    })
-
-    // when // then
-    expect(resolveTierRoleCaps(cfg).standard.author_writer).toBe(0)
-    expect(resolveTierRoleCaps(cfg).fast.author_writer).toBe(0)
-    expect(resolveTierRoleCaps(cfg).deep.author_writer).toBe(0)
   })
 })
 
@@ -593,153 +573,57 @@ describe("tech-lead and solution-reviewer role configuration", () => {
   })
 })
 
-describe("formatRemovedCoderLiteMigrationHint", () => {
-  it("returns an empty string when no coder-lite keys are present", () => {
-    // given // when // then
-    expect(formatRemovedCoderLiteMigrationHint('{ "coder_model": "a/b" }')).toBe("")
-    expect(formatRemovedCoderLiteMigrationHint("not json at all")).toBe("")
+describe("two-tier documentation seats", () => {
+  it("ships fast-tier defaults and falls back to the scalar defaults at standard", () => {
+    // given
+    const cfg = config()
+
+    // when // then
+    expect(resolveRoleModel(cfg, "author-writer", { tier: "fast" })).toBe("opencode-go/claude-haiku-5-5")
+    expect(resolveRoleModel(cfg, "author-reviewer", { tier: "fast" })).toBe("opencode-go/deepseek-v4.1-flash")
+    expect(resolveRoleModel(cfg, "author-writer", { tier: "standard" })).toBe("opencode/claude-sonnet-5-5")
+    expect(resolveRoleModel(cfg, "author-reviewer", { tier: "standard" })).toBe("opencode-go/kimi-k3.1-pro")
   })
 
-  it("maps each detected top-level coder-lite key to its replacement", () => {
+  it("lets an explicit scalar model override the shipped fast default", () => {
     // given
-    const text = '{ "coder_lite_model": "opencode-go/glm-5.3-flash", "coder_lite_enabled": true }'
+    const cfg = config({ author_writer_model: "acme/writer" })
 
-    // when
-    const hint = formatRemovedCoderLiteMigrationHint(text)
+    // when // then
+    expect(resolveRoleModel(cfg, "author-writer", { tier: "fast" })).toBe("acme/writer")
+    expect(resolveRoleModel(cfg, "author-writer", { tier: "standard" })).toBe("acme/writer")
+  })
+
+  it("configures both tiers independently through tier_models", () => {
+    // given
+    const cfg = config({
+      tier_models: { fast: { "author-reviewer": "acme/cheap" }, standard: { "author-reviewer": "acme/careful" } },
+    })
+
+    // when // then
+    expect(resolveRoleModel(cfg, "author-reviewer", { tier: "fast" })).toBe("acme/cheap")
+    expect(resolveRoleModel(cfg, "author-reviewer", { tier: "standard" })).toBe("acme/careful")
+  })
+
+  it("rejects a deep tier entry and names the standard key", () => {
+    // given // when
+    const result = JanusPluginConfigSchema.safeParse({ tier_models: { deep: { "author-writer": "a/b" } } })
 
     // then
-    expect(hint).toContain("coder_lite_model → tier_models.fast.coder")
-    expect(hint).toContain("coder_lite_enabled → coder_enabled")
-    expect(hint).not.toContain("coder_lite_agent →")
-    expect(hint).toContain("tech_lead_")
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error.issues[0]?.message).toContain("tier_models.standard.author-writer")
+    expect(JanusPluginConfigSchema.safeParse({ tier_models: { deep: { coder: "a/b" } } }).success).toBe(true)
   })
 
-  it("reports all three top-level keys together", () => {
+  it("names the config file when a deep documentation tier fails load", async () => {
     // given
-    const text = '{ "coder_lite_agent": "junior", "coder_lite_model": "a/b", "coder_lite_enabled": false }'
-
-    // when
-    const hint = formatRemovedCoderLiteMigrationHint(text)
-
-    // then
-    expect(hint).toContain("coder_lite_agent → coder_agent")
-    expect(hint).toContain("coder_lite_model → tier_models.fast.coder")
-    expect(hint).toContain("coder_lite_enabled → coder_enabled")
-    expect(hint).toContain("tech_lead_")
-  })
-
-  it("flags nested coder-lite role keys in tier_models and mode_models", () => {
-    // given
-    const text =
-      '{ "tier_models": { "fast": { "coder-lite": "a/b" } }, "mode_models": { "doc": { "coder-lite": "c/d" } } }'
-
-    // when
-    const hint = formatRemovedCoderLiteMigrationHint(text)
-
-    // then
-    expect(hint).toContain('tier_models.fast["coder-lite"]')
-    expect(hint).toContain('mode_models.doc["coder-lite"]')
-    expect(hint).toContain('["coder"]')
-    expect(hint).toContain("tech_lead_")
-  })
-
-  it("reports top-level and nested hits in one hint", () => {
-    // given
-    const text = '{ "coder_lite_enabled": false, "tier_models": { "deep": { "coder-lite": "a/b" } } }'
-
-    // when
-    const hint = formatRemovedCoderLiteMigrationHint(text)
-
-    // then
-    expect(hint).toContain("coder_lite_enabled → coder_enabled")
-    expect(hint).toContain('tier_models.deep["coder-lite"]')
-    expect(hint).toContain("tech_lead_")
-  })
-})
-
-describe("formatRemovedCoderLiteKeyHint", () => {
-  it("recognizes the top-level keys with dash normalization", () => {
-    // given // when // then
-    expect(formatRemovedCoderLiteKeyHint("coder_lite_model")).toContain("coder_lite_model → tier_models.fast.coder")
-    expect(formatRemovedCoderLiteKeyHint("coder-lite_enabled")).toContain("coder_lite_enabled → coder_enabled")
-    expect(formatRemovedCoderLiteKeyHint("coder_lite_agent")).toContain("coder_lite_agent → coder_agent")
-  })
-
-  it("recognizes the nested tier_models and mode_models shapes", () => {
-    // given // when // then
-    expect(formatRemovedCoderLiteKeyHint("tier_models.fast.coder-lite")).toContain(
-      'tier_models.fast["coder-lite"] → tier_models.fast["coder"]',
-    )
-    expect(formatRemovedCoderLiteKeyHint("mode_models.doc.coder-lite")).toContain(
-      'mode_models.doc["coder-lite"] → mode_models.doc["coder"]',
-    )
-  })
-
-  it("returns an empty string for keys outside the removed surface", () => {
-    // given // when // then
-    expect(formatRemovedCoderLiteKeyHint("coder_model")).toBe("")
-    expect(formatRemovedCoderLiteKeyHint("tier_models.fast.coder")).toBe("")
-    expect(formatRemovedCoderLiteKeyHint("team_caps.round_cap")).toBe("")
-    expect(formatRemovedCoderLiteKeyHint("tier_models.fast")).toBe("")
-  })
-
-  it("carries the tech_lead_* pointer line", () => {
-    // given // when // then
-    expect(formatRemovedCoderLiteKeyHint("coder_lite_enabled")).toContain("tech_lead_")
-  })
-})
-
-describe("loadPluginConfig surfaces the coder-lite migration hint", () => {
-  it("appends the guidance when a top-level coder_lite_model remains", async () => {
-    // given
-    const tmpConfigDir = mkdtempSync(join(tmpdir(), "cfg-coderlite-hint-"))
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "cfg-two-tier-"))
     const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, '{\n  "coder_lite_model": "opencode-go/glm-5.3-flash"\n}')
+    writeFileSync(configPath, '{\n  "tier_models": { "deep": { "author-reviewer": "a/b" } }\n}')
 
     try {
       // when // then
-      await expect(loadPluginConfig({ JANUS_CONFIG: configPath })).rejects.toThrow(
-        "removed coder-lite keys detected",
-      )
-      await expect(loadPluginConfig({ JANUS_CONFIG: configPath })).rejects.toThrow(
-        "coder_lite_model → tier_models.fast.coder",
-      )
-    } finally {
-      rmSync(tmpConfigDir, { recursive: true, force: true })
-    }
-  })
-
-  it("appends the nested-key guidance for a tier_models coder-lite entry", async () => {
-    // given
-    const tmpConfigDir = mkdtempSync(join(tmpdir(), "cfg-coderlite-nested-"))
-    const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, '{\n  "tier_models": { "fast": { "coder-lite": "a/b" } }\n}')
-
-    try {
-      // when // then
-      await expect(loadPluginConfig({ JANUS_CONFIG: configPath })).rejects.toThrow(
-        'tier_models.fast["coder-lite"] → tier_models.fast["coder"]',
-      )
-    } finally {
-      rmSync(tmpConfigDir, { recursive: true, force: true })
-    }
-  })
-
-  it("throws no migration hint for an invalid config without coder-lite keys", async () => {
-    // given
-    const tmpConfigDir = mkdtempSync(join(tmpdir(), "cfg-clean-invalid-"))
-    const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, '{\n  "memory_enabled": 42\n}')
-
-    try {
-      // when
-      const error = await loadPluginConfig({ JANUS_CONFIG: configPath }).catch((e: unknown) =>
-        e instanceof Error ? e : new Error(String(e)),
-      )
-
-      // then — the schema error stands alone, without the migration block
-      expect((error as Error).message).toContain("invalid configuration")
-      expect((error as Error).message).not.toContain("removed coder-lite keys detected")
+      await expect(loadPluginConfig({ JANUS_CONFIG: configPath })).rejects.toThrow(configPath)
     } finally {
       rmSync(tmpConfigDir, { recursive: true, force: true })
     }

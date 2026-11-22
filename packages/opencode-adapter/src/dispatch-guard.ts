@@ -1,16 +1,18 @@
 import { normalizeModelKey } from "./agent-registration.ts"
 import { resolveRoleModel, type JanusPluginConfig } from "./plugin-config.ts"
 import { loadJobModelForGuard } from "./dispatch-journal.ts"
-import type {
-  DispatchProtocol,
-  DispatchRole,
-  DispatchSdk,
-  DispatchStage,
-  DispatchTier,
-  JournalRole,
-  SdkAssistantMessage,
-  SdkMessageWithParts,
-  SdkTokenUsage,
+import {
+  AUTHOR_REVIEWER_STAGES,
+  SOLUTION_REVIEWER_STAGES,
+  type AuthorReviewerStage,
+  type DispatchProtocol,
+  type DispatchRole,
+  type DispatchSdk,
+  type DispatchStage,
+  type DispatchTier,
+  type SdkAssistantMessage,
+  type SdkMessageWithParts,
+  type SdkTokenUsage,
 } from "./dispatch-contract.ts"
 
 /**
@@ -29,6 +31,12 @@ import type {
  * all; the Stage-2 report contract and the plan ledger audit backstop it.
  * The runtime guarantee is exactly: a declared `stage: "final"` implies full
  * validation against the tech-lead and every listed coder job.
+ *
+ * The documentation reviewer follows the same shape: every `author-reviewer`
+ * dispatch declares one of its four stages and lists the `author-writer`
+ * jobs it reviews; each listed job must be an author-writer root on a
+ * different model family, and a fast-tier review must not undercut a
+ * standard-tier writer job except at the `reader` cold-read stage.
  */
 
 const MODEL_FAMILY_PREFIXES: ReadonlyArray<readonly [prefix: string, family: string]> = [
@@ -175,22 +183,22 @@ function modelConflictMessage(
 }
 
 /**
- * Review-seat tier floor: a fast-tier reviewer must not review a coder job
- * that ran on a stronger tier. Only an explicit `fast` reviewer is
- * constrained — an absent tier (the default senior seat) or an equal/upgraded
- * tier passes — and a historical coder job with no recorded tier never
- * triggers the floor. When true, narrows `coderTier` to the violated tier.
+ * Review-seat tier floor: a fast-tier reviewer must not review a job that ran
+ * on a stronger tier. Only an explicit `fast` reviewer is constrained — an
+ * absent tier (the default seat) or an equal/upgraded tier passes — and a
+ * reviewed job with no recorded tier (a default-seat dispatch) never
+ * triggers the floor. When true, narrows `authorTier` to the violated tier.
  */
-function reviewerUndercutsCoderTier(
+function reviewerUndercutsAuthorTier(
   reviewerTier: DispatchTier | undefined,
-  coderTier: DispatchTier | undefined,
-): coderTier is DispatchTier {
+  authorTier: DispatchTier | undefined,
+): authorTier is DispatchTier {
   if (reviewerTier !== "fast") return false
-  return coderTier === "standard" || coderTier === "deep"
+  return authorTier === "standard" || authorTier === "deep"
 }
 
-function tierFloorMessage(seat: string, coderTier: DispatchTier, jobID: string, guidance: string): string {
-  return `${seat} tier floor: the review seat runs tier "fast" but coder job ${jobID} ran on tier "${coderTier}" — a fast-tier review seat must not undercut a standard or deep coder job; ${guidance}`
+function tierFloorMessage(seat: string, authorLabel: string, authorTier: DispatchTier, jobID: string, guidance: string): string {
+  return `${seat} tier floor: the review seat runs tier "fast" but ${authorLabel} job ${jobID} ran on tier "${authorTier}" — a fast-tier review seat must not undercut a stronger-tier ${authorLabel} job; ${guidance}`
 }
 
 export interface DispatchReviewGuardInput {
@@ -216,10 +224,20 @@ export async function enforceDispatchReviewGuard(
   sdk: DispatchSdk,
   input: DispatchReviewGuardInput,
 ): Promise<ReviewGuardOutcome> {
-  const guarded = input.role === "coder-reviewer" || input.role === "solution-reviewer" || input.stage !== undefined
+  const guarded =
+    input.role === "coder-reviewer" ||
+    input.role === "solution-reviewer" ||
+    input.role === "author-reviewer" ||
+    input.stage !== undefined
   if (!guarded) return pass()
+  if (input.role === "author-reviewer") return enforceAuthorReviewer(sdk, input)
   if (input.stage !== undefined && !(input.role === "solution-reviewer" && input.protocol === "code_plan_review")) {
-    return fail("stage is only valid for solution-reviewer with protocol code_plan_review; remove stage or change the role/protocol")
+    return fail(
+      "stage is only valid for solution-reviewer with protocol code_plan_review or for author-reviewer; remove stage or change the role/protocol",
+    )
+  }
+  if (input.stage !== undefined && !(SOLUTION_REVIEWER_STAGES as readonly string[]).includes(input.stage)) {
+    return fail(`solution-reviewer stage must be one of: ${SOLUTION_REVIEWER_STAGES.join(", ")}`)
   }
   if (input.role === "coder-reviewer") {
     return enforceAgainstCoderJobs(sdk, input, {
@@ -331,12 +349,13 @@ async function enforceAgainstCoderJobs(
   // multi-model chain must extend this guard (compare every chain entry)
   // before it ships.
   for (const jobID of ids) {
-    const loaded = await loadJobModelForGuard(sdk, { jobID, directory: input.directory })
+    const loaded = await loadJobModelForGuard(sdk, { jobID, directory: input.directory, expectedRole: "coder" })
     if (!loaded.ok) return fail(`reviews_job_ids entry ${jobID} rejected: ${loaded.message}`)
-    if (reviewerUndercutsCoderTier(input.reviewerTier, loaded.tier)) {
+    if (reviewerUndercutsAuthorTier(input.reviewerTier, loaded.tier)) {
       return fail(
         tierFloorMessage(
           check.seat,
+          "coder",
           loaded.tier,
           jobID,
           're-dispatch the review at tier: "standard" (or omit tier to run the default senior seat) and retry',
@@ -364,22 +383,108 @@ async function enforceAgainstCoderJobs(
   return pass()
 }
 
+function isAuthorReviewerStage(stage: DispatchStage | undefined): stage is AuthorReviewerStage {
+  return stage !== undefined && (AUTHOR_REVIEWER_STAGES as readonly string[]).includes(stage)
+}
+
+interface AuthorWriterJobsCheck {
+  readonly reviewerModel: string | undefined
+  readonly reviewerTier: DispatchTier | undefined
+  readonly stage: AuthorReviewerStage
+  readonly reviewsJobIDs: ReadonlyArray<string> | undefined
+  readonly directory: string
+  /** Remediation for a tier-floor or model conflict, phrased for dispatch vs continuation. */
+  readonly tierGuidance: string
+  readonly conflictGuidance: string
+}
+
+/**
+ * Verify an author-reviewer against every listed author-writer job: each id
+ * is an author-writer root, the reviewer runs a different model family, and
+ * outside the `reader` cold-read stage a fast reviewer does not undercut a
+ * standard-tier writer job.
+ */
+async function enforceAgainstAuthorWriterJobs(
+  sdk: DispatchSdk,
+  check: AuthorWriterJobsCheck,
+): Promise<ReviewGuardOutcome> {
+  const ids = check.reviewsJobIDs
+  if (ids === undefined || ids.length === 0) {
+    return fail(
+      "author-reviewer requires reviews_job_ids: pass the root job_id of each author-writer unit it reviews (the janus_dispatch job_id of the blueprint or drafting work)",
+    )
+  }
+  if (check.reviewerModel === undefined || check.reviewerModel.length === 0) {
+    return fail(
+      "author-reviewer model is not pinned, so the reviewer cannot be verified against the reviewed author-writer jobs; pin it via author_reviewer_model or tier_models and retry",
+    )
+  }
+  for (const jobID of ids) {
+    const loaded = await loadJobModelForGuard(sdk, { jobID, directory: check.directory, expectedRole: "author-writer" })
+    if (!loaded.ok) return fail(`reviews_job_ids entry ${jobID} rejected: ${loaded.message}`)
+    if (check.stage !== "reader" && reviewerUndercutsAuthorTier(check.reviewerTier, loaded.tier)) {
+      return fail(tierFloorMessage("author-reviewer", "author-writer", loaded.tier, jobID, check.tierGuidance))
+    }
+    if (loaded.model === null || loaded.model.length === 0) {
+      return fail(
+        `author-writer job ${jobID} pins no model (model_chain[0] is null), so the reviewer cannot be verified against it; pin the writer model via author_writer_model, writer_delegate_model, or tier_models and retry`,
+      )
+    }
+    if (sameModelOrFamily(check.reviewerModel, loaded.model)) {
+      return fail(
+        modelConflictMessage(
+          "author-reviewer",
+          check.reviewerModel,
+          "author-writer",
+          loaded.model,
+          ` (job ${jobID})`,
+          check.conflictGuidance,
+        ),
+      )
+    }
+  }
+  return pass()
+}
+
+async function enforceAuthorReviewer(sdk: DispatchSdk, input: DispatchReviewGuardInput): Promise<ReviewGuardOutcome> {
+  if (!isAuthorReviewerStage(input.stage)) {
+    return fail(
+      `author-reviewer requires stage: one of ${AUTHOR_REVIEWER_STAGES.map((stage) => `"${stage}"`).join(", ")} (outline = blueprint pre-review, unit = drafted unit or batch, reader = cold read, final = whole document)`,
+    )
+  }
+  if (input.protocol !== undefined) {
+    return fail("author-reviewer takes no protocol; remove protocol and declare the review stage instead")
+  }
+  return enforceAgainstAuthorWriterJobs(sdk, {
+    reviewerModel: input.reviewerModel,
+    reviewerTier: input.reviewerTier,
+    stage: input.stage,
+    reviewsJobIDs: input.reviewsJobIDs,
+    directory: input.directory,
+    tierGuidance: 're-dispatch the review at tier: "standard" (or omit tier to run the default seat) and retry',
+    conflictGuidance:
+      "change the reviewer model (author_reviewer_model or tier_models) or the writer model (author_writer_model or tier_models) and retry",
+  })
+}
+
 export interface ContinueReviewGuardInput {
-  readonly targetRole: JournalRole
+  readonly targetRole: DispatchRole
   readonly targetProtocol: DispatchProtocol | undefined
   /** The target session's durable pinned model (its job spec's model_chain[0]). */
   readonly targetModel: string | null
-  /** The target session's durable pinned tier; undefined for historical specs and the senior seat. */
+  /** The target session's durable pinned tier; undefined for default-seat dispatches. */
   readonly targetTier?: DispatchTier
+  /** The target session's durable declared review stage. */
+  readonly targetStage?: DispatchStage
   readonly reviewsJobIDs: ReadonlyArray<string> | undefined
   readonly config: JanusPluginConfig
   readonly directory: string
 }
 
 /**
- * Enforce the review-seat guard for a `janus_dispatch_continue` call, after
- * the legacy-role block and before the target session is prompted. A
- * coder-reviewer session, or a solution-reviewer session carrying the
+ * Enforce the review-seat guard for a `janus_dispatch_continue` call, before
+ * the target session is prompted. A coder-reviewer session, an
+ * author-reviewer session, or a solution-reviewer session carrying the
  * code_plan_review contract, must again prove reviewer ≠ author — including
  * stage "plan" sessions, whose re-review should be a fresh dispatch; the
  * guard stays strict and opens no plan-stage back door.
@@ -388,6 +493,27 @@ export async function enforceContinueReviewGuard(
   sdk: DispatchSdk,
   input: ContinueReviewGuardInput,
 ): Promise<ReviewGuardOutcome> {
+  if (input.targetRole === "author-reviewer") {
+    if (!isAuthorReviewerStage(input.targetStage)) {
+      return fail("author-reviewer target session records no review stage; start a fresh author-reviewer dispatch with a stage")
+    }
+    if (input.targetModel === null || input.targetModel.length === 0) {
+      return fail(
+        "author-reviewer target session pins no model, so the reviewer cannot be verified against the reviewed author-writer jobs; start a fresh review dispatch",
+      )
+    }
+    return enforceAgainstAuthorWriterJobs(sdk, {
+      reviewerModel: input.targetModel,
+      reviewerTier: input.targetTier,
+      stage: input.targetStage,
+      reviewsJobIDs: input.reviewsJobIDs,
+      directory: input.directory,
+      tierGuidance:
+        'a continuation cannot raise the session\'s pinned tier; start a fresh review dispatch at tier: "standard" (or omit tier to run the default seat)',
+      conflictGuidance:
+        "pass the author-writer job_id(s) this session actually reviews, or change tier_models or author_reviewer_model and start a fresh review dispatch",
+    })
+  }
   const coderReviewer = input.targetRole === "coder-reviewer"
   const planContractReviewer = input.targetRole === "solution-reviewer" && input.targetProtocol === "code_plan_review"
   if (!coderReviewer && !planContractReviewer) return pass()
@@ -424,12 +550,13 @@ export async function enforceContinueReviewGuard(
   // model_chain[0] of a reviewed job is compared; a future multi-model
   // chain must extend this guard before it ships.
   for (const jobID of ids) {
-    const loaded = await loadJobModelForGuard(sdk, { jobID, directory: input.directory })
+    const loaded = await loadJobModelForGuard(sdk, { jobID, directory: input.directory, expectedRole: "coder" })
     if (!loaded.ok) return fail(`reviews_job_ids entry ${jobID} rejected: ${loaded.message}`)
-    if (reviewerUndercutsCoderTier(input.targetTier, loaded.tier)) {
+    if (reviewerUndercutsAuthorTier(input.targetTier, loaded.tier)) {
       return fail(
         tierFloorMessage(
           seat,
+          "coder",
           loaded.tier,
           jobID,
           'a continuation cannot raise the session\'s pinned tier; start a fresh review dispatch at tier: "standard" (or omit tier to run the default senior seat)',

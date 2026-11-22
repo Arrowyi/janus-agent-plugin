@@ -357,16 +357,16 @@ describe("isConverged", () => {
 describe("TeamRoleSchema", () => {
   it("lists every team role including writer", () => {
     // given // when // then
-    expect(TeamRoleSchema.options).toEqual(["common_explorer", "consultant_analyst", "consultant_critic", "coder_reviewer", "consultant_auditor", "author_writer"])
+    expect(TeamRoleSchema.options).toEqual(["common_explorer", "consultant_analyst", "consultant_critic", "coder_reviewer", "consultant_auditor"])
   })
 })
 
 describe("tierRoleCaps", () => {
   it("encodes the tier matrix including writer", () => {
     // given // when // then
-    expect(tierRoleCaps("fast")).toEqual({ common_explorer: 5, consultant_analyst: 0, consultant_critic: 0, coder_reviewer: 0, consultant_auditor: 0, author_writer: 0 })
-    expect(tierRoleCaps("standard")).toEqual({ common_explorer: 5, consultant_analyst: 1, consultant_critic: 1, coder_reviewer: 1, consultant_auditor: 1, author_writer: 1 })
-    expect(tierRoleCaps("deep")).toEqual({ common_explorer: 5, consultant_analyst: 3, consultant_critic: 2, coder_reviewer: 2, consultant_auditor: 2, author_writer: 2 })
+    expect(tierRoleCaps("fast")).toEqual({ common_explorer: 5, consultant_analyst: 0, consultant_critic: 0, coder_reviewer: 0, consultant_auditor: 0 })
+    expect(tierRoleCaps("standard")).toEqual({ common_explorer: 5, consultant_analyst: 1, consultant_critic: 1, coder_reviewer: 1, consultant_auditor: 1 })
+    expect(tierRoleCaps("deep")).toEqual({ common_explorer: 5, consultant_analyst: 3, consultant_critic: 2, coder_reviewer: 2, consultant_auditor: 2 })
   })
 })
 

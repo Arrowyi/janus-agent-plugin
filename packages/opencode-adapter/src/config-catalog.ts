@@ -7,8 +7,16 @@ import {
   TEAM_CAPS_DEFAULTS,
   TIER_MODEL_DEFAULTS,
   TIER_ROLE_CAPS_DEFAULTS,
+  TWO_TIER_ROLES,
   type ModelRole,
 } from "./plugin-config.ts"
+
+function tierModelDefaultsNote(): string {
+  const entries = CONFIG_TIERS.flatMap((tier) =>
+    Object.entries(TIER_MODEL_DEFAULTS[tier] ?? {}).map(([role, model]) => `${tier}.${role} = ${model}`),
+  )
+  return entries.length > 0 ? entries.join("、") : "(无)"
+}
 
 /**
  * The user-facing catalog of every janus-agent config field: what it is,
@@ -102,8 +110,8 @@ export const ROLE_INFO: readonly RoleInfo[] = [
   { role: "consultant-critic", label: "反证与计划稳健性审查", hasEnabled: true },
   { role: "consultant-auditor", label: "来源影响与独立性审计", hasEnabled: true },
   { role: "coder-reviewer", label: "设计事前验尸、计划/diff 审查", hasEnabled: true },
-  { role: "author-writer", label: "文档正文唯一执笔人", hasEnabled: true },
-  { role: "author-reviewer", label: "文档独立审稿（只读）", hasEnabled: true },
+  { role: "author-writer", label: "文档正文唯一执笔人（fast/standard 两档）", hasEnabled: true },
+  { role: "author-reviewer", label: "文档独立审稿（分阶段、不改文件、可联网核实来源，fast/standard 两档）", hasEnabled: true },
 ]
 
 const ROLE_CAP_KEYS = Object.keys(TIER_ROLE_CAPS_DEFAULTS.fast)
@@ -174,13 +182,13 @@ export const CONFIG_FIELDS: readonly ConfigField[] = [
     group: "routing",
     type: "object",
     summary: "按深度档位（fast/standard/deep）为角色指定模型",
-    defaultNote: `出厂档位默认 fast.coder = ${TIER_MODEL_DEFAULTS.fast?.coder ?? "(无)"}、fast.coder-reviewer = ${TIER_MODEL_DEFAULTS.fast?.["coder-reviewer"] ?? "(无)"}、standard.coder = ${TIER_MODEL_DEFAULTS.standard?.coder ?? "(无)"}，排在 <role>_model 之后；deep 档无出厂默认，回落 <role>_model 的标量默认`,
+    defaultNote: `出厂档位默认 ${tierModelDefaultsNote()}，排在 <role>_model 之后；未列出的档位与角色回落 <role>_model 的标量默认`,
   },
   {
     key: "tier_models.<tier>.<role>",
     group: "routing",
     type: "model",
-    summary: "某档位下某角色的模型（只作用于派发出去的会话）",
+    summary: `某档位下某角色的模型（只作用于派发出去的会话）。${TWO_TIER_ROLES.join("、")} 只有 fast/standard 两档，不接受 deep；设置 <role>_model 会盖掉出厂的档位默认，两档要分开配置请写 tier_models`,
     example: "tier_models.deep.coder = provider/strong-coding",
   },
   {
@@ -228,7 +236,9 @@ export const CONFIG_FIELDS: readonly ConfigField[] = [
     key: "tier_role_caps.<tier>.<cap_role>",
     group: "team",
     type: "integer",
-    defaultNote: "fast 5/0/0/0/0/0，standard 5/1/1/1/1/1，deep 5/3/2/2/2/2",
+    defaultNote: (["fast", "standard", "deep"] as const)
+      .map((tier) => `${tier} ${Object.values(TIER_ROLE_CAPS_DEFAULTS[tier]).join("/")}`)
+      .join("，"),
     summary: "某档位某角色最多几个实例（≥0 的整数）",
     example: "tier_role_caps.deep.consultant_critic = 3",
     seedParent: { key: "tier_role_caps", value: TIER_ROLE_CAPS_DEFAULTS },
@@ -314,14 +324,14 @@ export const CONFIG_FIELDS: readonly ConfigField[] = [
     group: "install",
     type: "boolean",
     default: true,
-    summary: "启动时安装四个 skill",
+    summary: "启动时安装三个 skill",
   },
   {
     key: "install_commands",
     group: "install",
     type: "boolean",
     default: true,
-    summary: "启动时安装 janus-memory、janus-models、janus-handoff、janus-config 四条命令",
+    summary: "启动时安装 janus-memory、janus-models、janus-config 三条命令",
   },
   {
     key: "$schema",
@@ -355,7 +365,7 @@ function matchPattern(pattern: string, path: readonly string[]): boolean {
 
 /**
  * Resolve a user-supplied key to its catalog field. The top-level segment
- * accepts `-` for `_` (`coder-lite_model` → `coder_lite_model`).
+ * accepts `-` for `_` (`author-writer_model` → `author_writer_model`).
  */
 export function resolveField(key: string): ResolvedField | undefined {
   const path = splitKey(key.trim())

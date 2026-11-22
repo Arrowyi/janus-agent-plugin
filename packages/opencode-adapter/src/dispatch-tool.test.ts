@@ -9,7 +9,7 @@ import { createJanusDispatchTool, createJanusDispatchTools, resolveRoleTarget, s
 import { appendRecord, createAttemptSession, createJob, loadJob } from "./dispatch-journal.ts"
 import { JanusPluginConfigSchema, type JanusPluginConfig } from "./plugin-config.ts"
 import { CODER_HARD_CEILING_TOKENS, CONTEXT_WATERMARK_TOKENS } from "./dispatch-guard.ts"
-import { createFakeClock, createFakeSdk, legacyRoleSpecs, makeCancelledEnvelope, makeCompletedEnvelope, makeEnvelope, makeJobSpec, type FakeSdk } from "./dispatch-test-fixtures.ts"
+import { createFakeClock, createFakeSdk, makeCancelledEnvelope, makeCompletedEnvelope, makeEnvelope, makeJobSpec, type FakeSdk } from "./dispatch-test-fixtures.ts"
 import { createKeyedMutex, parseOutcomeEnvelope, PRODUCTION_WAIT_BUDGET_MS, type DispatchEnvelope, type JobSpec, type KeyedMutex, type SdkAssistantMessage, type SdkMessageWithParts, type SdkTokenUsage, type SdkTextPart } from "./dispatch-contract.ts"
 import type { DispatchLifecycle, LaunchInput } from "./dispatch-lifecycle.ts"
 
@@ -418,38 +418,6 @@ describe("createJanusDispatchTool", () => {
     }
   })
 
-  it("rejects any dispatch with the removed coder-lite key migration guidance", async () => {
-    // given — a config that still carries a retired coder-lite key
-    const tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-migrate-"))
-    const configPath = join(tmpConfigDir, "config.jsonc")
-    writeFileSync(configPath, JSON.stringify({ coder_lite_model: "fixture/coder-lite" }))
-    const previousConfig = process.env.JANUS_CONFIG
-    process.env.JANUS_CONFIG = configPath
-    const fake = createFakeSdk()
-    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
-
-    try {
-      // when — any janus_dispatch call hits the config load
-      let message = ""
-      try {
-        message = outputText(
-          await tools.janus_dispatch.execute({ role: "coder", prompt: "implement" }, fakeContext()),
-        )
-      } catch (error: unknown) {
-        message = error instanceof Error ? error.message : String(error)
-      }
-
-      // then — the error carries the migration guidance and nothing is launched
-      expect(message).toContain("removed coder-lite keys detected")
-      expect(message).toContain("tech_lead_")
-      expect(promptAsyncCount(fake)).toBe(0)
-    } finally {
-      if (previousConfig === undefined) delete process.env.JANUS_CONFIG
-      else process.env.JANUS_CONFIG = previousConfig
-      rmSync(tmpConfigDir, { recursive: true, force: true })
-    }
-  })
-
   it("launches tech-lead with the configured agent and model", async () => {
     // given
     const tmpConfigDir = mkdtempSync(join(tmpdir(), "dispatch-tl-"))
@@ -666,14 +634,14 @@ describe("createJanusDispatchTool", () => {
       query: { directory: "/tmp/project" },
     })
 
-    for (const role of ["coder", "author-writer", "author-reviewer"] as const) {
+    for (const role of ["coder", "author-writer"] as const) {
       // when
       const result = await tools.janus_dispatch.execute({ role, prompt: "bounded task" }, fakeContext({ sessionID: marked.data!.id }))
 
       // then — only the author dispatch is guarded
       expect(result).toBe("specialist done")
     }
-    expect(promptAsyncCount(fake)).toBe(3)
+    expect(promptAsyncCount(fake)).toBe(2)
   })
 
   it("blocks consultant and tech-lead dispatch from a dispatched sub-session with no launch", async () => {
@@ -732,10 +700,12 @@ describe("createJanusDispatchTool", () => {
 
     for (const role of roles) {
       const result = await tools.janus_dispatch.execute({ role, prompt: "bounded task" }, fakeContext())
-      // coder-reviewer legitimately stops at the review guard (no ids); its
-      // call trace must stay free of session.get all the same.
+      // The two review seats legitimately stop at the review guard (no ids
+      // or stage); their call trace must stay free of session.get all the same.
       if (role === "coder-reviewer") {
         expect(result).toMatch(/^Error: coder-reviewer requires reviews_job_ids/)
+      } else if (role === "author-reviewer") {
+        expect(result).toMatch(/^Error: author-reviewer requires stage/)
       } else {
         expect(result).toBe("spy result")
       }
@@ -926,7 +896,7 @@ describe("caller context watermark", () => {
 
     // then — the full rejection text, the marker line, and zero writes
     expect(result).toBe(
-      `Error: controller context exceeded ${CODER_HARD_CEILING_TOKENS} tokens hard ceiling; checkpoint to plan.md and handoff.md before continuing. Recovery: update the plan.md ledger and write handoff.md, resume from a fresh controller session with 继续交接, or reduce context and retry.\n${watermarkLine(400_000)}`,
+      `Error: controller context exceeded ${CODER_HARD_CEILING_TOKENS} tokens hard ceiling; checkpoint to plan.md before continuing. Recovery: update the plan.md ledger and checkpoint state, resume from a fresh tech-lead session with the plan.md path, or reduce context and retry.\n${watermarkLine(400_000)}`,
     )
     expect(promptAsyncCount(fake)).toBe(0)
     expect(fake.calls.filter((c) => (c as { method: string }).method === "create")).toHaveLength(0)
@@ -1446,38 +1416,6 @@ describe("janus_dispatch_continue", () => {
     expect(promptAsyncCount(fake)).toBe(before)
   })
 
-  it("rejects continuing a legacy coder-lite session with migration guidance and no prompt", async () => {
-    // given — a historical job root whose spec records the retired coder-lite role
-    const fake = createFakeSdk()
-    const root = await fake.session.create({
-      body: { parentID: "ses_parent", title: "[consultation-dispatch:v1] coder-lite" },
-      query: { directory: "/tmp/project" },
-    })
-    if (root.data === undefined) throw new Error("missing root")
-    await fake.session.prompt({
-      path: { id: root.data.id },
-      body: {
-        noReply: true,
-        parts: [{ type: "text", synthetic: true, ignored: true, text: JSON.stringify(legacyRoleSpecs[0]!.record) }],
-      },
-      query: { directory: "/tmp/project" },
-    })
-    const tools = createTools(fake)
-
-    // when
-    const result = await tools.janus_dispatch_continue.execute(
-      { session_id: root.data.id, prompt: "continue the milestone" },
-      fakeContext(),
-    )
-
-    // then — the legacy role is blocked before any prompt is issued
-    expect(result).toMatch(/^Error: the coder-lite role is retired/)
-    expect(result).toContain('role "coder"')
-    expect(result).toContain('tier: "fast"')
-    expect(result).toContain("tier_models.fast.coder")
-    expect(promptAsyncCount(fake)).toBe(0)
-  })
-
   it("rejects a foreign caller, a foreign workspace, and a non-dispatch session", async () => {
     const clock = createFakeClock()
     const fake = createRespondingFake("chapter one prose", clock)
@@ -1547,8 +1485,12 @@ describe("janus_dispatch_continue", () => {
     const clock = createFakeClock()
     const fake = createRespondingFake("review report", clock)
     const tools = createTools(fake, clock)
+    const writer = parseOutcomeEnvelope(
+      outputText(await tools.janus_dispatch.execute({ role: "author-writer", prompt: "draft the chapter", return_handle: true }, fakeContext())),
+    )
+    if (!writer.ok || writer.value.status !== "completed") throw new Error("expected a completed writer envelope")
     const launched = await tools.janus_dispatch.execute(
-      { role: "author-reviewer", prompt: "review the drafted chapter", return_handle: true },
+      { role: "author-reviewer", prompt: "review the drafted chapter", return_handle: true, stage: "final", reviews_job_ids: [writer.value.job_id] },
       fakeContext(),
     )
     const parsed = parseOutcomeEnvelope(outputText(launched))
@@ -2161,6 +2103,49 @@ describe("review seat dispatch guards", () => {
     )
     expect(passed).toBe("done")
     expect(promptAsyncCount(fake)).toBe(before + 1)
+  })
+
+  it("persists the writer tier, routes the fast writer to its tier model, and gates the documentation review", async () => {
+    const clock = createFakeClock()
+    const fake = createRespondingFake("done", clock)
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], { clock })
+
+    const writerResult = await tools.janus_dispatch.execute(
+      { role: "author-writer", prompt: "draft the unit", tier: "standard" },
+      fakeContext(),
+    )
+    expect(writerResult).toBe("done")
+    const writerJobID = await findJobByRole(fake, "author-writer")
+    const loaded = await loadJob(fake, { jobID: writerJobID, directory: "/tmp/project", expectedParentID: "ses_parent" })
+    if (!loaded.ok) throw loaded.error
+    expect(loaded.value.spec.tier).toBe("standard")
+
+    const before = promptAsyncCount(fake)
+    const undercut = await tools.janus_dispatch.execute(
+      { role: "author-reviewer", prompt: "review the unit", tier: "fast", stage: "unit", reviews_job_ids: [writerJobID] },
+      fakeContext(),
+    )
+    expect(undercut).toContain("tier floor")
+    expect(promptAsyncCount(fake)).toBe(before)
+
+    const reader = await tools.janus_dispatch.execute(
+      { role: "author-reviewer", prompt: "cold read", tier: "fast", stage: "reader", reviews_job_ids: [writerJobID] },
+      fakeContext(),
+    )
+    expect(reader).toStartWith("done")
+    expect(reader).toContain("author-reviewer report: unresolved")
+    const prompt = lastPromptAsyncCall(fake)
+    expect(prompt.input.body.model).toEqual({ providerID: "opencode-go", modelID: "deepseek-v4.1-flash" })
+  })
+
+  it("rejects a deep tier for the two-tier documentation seats without launching", async () => {
+    const fake = createRespondingFake("done")
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"])
+    for (const role of ["author-writer", "author-reviewer"] as const) {
+      const result = await tools.janus_dispatch.execute({ role, prompt: "bounded task", tier: "deep" }, fakeContext())
+      expect(result).toMatch(new RegExp(`^Error: ${role} runs only the fast and standard tiers`))
+    }
+    expect(promptAsyncCount(fake)).toBe(0)
   })
 
   it("keeps consultation role specs free of the tier field", async () => {

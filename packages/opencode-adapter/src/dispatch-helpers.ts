@@ -1,4 +1,4 @@
-import { isLegacyJournalRole, type DispatchEnvelope, type DispatchOutcome, type DispatchRole, type JournalRole } from "./dispatch-contract.ts"
+import type { DispatchEnvelope, DispatchOutcome, DispatchRole } from "./dispatch-contract.ts"
 import type { ObservationOutcome } from "./dispatch-observer.ts"
 
 export const RETRYABLE_MODEL_ERROR_CODES = ["402", "429", "500", "502", "503", "504"] as const
@@ -83,20 +83,16 @@ export const ROLE_MODEL_FIELDS: Record<DispatchRole, string> = {
 
 /**
  * Remediation hint appended to provider/model dispatch failures so a
- * non-Go user immediately knows how to fix the default model set. A legacy
- * journal role carries migration guidance instead of a config field.
+ * non-Go user immediately knows how to fix the default model set.
  */
-export function modelFailureHint(role: JournalRole, model: string | null | undefined): string {
+export function modelFailureHint(role: DispatchRole, model: string | null | undefined): string {
   const label = model !== undefined && model !== null && model.length > 0 ? ` (model: ${model})` : ""
-  if (isLegacyJournalRole(role)) {
-    return `${label}. Hint: the ${role} role is retired; dispatch role "coder" (tier: "fast") for the same lane and migrate config keys per tier_models.fast.coder.`
-  }
   const field = ROLE_MODEL_FIELDS[role]
   return `${label}. Hint: default models assume an OpenCode Go subscription. If this provider is not configured on this machine, set "${field}" in ~/.config/janus-agent/config.jsonc (or point $JANUS_CONFIG at your config), then retry the dispatch.`
 }
 
 export function buildChainFailureMessage(
-  role: JournalRole,
+  role: DispatchRole,
   tried: ReadonlyArray<string>,
   lastError: string,
 ): string {
@@ -107,7 +103,7 @@ export function buildChainFailureMessage(
 export function makeEnvelope(
   status: DispatchEnvelope["status"],
   jobID: string,
-  role: JournalRole,
+  role: DispatchRole,
   attempt: { index: number; model: string | null },
   sessionID: string,
   waitedMs: number,
@@ -133,7 +129,7 @@ export function makeEnvelope(
 export function observationToOutcome(
   observation: ObservationOutcome,
   jobID: string,
-  role: JournalRole,
+  role: DispatchRole,
   attempt: { index: number; model: string | null; sessionID: string },
   waitedMs: number,
 ): DispatchOutcome {

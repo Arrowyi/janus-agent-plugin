@@ -3,7 +3,9 @@ import { z } from "zod"
 import {
   AuthorClaimSchema,
   AuthorDeliverySchema,
+  AuthorLevelSchema,
   AuthorProfileSchema,
+  AuthorReviewRecordSchema,
   AuthorSectionSchema,
   AuthorVerificationSchema,
 } from "./author-contracts.ts"
@@ -11,12 +13,13 @@ import { baseBriefShape } from "./brief-base.ts"
 import { ConsultationError, ConsultationErrorCode } from "./errors.ts"
 
 // z.discriminatedUnion only accepts plain ZodObject members, so this schema has
-// no top-level .refine; the delivery cross-field rules are enforced by
-// assertValidAuthorDelivery. An AuthorBrief is a final-delivery artifact only —
-// an approved outline is not a partially valid AuthorBrief.
+// no top-level .refine; the delivery and review cross-field rules are enforced
+// by assertValidAuthorDelivery. An AuthorBrief is a final-delivery artifact
+// only — an approved outline is not a partially valid AuthorBrief.
 export const AuthorBriefSchema = z.object({
   mode: z.literal("doc"),
   ...baseBriefShape,
+  level: AuthorLevelSchema,
   profile: AuthorProfileSchema,
   audience: z.string().min(1),
   goal: z.string().min(1),
@@ -28,6 +31,7 @@ export const AuthorBriefSchema = z.object({
   artifactPaths: z.array(z.string().min(1)).default([]),
   assumptions: z.array(z.string().min(1)).default([]),
   residualUncertainty: z.array(z.string().min(1)).default([]),
+  reviews: z.array(AuthorReviewRecordSchema).default([]),
 })
 export type AuthorBrief = z.infer<typeof AuthorBriefSchema>
 
@@ -50,15 +54,26 @@ export function authorTexts(brief: AuthorBrief): string[] {
       ...section.verificationTargets,
     )
     if (section.file !== undefined) texts.push(section.file)
+    if (section.depthBudget !== undefined) texts.push(section.depthBudget)
   }
   for (const claim of brief.loadBearingClaims) {
     texts.push(claim.claim, ...claim.sectionIds, claim.verificationMethod)
     if (claim.basis !== undefined) texts.push(claim.basis)
   }
+  for (const review of brief.reviews) {
+    for (const item of review.dispositions) {
+      texts.push(item.finding)
+      if (item.reason !== undefined) texts.push(item.reason)
+    }
+  }
   return texts
 }
 
 export function assertValidAuthorDelivery(brief: AuthorBrief): void {
+  // A D0 micro-fix never runs a review stage.
+  if (brief.level === "D0" && brief.reviews.length > 0) {
+    throw new ConsultationError(ConsultationErrorCode.VALIDATION_FAILED)
+  }
   const artifactPathCount = brief.artifactPaths.length
   switch (brief.delivery) {
     case "inline":

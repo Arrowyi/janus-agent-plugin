@@ -19,7 +19,6 @@ export const TeamRoleSchema = z.enum([
   "consultant_critic",
   "coder_reviewer",
   "consultant_auditor",
-  "author_writer",
 ])
 export type TeamRole = z.infer<typeof TeamRoleSchema>
 
@@ -45,13 +44,12 @@ export interface RoleCaps {
   consultant_critic: number
   coder_reviewer: number
   consultant_auditor: number
-  author_writer: number
 }
 
 export const TIER_ROLE_CAPS: Record<Tier, RoleCaps> = {
-  fast: { common_explorer: 5, consultant_analyst: 0, consultant_critic: 0, coder_reviewer: 0, consultant_auditor: 0, author_writer: 0 },
-  standard: { common_explorer: 5, consultant_analyst: 1, consultant_critic: 1, coder_reviewer: 1, consultant_auditor: 1, author_writer: 1 },
-  deep: { common_explorer: 5, consultant_analyst: 3, consultant_critic: 2, coder_reviewer: 2, consultant_auditor: 2, author_writer: 2 },
+  fast: { common_explorer: 5, consultant_analyst: 0, consultant_critic: 0, coder_reviewer: 0, consultant_auditor: 0 },
+  standard: { common_explorer: 5, consultant_analyst: 1, consultant_critic: 1, coder_reviewer: 1, consultant_auditor: 1 },
+  deep: { common_explorer: 5, consultant_analyst: 3, consultant_critic: 2, coder_reviewer: 2, consultant_auditor: 2 },
 }
 
 export function tierRoleCaps(tier: Tier): RoleCaps {
@@ -130,7 +128,7 @@ export const ExplorerReportSchema = ExplorerReportBaseSchema.refine(
     const hasDiscovery = (taxonomy ?? []).length > 0 && (pool ?? []).length > 0
     if (report.claims.length === 0 && !hasDiscovery) return false
 
-    // (b) Legacy claims-only reports carry no discovery contract to check.
+    // (b) Claims-only reports carry no discovery contract to check.
     if (taxonomy === undefined && pool === undefined) return true
 
     // (c) Top-level sources own their ids; claim-level sources fill gaps only.

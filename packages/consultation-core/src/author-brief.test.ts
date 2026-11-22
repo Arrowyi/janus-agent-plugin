@@ -6,6 +6,7 @@ import { ConsultationError } from "./errors.ts"
 const authorBrief = {
   mode: "doc",
   conclusion: "The approved tutorial was written and its load-bearing examples were verified.",
+  level: "D3",
   profile: "tutorial",
   audience: "Kotlin developers new to coroutines",
   goal: "Teach structured concurrency from mental model to tested examples.",
@@ -38,6 +39,16 @@ const authorBrief = {
   artifactPaths: ["README.md", "03-structured-concurrency.md"],
   assumptions: ["Kotlin 2.x and kotlinx.coroutines are available."],
   residualUncertainty: [],
+  reviews: [
+    {
+      stage: "final",
+      jobId: "job-review-1",
+      tier: "standard",
+      round: 1,
+      verdict: "pass",
+      dispositions: [{ finding: "Chapter 3 lacks expected output.", disposition: "applied" }],
+    },
+  ],
   confidence: "high",
   stability: "conditional",
   verifiedFacts: ["The representative cancellation example compiled and ran."],
@@ -148,6 +159,42 @@ describe("validateDecisionBrief: author delivery", () => {
   })
 })
 
+describe("validateDecisionBrief: author level and review record", () => {
+  const d0 = { level: "D0", delivery: "single_file", artifactPaths: ["README.md"], reviews: [] }
+
+  test("accepts a D0 micro-fix with no review record", () => {
+    const brief = validateDecisionBrief(briefWith(authorBrief, d0))
+    if (brief.mode !== "doc") throw new Error("expected doc mode")
+    expect(brief.level).toBe("D0")
+    expect(brief.reviews).toEqual([])
+  })
+
+  test("rejects a D0 micro-fix that records a review", () => {
+    const validate = (): void => {
+      validateDecisionBrief(briefWith(authorBrief, { ...d0, reviews: authorBrief.reviews }))
+    }
+    expect(validate).toThrow("VALIDATION_FAILED")
+  })
+
+  test("rejects a missing or unknown level", () => {
+    const { level: _level, ...withoutLevel } = authorBrief
+    expect(() => validateDecisionBrief(withoutLevel)).toThrow()
+    expect(() => validateDecisionBrief(briefWith(authorBrief, { level: "D4" }))).toThrow()
+  })
+
+  test("rejects a declined finding without a reason and a fourth review round", () => {
+    const review = authorBrief.reviews[0]!
+    const declined = { ...review, dispositions: [{ finding: "Tone is flat.", disposition: "declined" }] }
+    expect(() => validateDecisionBrief(briefWith(authorBrief, { reviews: [declined] }))).toThrow()
+    expect(() => validateDecisionBrief(briefWith(authorBrief, { reviews: [{ ...review, round: 4 }] }))).toThrow()
+  })
+
+  test("rejects a deep review tier", () => {
+    const review = authorBrief.reviews[0]!
+    expect(() => validateDecisionBrief(briefWith(authorBrief, { reviews: [{ ...review, tier: "deep" }] }))).toThrow()
+  })
+})
+
 describe("validateDecisionBrief: author numeric confidence", () => {
   const authorNumericCases: Array<[string, Record<string, unknown>]> = [
     ["the conclusion", { conclusion: "The tutorial is 85% complete." }],
@@ -170,6 +217,22 @@ describe("validateDecisionBrief: author numeric confidence", () => {
     ["a learning objective", { outline: outlineWith({ learningObjectives: ["Explain 85% of jobs."] }) }],
     ["a section prerequisite", { outline: outlineWith({ prerequisites: ["85% Kotlin knowledge"] }) }],
     ["a verification target", { outline: outlineWith({ verificationTargets: ["Passes 85% of runs."] }) }],
+    ["a depth budget", { outline: outlineWith({ depthBudget: "Cover 85% of the API." }) }],
+    [
+      "a disposition reason",
+      {
+        reviews: [
+          {
+            stage: "final",
+            jobId: "job-review-1",
+            tier: "standard",
+            round: 1,
+            verdict: "pass",
+            dispositions: [{ finding: "Tone is flat.", disposition: "declined", reason: "85% of readers prefer it." }],
+          },
+        ],
+      },
+    ],
     ["a load-bearing claim", { loadBearingClaims: claimsWith({ claim: "Cancellation propagates 85% of the time." }) }],
     ["a claim section id", { loadBearingClaims: claimsWith({ sectionIds: ["85%-section"] }) }],
     ["a verification method", { loadBearingClaims: claimsWith({ verificationMethod: "85% of docs agree." }) }],

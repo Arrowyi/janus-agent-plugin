@@ -97,20 +97,9 @@ describe("janus_config tool", () => {
     expect(out).toContain("下一轮对话即生效")
   })
 
-  test("removed coder-lite keys return the migration guidance on describe/get/set", async () => {
-    const described = await runConfigAction({ action: "describe", key: "coder_lite_model" }, env)
-    expect(described).toContain("removed coder-lite keys detected")
-    expect(described).toContain("coder_lite_model → tier_models.fast.coder")
-    expect(described).toContain("tech_lead_")
-
-    const got = await runConfigAction({ action: "get", key: "coder_lite_model" }, env)
-    expect(got).toContain("removed coder-lite keys detected")
-
-    const nested = await runConfigAction({ action: "get", key: "tier_models.fast.coder-lite" }, env)
-    expect(nested).toContain('tier_models.fast["coder-lite"] → tier_models.fast["coder"]')
-
-    const set = await runConfigAction({ action: "set", key: "coder_lite_model", value: "a/b" }, env)
-    expect(set).toContain("removed coder-lite keys detected")
+  test("two-tier documentation seats refuse a deep tier model", async () => {
+    const set = await runConfigAction({ action: "set", key: "tier_models.deep.author-reviewer", value: "a/b", apply: true }, env)
+    expect(set).toContain("tier_models.standard.author-reviewer")
     expect(existsSync(configPath)).toBe(false)
   })
 

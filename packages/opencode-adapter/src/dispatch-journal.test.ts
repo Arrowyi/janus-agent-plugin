@@ -18,7 +18,6 @@ import {
   FAKE_MESSAGE_ID,
   FAKE_PARENT_ID,
   createFakeClock,
-  legacyRoleSpecs,
   makeAttemptReceipt,
   makeAttemptReservation,
   makeCancelIntent,
@@ -669,24 +668,6 @@ describe("loadJob", () => {
     expect(error.reason).toBe("job-unavailable")
   })
 
-  it("loads a historical job whose spec records the retired coder-lite role", async () => {
-    const sdk = createJournalFakeSdk()
-    const root = await sdk.session.create({
-      body: { parentID: FAKE_PARENT_ID, title: "[consultation-dispatch:v1] coder-lite" },
-      query: { directory: FAKE_DIRECTORY },
-    })
-    if (root.data === undefined) throw new Error("missing root")
-    await sdk.session.prompt({
-      path: { id: root.data.id },
-      body: { noReply: true, messageID: "msg-legacy-spec", parts: [{ type: "text", synthetic: true, ignored: true, text: JSON.stringify(legacyRoleSpecs[0]!.record) }] },
-      query: { directory: FAKE_DIRECTORY },
-    })
-
-    const loaded = assertOk(await loadJob(sdk, { jobID: root.data.id, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID }))
-    expect(loaded.spec.role).toBe("coder-lite")
-    expect(loaded.spec.agent_name).toBe("coder-lite")
-  })
-
   it("rejects a cross-parent lookup with job-unavailable and no record contents", async () => {
     const sdk = createJournalFakeSdk()
     const clock = createFakeClock(1_000_000)
@@ -940,7 +921,7 @@ describe("loadJobModelForGuard", () => {
       parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
       modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
     }))
-    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result).toEqual({ ok: true, model: "opencode-go/glm-5.3", tier: undefined })
   })
 
@@ -950,15 +931,15 @@ describe("loadJobModelForGuard", () => {
       parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
       modelChain: ["opencode-go/deepseek-v4.1-flash"], prompt: "implement the milestone", clock: createFakeClock(), tier: "standard",
     }))
-    const tiered = await loadJobModelForGuard(sdk, { jobID: withTier.jobID, directory: FAKE_DIRECTORY })
+    const tiered = await loadJobModelForGuard(sdk, { jobID: withTier.jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(tiered).toEqual({ ok: true, model: "opencode-go/deepseek-v4.1-flash", tier: "standard" })
 
     const withoutTier = assertOk(await createJob(sdk, {
       parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
       modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
     }))
-    const legacy = await loadJobModelForGuard(sdk, { jobID: withoutTier.jobID, directory: FAKE_DIRECTORY })
-    expect(legacy).toEqual({ ok: true, model: "opencode-go/glm-5.3", tier: undefined })
+    const untiered = await loadJobModelForGuard(sdk, { jobID: withoutTier.jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
+    expect(untiered).toEqual({ ok: true, model: "opencode-go/glm-5.3", tier: undefined })
   })
 
   it("returns a null model for a coder root whose chain pins none", async () => {
@@ -967,13 +948,13 @@ describe("loadJobModelForGuard", () => {
       parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
       modelChain: [null], prompt: "implement the milestone", clock: createFakeClock(),
     }))
-    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result).toEqual({ ok: true, model: null, tier: undefined })
   })
 
   it("rejects an unknown job id with not-found and a root job_id hint", async () => {
     const sdk = createJournalFakeSdk()
-    const result = await loadJobModelForGuard(sdk, { jobID: "ses_missing", directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID: "ses_missing", directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.reason).toBe("not-found")
@@ -988,7 +969,7 @@ describe("loadJobModelForGuard", () => {
       modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
     }))
     const attempt = assertOk(await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "coder" }))
-    const result = await loadJobModelForGuard(sdk, { jobID: attempt.sessionID, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID: attempt.sessionID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.reason).toBe("not-found")
@@ -1002,7 +983,7 @@ describe("loadJobModelForGuard", () => {
       parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
       modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
     }))
-    const result = await loadJobModelForGuard(sdk, { jobID, directory: "/other/workspace" })
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: "/other/workspace", expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe("not-found")
   })
@@ -1013,7 +994,7 @@ describe("loadJobModelForGuard", () => {
       body: { parentID: FAKE_PARENT_ID, title: "plain chat session" },
       query: { directory: FAKE_DIRECTORY },
     })
-    const result = await loadJobModelForGuard(sdk, { jobID: plain.data!.id, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID: plain.data!.id, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.reason).toBe("not-found")
@@ -1024,7 +1005,7 @@ describe("loadJobModelForGuard", () => {
   it("rejects a transport failure on the root read with read-error", async () => {
     const sdk = createJournalFakeSdk()
     sdk.session.get = async () => ({ error: new Error("transport") })
-    const result = await loadJobModelForGuard(sdk, { jobID: "ses_job", directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID: "ses_job", directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe("read-error")
   })
@@ -1036,7 +1017,7 @@ describe("loadJobModelForGuard", () => {
       modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
     }))
     sdk.session.messages = async () => ({ error: new Error("transport") })
-    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe("read-error")
   })
@@ -1052,7 +1033,7 @@ describe("loadJobModelForGuard", () => {
       body: { parts: [{ type: "text", text: "not valid json", ignored: true, synthetic: true }], noReply: true, messageID: "msg-guard-corrupt" },
       query: { directory: FAKE_DIRECTORY },
     })
-    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe("invalid-job")
   })
@@ -1068,7 +1049,7 @@ describe("loadJobModelForGuard", () => {
       jobID, directory: FAKE_DIRECTORY,
       record: makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3-flash"], created_at: clock.now() + 1 }),
     }))
-    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe("invalid-job")
   })
@@ -1088,12 +1069,12 @@ describe("loadJobModelForGuard", () => {
       },
       query: { directory: FAKE_DIRECTORY },
     })
-    const result = await loadJobModelForGuard(sdk, { jobID: root.data.id, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID: root.data.id, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe("invalid-job")
   })
 
-  it("rejects a continuation job root with not-coder-root and names the original root job_id", async () => {
+  it("rejects a continuation job root with not-reviewed-root and names the original root job_id", async () => {
     const sdk = createJournalFakeSdk()
     const clock = createFakeClock()
     const original = assertOk(await createJob(sdk, {
@@ -1105,28 +1086,44 @@ describe("loadJobModelForGuard", () => {
       modelChain: ["opencode-go/glm-5.3"], prompt: "more milestone work", clock,
       sessionID: original.jobID, continuedFrom: original.jobID,
     }))
-    const result = await loadJobModelForGuard(sdk, { jobID: continuation.jobID, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID: continuation.jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) {
-      expect(result.reason).toBe("not-coder-root")
+      expect(result.reason).toBe("not-reviewed-root")
       expect(result.message).toContain("continuation job root")
       expect(result.message).toContain(original.jobID)
     }
   })
 
-  it("rejects a non-coder job root with not-coder-root", async () => {
+  it("rejects a non-coder job root with not-reviewed-root", async () => {
     const sdk = createJournalFakeSdk()
     const { jobID } = assertOk(await createJob(sdk, {
       parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "consultant-analyst", agentName: "consultant-analyst",
       modelChain: ["opencode-go/qwen3.8-max"], prompt: "analyze this", clock: createFakeClock(),
     }))
-    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result.ok).toBe(false)
     if (!result.ok) {
-      expect(result.reason).toBe("not-coder-root")
+      expect(result.reason).toBe("not-reviewed-root")
       expect(result.message).toContain("consultant-analyst")
       expect(result.message).toContain("coder")
     }
+  })
+
+  it("reads an author-writer unit for the documentation reviewer and rejects it for coder review", async () => {
+    const sdk = createJournalFakeSdk()
+    const { jobID } = assertOk(await createJob(sdk, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "author-writer", agentName: "author-writer",
+      modelChain: ["opencode-go/claude-haiku-5-5"], prompt: "draft the unit", clock: createFakeClock(), tier: "fast",
+    }))
+    expect(await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY, expectedRole: "author-writer" })).toEqual({
+      ok: true,
+      model: "opencode-go/claude-haiku-5-5",
+      tier: "fast",
+    })
+    const asCoder = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
+    expect(asCoder.ok).toBe(false)
+    if (!asCoder.ok) expect(asCoder.message).toContain("coder task jobs")
   })
 
   it("does not require the caller session to own the job (cross-session read)", async () => {
@@ -1138,7 +1135,7 @@ describe("loadJobModelForGuard", () => {
       parentID: "ses_earlier_controller", directory: FAKE_DIRECTORY, role: "coder", agentName: "coder",
       modelChain: ["opencode-go/glm-5.3"], prompt: "implement the milestone", clock: createFakeClock(),
     }))
-    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY })
+    const result = await loadJobModelForGuard(sdk, { jobID, directory: FAKE_DIRECTORY, expectedRole: "coder" })
     expect(result).toEqual({ ok: true, model: "opencode-go/glm-5.3", tier: undefined })
   })
 })

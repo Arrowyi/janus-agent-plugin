@@ -31,10 +31,10 @@ import {
   buildSimplePermission,
   buildAuthorWriterPermission,
   buildAuthorWriterRuntimeBindings,
+  buildAuthorReviewerRuntimeBindings,
   computeProjectId,
   resolveAuthorStateDir,
   resolveDesignStateDir,
-  resolveHandoffStateDir,
   resolveLedgerStateDir,
   resolveSimpleWorkspaceDir as resolveSimpleWorkspaceDirLocal,
   injectRuntimeBindings,
@@ -89,7 +89,6 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
 }
 
 const DESIGN_BINDING = { designStateDir: "/xdg/data/janus-agent/design", projectId: "my-project-a1b2c3d4" }
-const HANDOFF_BINDING = { handoffStateDir: "/xdg/data/janus-agent/handoff", projectId: "my-project-a1b2c3d4" }
 
 describe("buildConsultantRuntimeBindings", () => {
   it("includes the memory MCP server line with tool names when memory is enabled", () => {
@@ -97,7 +96,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig({ memory_enabled: true })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-abcdef123456", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-abcdef123456")
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
@@ -114,7 +113,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-abcdef123456", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-abcdef123456")
 
     // then
     expect(block).toContain("oc-abcdef123456")
@@ -126,7 +125,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig({ memory_enabled: false })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("Memory: DISABLED by configuration (saving and recall are unavailable)")
@@ -138,7 +137,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig({ consultant_critic_model: "openrouter/qwen-max" })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("consultant-critic `consultant-critic`")
@@ -151,7 +150,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("opencode/claude-sonnet-5-5")
@@ -162,7 +161,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("Consultant model")
@@ -180,7 +179,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("round_cap=3")
@@ -200,7 +199,7 @@ describe("buildConsultantRuntimeBindings", () => {
     })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("round_cap=2")
@@ -213,14 +212,14 @@ describe("buildConsultantRuntimeBindings", () => {
     // given
     const config = makeConfig({
       tier_role_caps: {
-        fast: { common_explorer: 5, consultant_analyst: 0, consultant_critic: 0, coder_reviewer: 0, consultant_auditor: 0, author_writer: 0 },
-        standard: { common_explorer: 5, consultant_analyst: 2, consultant_critic: 1, coder_reviewer: 1, consultant_auditor: 1, author_writer: 0 },
-        deep: { common_explorer: 5, consultant_analyst: 4, consultant_critic: 3, coder_reviewer: 2, consultant_auditor: 2, author_writer: 0 },
+        fast: { common_explorer: 5, consultant_analyst: 0, consultant_critic: 0, coder_reviewer: 0, consultant_auditor: 0 },
+        standard: { common_explorer: 5, consultant_analyst: 2, consultant_critic: 1, coder_reviewer: 1, consultant_auditor: 1 },
+        deep: { common_explorer: 5, consultant_analyst: 4, consultant_critic: 3, coder_reviewer: 2, consultant_auditor: 2 },
       },
     })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("standard(e5,a2,c1,au1)")
@@ -232,7 +231,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig({ consultant_critic_enabled: false })
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("consultant-critic DISABLED by configuration")
@@ -243,7 +242,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).toContain("Economical leaf: `simple` (`opencode-go/deepseek-v4.1-flash`)")
@@ -252,7 +251,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const disabled = makeConfig({ simple_enabled: false })
 
     // when
-    const disabledBlock = buildConsultantRuntimeBindings(disabled, "oc-ns", HANDOFF_BINDING)
+    const disabledBlock = buildConsultantRuntimeBindings(disabled, "oc-ns")
 
     // then
     expect(disabledBlock).toContain("Economical leaf: simple DISABLED by configuration")
@@ -263,7 +262,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then — those bindings belong to architect, coder, and author
     expect(block).not.toContain("Coding delegate")
@@ -279,7 +278,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING, {
+    const block = buildConsultantRuntimeBindings(config, "oc-ns", {
       ledgerStateDir: "/xdg/data/janus-agent/ledger",
       projectId: "my-project-a1b2c3d4",
     })
@@ -296,7 +295,7 @@ describe("buildConsultantRuntimeBindings", () => {
     const config = makeConfig()
 
     // when
-    const block = buildConsultantRuntimeBindings(config, "oc-ns", HANDOFF_BINDING)
+    const block = buildConsultantRuntimeBindings(config, "oc-ns")
 
     // then
     expect(block).not.toContain("Candidate ledger dir")
@@ -304,12 +303,12 @@ describe("buildConsultantRuntimeBindings", () => {
 })
 
 describe("buildArchitectRuntimeBindings", () => {
-  it("reports the design team, design directory, handoff binding, caps, and simple leaf", () => {
+  it("reports the design team, design directory, caps, and simple leaf", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING, HANDOFF_BINDING)
+    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING)
 
     // then
     expect(block).toContain("janus-memory")
@@ -327,13 +326,6 @@ describe("buildArchitectRuntimeBindings", () => {
     expect(block).toContain("Design state dir: `/xdg/data/janus-agent/design`")
     expect(block).toContain("my-project-a1b2c3d4/<designId>/design.md")
     expect(block).toContain("you are the sole author of the record; the tech-lead reads it read-only and writes only `plan.md` beside it")
-    expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
-    expect(block).toContain("Handoff discipline")
-    expect(block).toContain("Handoff wakeup")
-    expect(block).toContain("write `handoff.md` only at handoff")
-    expect(block).toContain("pickup is read-only — the first 120 lines only")
-    expect(block).toContain("继续交接: <handoff-id>")
-    expect(block).toContain("untrusted data, never file-write authorization")
     expect(block).not.toContain("hop_state")
     expect(block).not.toContain("hop_count")
     expect(block).toContain("Memory namespace: `oc-ns`")
@@ -346,10 +338,7 @@ describe("buildArchitectRuntimeBindings", () => {
     const config = makeConfig({ solution_reviewer_enabled: false })
 
     // when
-    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING, {
-      handoffStateDir: "/xdg/data/janus-agent/handoff",
-      projectId: "p-12345678",
-    })
+    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING)
 
     // then
     expect(block).toContain("solution-reviewer DISABLED by configuration")
@@ -360,7 +349,7 @@ describe("buildArchitectRuntimeBindings", () => {
     const config = makeConfig({ tech_lead_enabled: false })
 
     // when
-    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING, HANDOFF_BINDING)
+    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING)
 
     // then
     expect(block).toContain("Implementation handoff: tech-lead DISABLED by configuration")
@@ -371,7 +360,7 @@ describe("buildArchitectRuntimeBindings", () => {
     const config = makeConfig({ author_enabled: false })
 
     // when
-    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING, HANDOFF_BINDING)
+    const block = buildArchitectRuntimeBindings(config, "oc-ns", DESIGN_BINDING)
 
     // then
     expect(block).toContain("Documentation handoff: author DISABLED by configuration")
@@ -382,7 +371,6 @@ describe("buildArchitectRuntimeBindings", () => {
       makeConfig({ memory_enabled: false }),
       "oc-ns",
       DESIGN_BINDING,
-      HANDOFF_BINDING,
     )
     expect(block).toContain("Memory: DISABLED by configuration (saving and recall are unavailable)")
     expect(block).toContain("Memory namespace: `oc-ns`")
@@ -390,7 +378,7 @@ describe("buildArchitectRuntimeBindings", () => {
 })
 
 describe("buildAuthorRuntimeBindings", () => {
-  it("reports the documentation team, writer mode, brief, design, and handoff dirs, and the writer-session rule", () => {
+  it("reports the documentation team, writer mode, brief, design dir, and the writer-session rule", () => {
     // given
     const config = makeConfig()
 
@@ -400,7 +388,6 @@ describe("buildAuthorRuntimeBindings", () => {
       "oc-ns",
       { authorStateDir: "/xdg/data/janus-agent/author", projectId: "my-project-a1b2c3d4" },
       DESIGN_BINDING,
-      HANDOFF_BINDING,
     )
 
     // then
@@ -410,7 +397,9 @@ describe("buildAuthorRuntimeBindings", () => {
     expect(block).toContain("coder")
     expect(block).toContain("consultant-critic")
     expect(block).toContain("author-reviewer")
-    expect(block).toContain("opencode-go/kimi-k3.1-pro")
+    expect(block).toContain("fast `opencode-go/claude-haiku-5-5`, standard `opencode/claude-sonnet-5-5`")
+    expect(block).toContain("fast `opencode-go/deepseek-v4.1-flash`, standard `opencode-go/kimi-k3.1-pro`")
+    expect(block).toContain("independent staged document review")
     expect(block).not.toContain("coder-reviewer")
     expect(block).toContain("Writer write mode: `scoped`")
     expect(block).toContain("Author state dir: `/xdg/data/janus-agent/author`")
@@ -418,7 +407,6 @@ describe("buildAuthorRuntimeBindings", () => {
     expect(block).toContain("author-writer reads it and never writes it")
     expect(block).toContain("Design state dir: `/xdg/data/janus-agent/design`")
     expect(block).toContain("read-only reference for architecture documents")
-    expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
     expect(block).toContain("writer_session_id")
     expect(block).toContain("Memory namespace: `oc-ns`")
   })
@@ -433,7 +421,6 @@ describe("buildAuthorRuntimeBindings", () => {
       "oc-ns",
       { authorStateDir: "/xdg/data/janus-agent/author", projectId: "my-project-a1b2c3d4" },
       DESIGN_BINDING,
-      HANDOFF_BINDING,
     )
 
     // then
@@ -451,7 +438,6 @@ describe("buildAuthorRuntimeBindings", () => {
       "oc-ns",
       { authorStateDir: "/xdg/data/janus-agent/author", projectId: "my-project-a1b2c3d4" },
       DESIGN_BINDING,
-      HANDOFF_BINDING,
     )
 
     // then
@@ -460,12 +446,12 @@ describe("buildAuthorRuntimeBindings", () => {
 })
 
 describe("buildTechLeadRuntimeBindings", () => {
-  it("reports the model, both reviewer seats, the escalation path, design record, handoff binding, and job tools", () => {
+  it("reports the model, both reviewer seats, the escalation path, design record, and job tools", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildTechLeadRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
+    const block = buildTechLeadRuntimeBindings(config, DESIGN_BINDING)
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
@@ -480,13 +466,10 @@ describe("buildTechLeadRuntimeBindings", () => {
     expect(block).toContain("Design record: `/xdg/data/janus-agent/design/my-project-a1b2c3d4`")
     expect(block).toContain("`architect` is its sole writer")
     expect(block).toContain("deletes without confirmation")
-    expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
-    expect(block).toContain("Handoff discipline")
-    expect(block).toContain("Handoff wakeup")
     expect(block).toContain("janus_dispatch_wait")
     expect(block).toContain("`return_handle: true`")
     // No memory namespace and no ledger: coding sessions keep state in
-    // plan.md/handoff.md, not consultation memory.
+    // plan.md, not consultation memory.
     expect(block).not.toContain("janus-memory")
     expect(block).not.toContain("Memory namespace")
   })
@@ -496,7 +479,7 @@ describe("buildTechLeadRuntimeBindings", () => {
     const config = makeConfig({ tech_lead_model: "custom/lead" })
 
     // when
-    const block = buildTechLeadRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
+    const block = buildTechLeadRuntimeBindings(config, DESIGN_BINDING)
 
     // then
     expect(block).toContain("Tech-lead model: `custom/lead`")
@@ -507,7 +490,7 @@ describe("buildTechLeadRuntimeBindings", () => {
     const config = makeConfig({ coder_reviewer_enabled: false, solution_reviewer_enabled: false })
 
     // when
-    const block = buildTechLeadRuntimeBindings(config, DESIGN_BINDING, HANDOFF_BINDING)
+    const block = buildTechLeadRuntimeBindings(config, DESIGN_BINDING)
 
     // then
     expect(block).toContain("Milestone reviewer: coder-reviewer DISABLED by configuration")
@@ -705,17 +688,6 @@ describe("resolveDesignStateDir", () => {
   })
 })
 
-describe("resolveHandoffStateDir", () => {
-  it("resolves to $XDG_DATA_HOME/janus-agent/handoff with a HOME fallback", () => {
-    expect(resolveHandoffStateDir({ XDG_DATA_HOME: "/xdg-data" } as NodeJS.ProcessEnv)).toBe(
-      "/xdg-data/janus-agent/handoff",
-    )
-    expect(resolveHandoffStateDir({ HOME: "/home/test-user" } as NodeJS.ProcessEnv)).toBe(
-      "/home/test-user/.local/share/janus-agent/handoff",
-    )
-  })
-})
-
 describe("resolveLedgerStateDir", () => {
   it("resolves to $XDG_DATA_HOME/janus-agent/ledger with a HOME fallback", () => {
     expect(resolveLedgerStateDir({ XDG_DATA_HOME: "/xdg-data" } as NodeJS.ProcessEnv)).toBe(
@@ -833,7 +805,7 @@ describe("registerConsultantAgent", () => {
     expect(consultant.prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
   })
 
-  it("holds the handoff and project-scoped candidate-ledger directories as business state and no author/design/writer bindings", async () => {
+  it("holds only the project-scoped candidate-ledger directory as business state and no author/design/writer bindings", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
@@ -848,7 +820,6 @@ describe("registerConsultantAgent", () => {
     }
     expect(consultant.permission).toEqual({
       external_directory: {
-        "/tmp/home/.local/share/janus-agent/handoff/**": "allow",
         [`/tmp/home/.local/share/janus-agent/ledger/${computeProjectId("/tmp/my-project")}/**`]: "allow",
       },
     })
@@ -857,7 +828,6 @@ describe("registerConsultantAgent", () => {
     expect(consultant.prompt).not.toContain("Writer write mode")
     expect(consultant.prompt).not.toContain("Coding delegate")
     expect(consultant.prompt).toContain("Economical leaf: `simple`")
-    expect(consultant.prompt).toContain("Handoff state dir: `/tmp/home/.local/share/janus-agent/handoff/")
     expect(consultant.prompt).toContain("Candidate ledger dir: `/tmp/home/.local/share/janus-agent/ledger/")
     expect(consultant.prompt).toContain("<consultation_id>.md")
     expect(existsSync(join("/tmp/home/.local/share/janus-agent/ledger", computeProjectId("/tmp/my-project")))).toBe(true)
@@ -885,12 +855,10 @@ describe("registerArchitect", () => {
     expect(architect.prompt).toContain("# Architect")
     expect(architect.model).toBe("opencode-go/gemini-4-argon")
     expect(architect.prompt).toContain("Design state dir")
-    expect(architect.prompt).toContain("Handoff state dir")
     expect(architect.prompt).toContain("design_premortem")
     expect(architect.permission).toEqual({
       external_directory: {
         "/home/test-user/.local/share/janus-agent/design/**": "allow",
-        "/home/test-user/.local/share/janus-agent/handoff/**": "allow",
       },
     })
   })
@@ -936,13 +904,11 @@ describe("registerAuthor", () => {
     expect(author.prompt).toContain("# Author")
     expect(author.model).toBe("opencode-go/gemini-4-argon")
     expect(author.prompt).toContain("Author state dir")
-    expect(author.prompt).toContain("Handoff state dir")
     expect(author.prompt).toContain("writer_session_id")
     expect(author.permission).toEqual({
       external_directory: {
         "/home/test-user/.local/share/janus-agent/author/**": "allow",
         "/home/test-user/.local/share/janus-agent/design/**": "allow",
-        "/home/test-user/.local/share/janus-agent/handoff/**": "allow",
       },
     })
   })
@@ -1223,7 +1189,7 @@ describe("buildAuthorWriterRuntimeBindings", () => {
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
-    expect(block).toContain("Author-writer model: `opencode/claude-sonnet-5-5`")
+    expect(block).toContain("Author-writer models: fast `opencode-go/claude-haiku-5-5`, standard `opencode/claude-sonnet-5-5`")
     expect(block).toContain("Write mode: `scoped`")
     expect(block).toContain('`writeMode: "read-only"`')
     expect(block).toContain("return the prose or patch for the author to publish")
@@ -1406,8 +1372,23 @@ describe("registerAuthorWriter", () => {
   })
 })
 
+describe("buildAuthorReviewerRuntimeBindings", () => {
+  it("lists the per-tier reviewer models and the leaf rule", () => {
+    // given
+    const config = makeConfig({ tier_models: { standard: { "author-reviewer": "provider/reviewer-standard" } } })
+
+    // when
+    const block = buildAuthorReviewerRuntimeBindings(config)
+
+    // then
+    expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
+    expect(block).toContain("Author-reviewer models: fast `opencode-go/deepseek-v4.1-flash`, standard `provider/reviewer-standard`")
+    expect(block).toContain("You are a leaf: no edits, no bash, no dispatch, no memory tools")
+  })
+})
+
 describe("buildAuthorReviewerPermission", () => {
-  it("denies every write/exec/search tool and allows only the two state dirs read-only", () => {
+  it("denies every write/exec/dispatch tool, allows web lookups, and reads only the two state dirs", () => {
     // given
     const authorDir = "/xdg/data/janus-agent/author"
     const designDir = "/xdg/data/janus-agent/design"
@@ -1419,8 +1400,8 @@ describe("buildAuthorReviewerPermission", () => {
     expect(permission.edit).toBe("deny")
     expect(permission.bash).toBe("deny")
     expect(permission.task).toBe("deny")
-    expect(permission.webfetch).toBe("deny")
-    expect(permission.websearch).toBe("deny")
+    expect(permission.webfetch).toBe("allow")
+    expect(permission.websearch).toBe("allow")
     expect(permission.janus_dispatch).toBe("deny")
     expect(permission.janus_dispatch_wait).toBe("deny")
     expect(permission.janus_dispatch_cancel).toBe("deny")
@@ -1912,7 +1893,6 @@ describe("registerCoder", () => {
     expect(external[`${tmp}/opencode/**`]).toBe("allow")
     for (const key of Object.keys(external)) {
       expect(key).not.toContain("janus-agent/design")
-      expect(key).not.toContain("janus-agent/handoff")
     }
     expect(permission.task).toBe("deny")
     expect(Object.keys(LEAF_DISPATCH_DENY)).toHaveLength(6)
@@ -2050,8 +2030,8 @@ describe("buildCoderPermission", () => {
     for (const tool of Object.keys(LEAF_DISPATCH_DENY)) {
       expect(permission[tool]).toBe("deny")
     }
-    // External reads stop at the shared temp directory: the design and
-    // handoff state dirs belong to the primary seats.
+    // External reads stop at the shared temp directory: the design state dir
+    // belongs to the primary seats.
     const external = permission.external_directory as Record<string, string>
     const tmp = tmpdir()
     expect(Object.keys(external).sort()).toEqual(
@@ -2120,12 +2100,9 @@ describe("edit permissions under host worktree-relative submission", () => {
       const techLead = config.agent?.["tech-lead"] as { permission: Record<string, unknown> }
       const edit = techLead.permission.edit as Record<string, string>
       const designFile = join(resolveDesignStateDir(env), "proj-x", "plan.md")
-      const handoffFile = join(resolveHandoffStateDir(env), "proj-x", "hop-1", "handoff.md")
       expect(hostEvaluate(edit, relative(projectDir, designFile))).toBe("allow")
-      expect(hostEvaluate(edit, relative(projectDir, handoffFile))).toBe("allow")
       // absolute-shape submissions still hit the absolute hedges
       expect(hostEvaluate(edit, designFile)).toBe("allow")
-      expect(hostEvaluate(edit, handoffFile)).toBe("allow")
       // any other external path denies under both submission shapes
       expect(hostEvaluate(edit, relative(projectDir, "/etc/hosts"))).toBe("deny")
       expect(hostEvaluate(edit, relative(projectDir, join(workspaceParent, "elsewhere", "x.ts")))).toBe("deny")
@@ -2238,8 +2215,6 @@ describe("edit permissions under host worktree-relative submission", () => {
       // every external relative path still denies
       expect(hostEvaluate(edit, "../etc/passwd")).toBe("deny")
       expect(hostEvaluate(edit, "../../etc/passwd")).toBe("deny")
-      // the handoff dir (not an ancestor of any base) still carries its twins
-      expect(hostEvaluate(edit, relative(designDir, join(resolveHandoffStateDir(env), "p", "handoff.md")))).toBe("allow")
 
       // and simple with a base inside its workspace falls back to ask
       const workspace = join(workspaceParent, "lite")
@@ -2267,16 +2242,13 @@ describe("edit permissions under host worktree-relative submission", () => {
       // then — exactly the pre-twin rule sets and ordering
       const techLead = config.agent?.["tech-lead"] as { permission: Record<string, unknown> }
       const designDir = resolveDesignStateDir(env)
-      const handoffDir = resolveHandoffStateDir(env)
       expect(techLead.permission.edit).toEqual({
         "*": "deny",
         [`${designDir}/**`]: "allow",
-        [`${handoffDir}/**`]: "allow",
       })
       expect(Object.keys(techLead.permission.edit as Record<string, string>)).toEqual([
         "*",
         `${designDir}/**`,
-        `${handoffDir}/**`,
       ])
       expect(buildCoderPermission().edit).toEqual({ "*": "allow", "/*": "ask" })
       expect(buildSimplePermission("/ws/lite").edit).toEqual({ "*": "ask", "/ws/lite/**": "allow" })
@@ -2587,12 +2559,12 @@ describe("tech-lead tree-snapshot protocol", () => {
 })
 
 describe("buildJanusRuntimeBindings", () => {
-  it("reports own model, the simple/consultant/coder routes, the primary architect/author entries, the handoff binding, and job-tool discipline", () => {
+  it("reports own model, the simple/consultant/coder routes, the primary architect/author entries, and job-tool discipline", () => {
     // given
     const config = makeConfig()
 
     // when
-    const block = buildJanusRuntimeBindings(config, HANDOFF_BINDING)
+    const block = buildJanusRuntimeBindings(config)
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
@@ -2605,9 +2577,6 @@ describe("buildJanusRuntimeBindings", () => {
     expect(block).toContain("`author` (agent `author`, `opencode-go/gemini-4-argon`)")
     expect(block).toContain('dispatch via `janus_dispatch` (role="author")')
     expect(block).toContain("not dispatchable")
-    expect(block).toContain("Handoff state dir: `/xdg/data/janus-agent/handoff/my-project-a1b2c3d4`")
-    expect(block).toContain("Handoff discipline")
-    expect(block).toContain("Handoff wakeup")
     expect(block).toContain("janus_dispatch_wait")
     expect(block).not.toContain("`explorer` (agent")
     expect(block).not.toContain("`build` (agent")
@@ -2620,7 +2589,7 @@ describe("buildJanusRuntimeBindings", () => {
     const config = makeConfig({ simple_enabled: false, architect_enabled: false, author_enabled: false, tech_lead_enabled: false })
 
     // when
-    const block = buildJanusRuntimeBindings(config, HANDOFF_BINDING)
+    const block = buildJanusRuntimeBindings(config)
 
     // then
     expect(block).toContain("simple DISABLED by configuration")
@@ -2628,10 +2597,26 @@ describe("buildJanusRuntimeBindings", () => {
     expect(block).toContain("author DISABLED by configuration")
     expect(block).toContain("tech-lead DISABLED by configuration")
   })
+
+  it("adds the read-only design reference line only when a design binding is supplied", () => {
+    // when — without a design binding
+    const withoutDesign = buildJanusRuntimeBindings(makeConfig())
+
+    // then
+    expect(withoutDesign).not.toContain("Design state dir")
+
+    // when — with the design binding
+    const withDesign = buildJanusRuntimeBindings(makeConfig(), DESIGN_BINDING)
+
+    // then — the exact reference line for the unattended tech-lead relay
+    expect(withDesign).toContain(
+      "- Design state dir: `/xdg/data/janus-agent/design/my-project-a1b2c3d4` — read-only reference for checking `plan.md` on a `tech-lead` checkpoint relay; never edit `design.md` or `plan.md`",
+    )
+  })
 })
 
 describe("registerJanus", () => {
-  it("registers mode all with the janus.md body, bindings, and the handoff dir, no memory", async () => {
+  it("registers mode all with the janus.md body, bindings, and the design dir reference, no memory", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
@@ -2651,12 +2636,14 @@ describe("registerJanus", () => {
     expect(janus.model).toBe("opencode-go/glm-5.3-flash")
     expect(janus.description).toContain("Daily-driver primary")
     expect(janus.permission).toEqual({
-      external_directory: { "/home/test-user/.local/share/janus-agent/handoff/**": "allow" },
+      external_directory: { "/home/test-user/.local/share/janus-agent/design/**": "allow" },
     })
     expect(janus.prompt).toContain("# Janus")
     expect(janus.prompt).toContain("## Routing")
     expect(janus.prompt).toContain("## General work")
-    expect(janus.prompt).toContain("Handoff state dir: `/home/test-user/.local/share/janus-agent/handoff/")
+    expect(janus.prompt).toContain(
+      `Design state dir: \`/home/test-user/.local/share/janus-agent/design/${computeProjectId("/tmp/my-project")}\` — read-only reference for checking \`plan.md\` on a \`tech-lead\` checkpoint relay; never edit \`design.md\` or \`plan.md\``,
+    )
     // Model adaptation is injected per request; the asset keeps the inert
     // placeholder.
     expect(janus.prompt).toContain("<!-- MODEL-PROMPT")

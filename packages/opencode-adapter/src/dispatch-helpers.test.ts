@@ -51,16 +51,6 @@ describe("modelFailureHint", () => {
     }
   })
 
-  it("gives a legacy journal role migration guidance instead of an undefined field hint", () => {
-    const hint = modelFailureHint("coder-lite", "opencode-go/glm-5.3-flash")
-    expect(hint).not.toContain('set "undefined"')
-    expect(hint).not.toContain("undefined")
-    expect(hint).toContain("coder-lite")
-    expect(hint).toContain('role "coder"')
-    expect(hint).toContain('tier: "fast"')
-    expect(hint).toContain("tier_models.fast.coder")
-  })
-
   it("omits the model label when the model is null", () => {
     expect(modelFailureHint("simple", null)).not.toContain("(model:")
   })

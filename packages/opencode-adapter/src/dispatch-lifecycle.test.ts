@@ -1177,26 +1177,6 @@ describe("journal read outage", () => {
     }
   })
 
-  it("recovers a legacy coder-lite job identity by title when the journal read fails", async () => {
-    const fake = createFakeSdk()
-    const clock = createFakeClock()
-    const root = await fake.session.create({
-      body: { parentID: FAKE_PARENT_ID, title: "[consultation-dispatch:v1] coder-lite" },
-      query: { directory: FAKE_DIRECTORY },
-    })
-    if (root.data === undefined) throw new Error("missing root")
-    fake.session.messages = async () => ({ error: { name: "APIError", data: { statusCode: 503 } } })
-    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
-    const result = await lifecycle.wait({ jobID: root.data.id, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })
-    const parsed = parseOutcomeEnvelope(result)
-    expect(parsed.ok).toBe(true)
-    if (parsed.ok) {
-      expect(parsed.value.status).toBe("unknown")
-      if (parsed.value.status === "unknown" || parsed.value.status === "pending" || parsed.value.status === "cancelling") {
-        expect(parsed.value.role).toBe("coder-lite")
-      }
-    }
-  })
 })
 
 describe("continuation lifecycle", () => {

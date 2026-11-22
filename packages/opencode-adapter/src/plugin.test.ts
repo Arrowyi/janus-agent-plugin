@@ -54,7 +54,7 @@ describe("createJanusConfigHook", () => {
     }
   })
 
-  it("splits business-state permissions: handoff shared by all five primaries, design/author dirs owned per team", async () => {
+  it("splits business-state permissions: each team owns its state dir and janus only references the design dir", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
@@ -72,7 +72,6 @@ describe("createJanusConfigHook", () => {
       // then
       const designDir = join(tmpHome, ".local/share/janus-agent/design")
       const authorDir = join(tmpHome, ".local/share/janus-agent/author")
-      const handoffDir = join(tmpHome, ".local/share/janus-agent/handoff")
       const ledgerDir = join(tmpHome, ".local/share/janus-agent/ledger")
       const projectId = computeProjectId(projectDir)
       const consultant = config.agent?.["consultant"] as { prompt: string; permission: Record<string, unknown> }
@@ -82,61 +81,50 @@ describe("createJanusConfigHook", () => {
       const coder = config.agent?.["coder"] as { prompt: string; permission: Record<string, unknown> }
       const janus = config.agent?.["janus"] as { prompt: string; permission: Record<string, unknown> }
 
-      // The handoff dir is the one business-state dir shared by the five
-      // primary entries (janus/consultant/architect/tech-lead/author); the
-      // coder leaf holds none of them.
-      for (const entry of [consultant, architect, author, techLead, janus]) {
-        const external = entry.permission.external_directory as Record<string, string>
-        expect(external[`${handoffDir}/**`]).toBe("allow")
-        expect(entry.prompt).toContain(`Handoff state dir: \`${handoffDir}/${projectId}\``)
-        expect(entry.prompt).toContain("Handoff discipline")
-        expect(entry.prompt).toContain("Handoff wakeup")
-      }
-
-      // Consultant holds the shared handoff dir plus its own project-scoped
-      // candidate-ledger dir; the other state dirs stay with their owning
-      // teams.
+      // Consultant holds only its own project-scoped candidate-ledger dir.
       expect(consultant.permission).toEqual({
         external_directory: {
-          [`${handoffDir}/**`]: "allow",
           [`${ledgerDir}/${projectId}/**`]: "allow",
         },
       })
       expect(consultant.prompt).not.toContain("Design state dir")
       expect(consultant.prompt).not.toContain("Author state dir")
 
-      const architectExternal = architect.permission.external_directory as Record<string, string>
-      expect(architectExternal[`${designDir}/**`]).toBe("allow")
+      // Architect owns the design dir.
+      expect(architect.permission).toEqual({
+        external_directory: { [`${designDir}/**`]: "allow" },
+      })
       expect(architect.prompt).toContain(`Design state dir: \`${designDir}\``)
       expect(architect.prompt).toContain(`project id: \`${projectId}\``)
 
-      const authorExternal = author.permission.external_directory as Record<string, string>
-      expect(authorExternal[`${authorDir}/**`]).toBe("allow")
-      expect(authorExternal[`${designDir}/**`]).toBe("allow")
+      // Author owns the author-brief dir and reads the design dir as reference.
+      expect(author.permission).toEqual({
+        external_directory: {
+          [`${authorDir}/**`]: "allow",
+          [`${designDir}/**`]: "allow",
+        },
+      })
       expect(author.prompt).toContain(`Author state dir: \`${authorDir}\``)
       expect(author.prompt).toContain(`${authorDir}/${projectId}/<docId>/brief.md`)
 
+      // Tech-lead writes the design record only; its edit surface keeps the
+      // deny catch-all first, then the design allow and its worktree-relative
+      // twins (host edit permissions evaluate path.relative(worktree, file)).
       const techLeadExternal = techLead.permission.external_directory as Record<string, string>
       expect(techLeadExternal[`${designDir}/**`]).toBe("allow")
       expect(techLead.prompt).toContain(`Design record: \`${designDir}/${projectId}\``)
-      // the tech-lead edit surface is the two state directories, each allow
-      // carrying its worktree-relative twins (host edit permissions evaluate
-      // path.relative(worktree, file) submissions)
+      expect(techLead.permission.bash).toEqual({ "*": "allow" })
       const techLeadEdit = techLead.permission.edit as Record<string, string>
       expect(techLeadEdit["*"]).toBe("deny")
       expect(Object.keys(techLeadEdit)[0]).toBe("*")
       expect(techLeadEdit[`${designDir}/**`]).toBe("allow")
-      expect(techLeadEdit[`${handoffDir}/**`]).toBe("allow")
       expect(techLeadEdit[`${relative(projectDir, designDir)}/**`]).toBe("allow")
-      expect(techLeadEdit[`${relative(projectDir, handoffDir)}/**`]).toBe("allow")
 
-      // The coder is a leaf execution seat: no design/handoff state dirs,
-      // only the shared temporary directory.
+      // The coder is a leaf execution seat: no design state dir, only the
+      // shared temporary directory.
       const coderExternal = coder.permission.external_directory as Record<string, string>
       expect(coderExternal[`${designDir}/**`]).toBeUndefined()
-      expect(coderExternal[`${handoffDir}/**`]).toBeUndefined()
       expect(coder.prompt).not.toContain("Design record:")
-      expect(coder.prompt).not.toContain("Handoff state dir")
       // coder edit: workspace allow, relative-shape and absolute-shape
       // external asks, and the tmp-scope allow twins last.
       const coderEdit = coder.permission.edit as Record<string, string>
@@ -157,14 +145,15 @@ describe("createJanusConfigHook", () => {
       // no state-dir twin leaks into the coder edit surface
       expect(coderEdit[`${relative(projectDir, designDir)}/**`]).toBeUndefined()
 
-      // Janus is an orchestrator, not a team: only the handoff dir.
+      // Janus is an orchestrator, not a team: only read access to the design
+      // dir for the unattended tech-lead checkpoint relay.
       expect(janus.permission).toEqual({
-        external_directory: { [`${handoffDir}/**`]: "allow" },
+        external_directory: { [`${designDir}/**`]: "allow" },
       })
+      expect(janus.prompt).toContain(`Design state dir: \`${designDir}/${projectId}\``)
 
       expect(existsSync(designDir)).toBe(true)
       expect(existsSync(authorDir)).toBe(true)
-      expect(existsSync(handoffDir)).toBe(true)
       expect(existsSync(join(ledgerDir, projectId))).toBe(true)
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
@@ -287,8 +276,8 @@ describe("createJanusConfigHook", () => {
       expect(reviewer.permission.edit).toBe("deny")
       expect(reviewer.permission.bash).toBe("deny")
       expect(reviewer.permission.task).toBe("deny")
-      expect(reviewer.permission.webfetch).toBe("deny")
-      expect(reviewer.permission.websearch).toBe("deny")
+      expect(reviewer.permission.webfetch).toBe("allow")
+      expect(reviewer.permission.websearch).toBe("allow")
       expect(reviewer.permission.janus_dispatch).toBe("deny")
       expect(reviewer.permission.janus_dispatch_wait).toBe("deny")
       expect(reviewer.permission.janus_dispatch_cancel).toBe("deny")
@@ -301,6 +290,8 @@ describe("createJanusConfigHook", () => {
       expect(reviewer.prompt).toContain("# Author-Reviewer")
       expect(reviewer.prompt).toContain("## User-Facing Style")
       expect(reviewer.prompt).not.toContain("## Common Operating Principles")
+      expect(reviewer.prompt).toContain("Author-reviewer models: fast `opencode-go/deepseek-v4.1-flash`, standard `opencode-go/kimi-k3.1-pro`")
+      expect(reviewer.prompt).not.toContain("<!-- RUNTIME-BINDINGS")
       // both state dirs are created at registration
       expect(existsSync(authorDir)).toBe(true)
       expect(existsSync(designDir)).toBe(true)
@@ -778,14 +769,14 @@ describe("createJanusConfigHook", () => {
   })
 
 
-  it("skill install writes all four SKILL.md files when missing", async () => {
+  it("skill install writes all three SKILL.md files when missing", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
     delete process.env.JANUS_CONFIG
     delete process.env.XDG_CONFIG_HOME
     process.env.OPENCODE_CONFIG_DIR = tmpHome
-    const skills = ["consultation", "consultation-design", "consultation-doc", "handoff"] as const
+    const skills = ["consultation", "consultation-design", "consultation-doc"] as const
     for (const name of skills) expect(existsSync(join(tmpHome, "skills", name, "SKILL.md"))).toBe(false)
     const config: Config = {}
     const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
@@ -807,13 +798,19 @@ describe("createJanusConfigHook", () => {
   })
 
 
-  it("installs all three slash commands when install_commands is true", async () => {
+  it("installs the three slash commands (memory, models, config) when install_commands is true", async () => {
     // given
     const tmpHome = makeTempHome()
     process.env.HOME = tmpHome
     delete process.env.JANUS_CONFIG
     delete process.env.XDG_CONFIG_HOME
     process.env.OPENCODE_CONFIG_DIR = tmpHome
+    mkdirSync(join(tmpHome, "commands"), { recursive: true })
+    writeFileSync(
+      join(tmpHome, "commands", "janus-retired-probe.md"),
+      "---\ndescription: retired probe\n---\n\n$XDG_DATA_HOME/janus-agent/legacy\n",
+      "utf8",
+    )
     const config: Config = {}
     const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
 
@@ -824,8 +821,8 @@ describe("createJanusConfigHook", () => {
       // then
       expect(existsSync(join(tmpHome, "commands", "janus-memory.md"))).toBe(true)
       expect(existsSync(join(tmpHome, "commands", "janus-models.md"))).toBe(true)
-      expect(existsSync(join(tmpHome, "commands", "janus-handoff.md"))).toBe(true)
       expect(existsSync(join(tmpHome, "commands", "janus-config.md"))).toBe(true)
+      expect(existsSync(join(tmpHome, "commands", "janus-retired-probe.md"))).toBe(false)
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })
     }
@@ -851,7 +848,6 @@ describe("createJanusConfigHook", () => {
       // then
       expect(existsSync(join(tmpHome, "commands", "janus-memory.md"))).toBe(false)
       expect(existsSync(join(tmpHome, "commands", "janus-models.md"))).toBe(false)
-      expect(existsSync(join(tmpHome, "commands", "janus-handoff.md"))).toBe(false)
       expect(existsSync(join(tmpHome, "commands", "janus-config.md"))).toBe(false)
     } finally {
       rmSync(tmpHome, { recursive: true, force: true })

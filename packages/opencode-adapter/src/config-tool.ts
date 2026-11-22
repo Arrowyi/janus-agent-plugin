@@ -22,7 +22,6 @@ import {
   type ConfigState,
   type FieldSource,
 } from "./config-editor.ts"
-import { formatRemovedCoderLiteKeyHint } from "./plugin-config.ts"
 
 export const CONFIG_TOOL_NAME = "janus_config"
 
@@ -128,11 +127,7 @@ function renderDescribe(state: ConfigState, key: string | undefined): string {
   if (group !== undefined) return renderGroup(state, group)
   const template = CONFIG_FIELDS.find((entry) => entry.key === key.trim())
   const resolved = template === undefined ? resolveField(key) : { field: template, path: splitKey(template.key) }
-  if (resolved === undefined) {
-    const migration = formatRemovedCoderLiteKeyHint(key)
-    if (migration.length > 0) return migration
-    return `Error: 未知配置项 "${key}"；用 catalog 查看可配置项`
-  }
+  if (resolved === undefined) return `Error: 未知配置项 "${key}"；用 catalog 查看可配置项`
   const { field, path } = resolved
   const concrete = !path.some((segment) => /^<.+>$/.test(segment))
   const lines = [`# ${path.join(".")}`, "", field.summary, "", `- 分组: ${CONFIG_GROUPS.find((g) => g.id === field.group)?.label ?? field.group}`, `- 类型: ${TYPE_LABEL[field.type]}`]
@@ -159,10 +154,6 @@ function renderDescribe(state: ConfigState, key: string | undefined): string {
 function renderGet(state: ConfigState, key: string | undefined): string {
   if (key !== undefined && key.trim().length > 0) {
     const resolved = resolveField(key)
-    if (resolved === undefined) {
-      const migration = formatRemovedCoderLiteKeyHint(key)
-      if (migration.length > 0) return migration
-    }
     const path = resolved?.path ?? splitKey(key)
     const effective = effectiveValue(state, path)
     const known = resolved === undefined ? "（不在目录中的键）" : ""

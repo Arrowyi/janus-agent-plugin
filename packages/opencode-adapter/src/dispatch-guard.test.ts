@@ -345,7 +345,7 @@ describe("review-seat tier floor", () => {
     expect(outcome).toEqual({ ok: true })
   })
 
-  it("passes a fast reviewer against a historical job with no recorded tier", async () => {
+  it("passes a fast reviewer against a default-seat job with no recorded tier", async () => {
     const fake = createFakeSdk()
     const jobID = await seedCoderJob(fake)
 
@@ -440,5 +440,138 @@ describe("review-seat tier floor", () => {
     const outcome = await continueGuard(fake, { reviewsJobIDs: [jobID] })
 
     expect(outcome).toEqual({ ok: true })
+  })
+})
+
+describe("author-reviewer guard", () => {
+  const guardConfig = JanusPluginConfigSchema.parse({})
+  const reviewerModel = "opencode-go/kimi-k3.1-pro"
+
+  async function seedJob(fake: FakeSdk, role: "author-writer" | "coder", model: string, tier?: DispatchTier): Promise<string> {
+    const spec = makeJobSpec({ role, agent_name: role, model_chain: [model], tier })
+    const root = await fake.session.create({
+      body: { parentID: spec.parent_id, title: `[consultation-dispatch:v1] ${spec.role}` },
+      query: { directory: spec.directory },
+    })
+    if (root.data === undefined) throw new Error("missing seeded root")
+    await fake.session.prompt({
+      path: { id: root.data.id },
+      body: {
+        noReply: true,
+        messageID: `msg-spec-${root.data.id}`,
+        parts: [{ type: "text", text: JSON.stringify(spec), synthetic: true, ignored: true }],
+      },
+      query: { directory: spec.directory },
+    })
+    return root.data.id
+  }
+
+  function writerJob(fake: FakeSdk, tier?: DispatchTier): Promise<string> {
+    return seedJob(fake, "author-writer", "opencode/claude-sonnet-5-5", tier)
+  }
+
+  function dispatchGuard(fake: FakeSdk, overrides: Partial<Parameters<typeof enforceDispatchReviewGuard>[1]>) {
+    return enforceDispatchReviewGuard(fake as unknown as DispatchSdk, {
+      role: "author-reviewer",
+      protocol: undefined,
+      stage: "final",
+      reviewsJobIDs: undefined,
+      reviewerModel,
+      config: guardConfig,
+      directory: FAKE_DIRECTORY,
+      ...overrides,
+    })
+  }
+
+  function continueGuard(fake: FakeSdk, overrides: Partial<Parameters<typeof enforceContinueReviewGuard>[1]>) {
+    return enforceContinueReviewGuard(fake as unknown as DispatchSdk, {
+      targetRole: "author-reviewer",
+      targetProtocol: undefined,
+      targetModel: reviewerModel,
+      targetStage: "final",
+      reviewsJobIDs: undefined,
+      config: guardConfig,
+      directory: FAKE_DIRECTORY,
+      ...overrides,
+    })
+  }
+
+  it("requires one of the four documentation stages", async () => {
+    const fake = createFakeSdk()
+    const jobID = await writerJob(fake)
+    for (const stage of [undefined, "plan"] as const) {
+      const outcome = await dispatchGuard(fake, { stage, reviewsJobIDs: [jobID] })
+      expect(outcome.ok).toBe(false)
+      if (!outcome.ok) expect(outcome.message).toContain("author-reviewer requires stage")
+    }
+    for (const stage of ["outline", "unit", "reader", "final"] as const) {
+      expect(await dispatchGuard(fake, { stage, reviewsJobIDs: [jobID] })).toEqual({ ok: true })
+    }
+  })
+
+  it("requires reviews_job_ids that name author-writer root jobs", async () => {
+    const fake = createFakeSdk()
+    const missing = await dispatchGuard(fake, {})
+    expect(missing.ok).toBe(false)
+    if (!missing.ok) expect(missing.message).toContain("author-reviewer requires reviews_job_ids")
+
+    const coderJob = await seedJob(fake, "coder", "opencode-go/glm-5.3")
+    const wrongRole = await dispatchGuard(fake, { reviewsJobIDs: [coderJob] })
+    expect(wrongRole.ok).toBe(false)
+    if (!wrongRole.ok) expect(wrongRole.message).toContain("author-writer unit jobs")
+  })
+
+  it("rejects a reviewer in the same model family as the writer and cites config keys", async () => {
+    const fake = createFakeSdk()
+    const jobID = await writerJob(fake)
+    const outcome = await dispatchGuard(fake, { reviewsJobIDs: [jobID], reviewerModel: "opencode-go/claude-haiku-5-5" })
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) {
+      expect(outcome.message).toContain("model conflict")
+      expect(outcome.message).toContain("author_reviewer_model or tier_models")
+      expect(outcome.message).toContain("author_writer_model or tier_models")
+    }
+  })
+
+  it("rejects a fast reviewer against a standard writer job except at the reader stage", async () => {
+    const fake = createFakeSdk()
+    const jobID = await writerJob(fake, "standard")
+    for (const stage of ["outline", "unit", "final"] as const) {
+      const outcome = await dispatchGuard(fake, { stage, reviewsJobIDs: [jobID], reviewerTier: "fast" })
+      expect(outcome.ok).toBe(false)
+      if (!outcome.ok) expect(outcome.message).toContain("tier floor")
+    }
+    expect(await dispatchGuard(fake, { stage: "reader", reviewsJobIDs: [jobID], reviewerTier: "fast" })).toEqual({ ok: true })
+    const fastWriter = await writerJob(fake, "fast")
+    expect(await dispatchGuard(fake, { reviewsJobIDs: [fastWriter], reviewerTier: "fast" })).toEqual({ ok: true })
+  })
+
+  it("rejects a protocol on an author-reviewer dispatch", async () => {
+    const fake = createFakeSdk()
+    const jobID = await writerJob(fake)
+    const outcome = await dispatchGuard(fake, { protocol: "counter_evidence", reviewsJobIDs: [jobID] })
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("takes no protocol")
+  })
+
+  it("rejects a documentation stage on a solution-reviewer dispatch", async () => {
+    const fake = createFakeSdk()
+    const outcome = await dispatchGuard(fake, { role: "solution-reviewer", protocol: "code_plan_review", stage: "unit" })
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("solution-reviewer stage must be one of: plan, final")
+  })
+
+  it("re-checks a continuation against the listed writer jobs with the pinned stage and tier", async () => {
+    const fake = createFakeSdk()
+    const jobID = await writerJob(fake, "standard")
+    const missing = await continueGuard(fake, {})
+    expect(missing.ok).toBe(false)
+    expect(await continueGuard(fake, { reviewsJobIDs: [jobID] })).toEqual({ ok: true })
+    const undercut = await continueGuard(fake, { reviewsJobIDs: [jobID], targetTier: "fast" })
+    expect(undercut.ok).toBe(false)
+    if (!undercut.ok) expect(undercut.message).toContain("cannot raise the session's pinned tier")
+    expect(await continueGuard(fake, { reviewsJobIDs: [jobID], targetTier: "fast", targetStage: "reader" })).toEqual({ ok: true })
+    const noStage = await continueGuard(fake, { reviewsJobIDs: [jobID], targetStage: undefined })
+    expect(noStage.ok).toBe(false)
   })
 })

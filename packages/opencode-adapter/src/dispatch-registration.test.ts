@@ -16,8 +16,20 @@ const { createJanusDispatchTools } = dispatchTools
 
 /** Seed a coder job root (glm-5.3) a review-seat dispatch can verify against. */
 async function seedCoderJobRoot(sdk: ReturnType<typeof createFakeSdk>): Promise<string> {
+  return seedJobRoot(sdk, "coder", "opencode-go/glm-5.3")
+}
+
+async function seedAuthorWriterJobRoot(sdk: ReturnType<typeof createFakeSdk>): Promise<string> {
+  return seedJobRoot(sdk, "author-writer", "opencode/claude-sonnet-5-5")
+}
+
+async function seedJobRoot(
+  sdk: ReturnType<typeof createFakeSdk>,
+  role: "coder" | "author-writer",
+  model: string,
+): Promise<string> {
   const root = await sdk.session.create({
-    body: { parentID: "ses_parent", title: "[consultation-dispatch:v1] coder" },
+    body: { parentID: "ses_parent", title: `[consultation-dispatch:v1] ${role}` },
     query: { directory: "/tmp/project" },
   })
   if (root.data === undefined) throw new Error("missing seeded root")
@@ -28,7 +40,7 @@ async function seedCoderJobRoot(sdk: ReturnType<typeof createFakeSdk>): Promise<
       messageID: `msg-spec-${root.data.id}`,
       parts: [{
         type: "text",
-        text: JSON.stringify(makeJobSpec({ role: "coder", agent_name: "coder", model_chain: ["opencode-go/glm-5.3"] })),
+        text: JSON.stringify(makeJobSpec({ role, agent_name: role, model_chain: [model] })),
         synthetic: true,
         ignored: true,
       }],
@@ -150,9 +162,8 @@ describe("unified dispatch registration", () => {
     // Given default role configuration.
     const config = JanusPluginConfigSchema.parse({})
     const design = { designStateDir: "/xdg/data/janus-agent/design", projectId: "proj-a1b2c3d4" }
-    const handoff = { handoffStateDir: "/xdg/data/janus-agent/handoff", projectId: "proj-a1b2c3d4" }
     // When building runtime bindings consumed by the consultant.
-    const bindings = buildConsultantRuntimeBindings(config, "oc-test", handoff)
+    const bindings = buildConsultantRuntimeBindings(config, "oc-test")
     // Then routing-bearing structural tool names are available (no prose pin);
     // the consultant bindings carry the job-tools list, not the author-mode
     // writer-session policy.
@@ -161,12 +172,15 @@ describe("unified dispatch registration", () => {
     ])
     expect(bindings).toContain("`return_handle: true`")
     expect(bindings).not.toContain("`writer_session_id`")
-    const techLeadBindings = buildTechLeadRuntimeBindings(config, design, handoff)
+    const techLeadBindings = buildTechLeadRuntimeBindings(config, design)
     expect(techLeadBindings).toContain("`janus_dispatch_continue`")
     expect(techLeadBindings).toContain("`return_handle: true`")
-    const janusBindings = buildJanusRuntimeBindings(config, handoff)
+    const janusBindings = buildJanusRuntimeBindings(config)
     expect(janusBindings).toContain("`janus_dispatch_continue`")
     expect(janusBindings).toContain("`return_handle: true`")
+    const janusWithDesign = buildJanusRuntimeBindings(config, design)
+    expect(janusWithDesign).toContain("`janus_dispatch_continue`")
+    expect(janusWithDesign).toContain("`return_handle: true`")
   })
 
   it("registers the continue tool with a session_id/prompt/role arg surface", () => {
@@ -254,15 +268,21 @@ describe("unified dispatch registration", () => {
           f.finish()
           return result
         }
-        // A coder-reviewer dispatch names the coder job it reviews; the
-        // seeded root pins glm-5.3, cross-family from both route variants.
+        // A review dispatch names the job it reviews; each seeded root pins a
+        // model cross-family from both route variants.
         const reviewArgs =
-          scenario.role === "coder-reviewer" ? { reviews_job_ids: [await seedCoderJobRoot(f.sdk)] } : {}
+          scenario.role === "coder-reviewer"
+            ? { reviews_job_ids: [await seedCoderJobRoot(f.sdk)] }
+            : scenario.role === "author-reviewer"
+              ? { reviews_job_ids: [await seedAuthorWriterJobRoot(f.sdk)], stage: "final" as const }
+              : {}
         const tools = createJanusDispatchTools(pluginInput(f.sdk).client)
         // When dispatching the configured role.
         const result = await tools.janus_dispatch.execute({ role: scenario.role, prompt: "bounded task", ...reviewArgs }, context())
-        // Then the actual generating request uses the selected route.
-        expect(result).toBe("final report")
+        // Then the actual generating request uses the selected route; the
+        // author-reviewer's prose reply also carries the unresolved-report note.
+        if (scenario.role === "author-reviewer") expect(result).toStartWith("final report\n[author-reviewer report: unresolved")
+        else expect(result).toBe("final report")
         expect(f.submissions.map((s) => ({ agent: s.body.agent, model: s.body.model }))).toEqual([{
           agent, model: { providerID: model.split("/")[0] ?? "", modelID: model.split("/")[1] ?? "" },
         }])

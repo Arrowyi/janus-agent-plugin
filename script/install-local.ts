@@ -18,9 +18,9 @@ import { fileURLToPath } from "node:url"
 
 import {
   installConfigCommand,
-  installHandoffCommand,
   installMemoryCommands,
   installModelsCommand,
+  pruneRetiredCommands,
 } from "../packages/opencode-adapter/src/command-installer.ts"
 import { loadPluginConfig } from "../packages/opencode-adapter/src/plugin-config.ts"
 import { resolveOpencodeConfigDir } from "../packages/opencode-adapter/src/skill-installer.ts"
@@ -73,7 +73,6 @@ export const REQUIRED_INSTALLED_FILES = [
   "assets/principles/engineering-principles.md",
   "assets/principles/user-facing-style.md",
   "assets/commands/janus-models.md",
-  "assets/commands/janus-handoff.md",
   "assets/commands/janus-config.md",
   "assets/protocols/counter_evidence.md",
   "assets/protocols/hypothesis_matrix.md",
@@ -83,7 +82,6 @@ export const REQUIRED_INSTALLED_FILES = [
   "assets/skills/consultation/SKILL.md",
   "assets/skills/consultation-design/SKILL.md",
   "assets/skills/consultation-doc/SKILL.md",
-  "assets/skills/handoff/SKILL.md",
 ]
 
 export function resolveInstallRoot(env: NodeJS.ProcessEnv): string {
@@ -196,8 +194,8 @@ async function syncCommands(): Promise<void> {
   }
   await installMemoryCommands(process.env)
   await installModelsCommand(process.env)
-  await installHandoffCommand(process.env)
   await installConfigCommand(process.env)
+  await pruneRetiredCommands(process.env)
   console.log(`synced commands into ${join(resolveOpencodeConfigDir(process.env), "commands")}`)
 }
 

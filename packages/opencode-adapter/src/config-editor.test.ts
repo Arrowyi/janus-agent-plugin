@@ -120,13 +120,10 @@ describe("planChange + applyChange", () => {
     expect(planChange(state, { kind: "set", key: "team_caps.round_cap", value: "1.5" }).errors[0]).toContain("整数")
   })
 
-  test("validateConfigText carries the coder-lite migration hint for removed keys", async () => {
-    const result = validateConfigText('{ "coder_lite_model": "a/b", "tier_models": { "fast": { "coder-lite": "c/d" } } }\n')
-    const errors = result.errors.join("\n")
-    expect(errors).toContain("schema 校验失败")
-    expect(errors).toContain("removed coder-lite keys detected")
-    expect(errors).toContain("coder_lite_model → tier_models.fast.coder")
-    expect(errors).toContain('tier_models.fast["coder-lite"] → tier_models.fast["coder"]')
+  test("validateConfigText reports schema errors for unknown keys and two-tier deep entries", async () => {
+    expect(validateConfigText('{ "bogus_key": "a/b" }\n').errors.join("\n")).toContain("schema 校验失败")
+    const deep = validateConfigText('{ "tier_models": { "deep": { "author-writer": "c/d" } } }\n').errors.join("\n")
+    expect(deep).toContain("tier_models.standard.author-writer")
     expect(validateConfigText('{ "coder_model": "acme/x" }\n').errors).toEqual([])
   })
 
@@ -151,7 +148,7 @@ describe("planChange + applyChange", () => {
     expect(JSON.parse(plan.after)).toEqual({})
   })
 
-  test("a legacy unknown key can be unset to repair the file", async () => {
+  test("an unknown key can be unset to repair the file", async () => {
     await seed('{ "old_field": 1, "coder_model": "acme/x" }\n')
     const state = await readConfigState(env)
     expect(state.errors.length).toBeGreaterThan(0)

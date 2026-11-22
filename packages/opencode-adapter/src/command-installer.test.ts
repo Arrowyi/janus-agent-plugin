@@ -1,16 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   CONFIG_COMMAND_PREFIX,
-  HANDOFF_COMMAND_PREFIX,
+  INSTALLED_COMMAND_PREFIXES,
   MEMORY_COMMAND_PREFIX,
   MODELS_COMMAND_PREFIX,
   installConfigCommand,
-  installHandoffCommand,
   installMemoryCommands,
   installModelsCommand,
+  pruneRetiredCommands,
 } from "./command-installer.ts"
 import { resolveAsset } from "./asset-paths.ts"
 
@@ -128,61 +129,95 @@ describe("installModelsCommand", () => {
   })
 })
 
-describe("installHandoffCommand", () => {
-  test("writes the shipped janus-handoff command with the full subcommand surface", async () => {
-    // given
-    const configDir = await tempConfigDir()
-    // when
-    await installHandoffCommand(envFor(configDir))
-    const file = await readFile(join(configDir, "commands", `${HANDOFF_COMMAND_PREFIX}.md`), "utf8")
-    const asset = await readFile(resolveAsset("commands/janus-handoff.md"), "utf8")
-    // then
-    expect(file).toBe(asset)
-    expect(file).toContain("handoff state directory")
-    expect(file).toContain("## 1. 背景与当前定论")
-    expect(file).toContain("## 2. 交接记录与下一跳指引")
-    expect(file).toContain("first 120 lines")
-    expect(file).toContain("`use <id|n>`")
-    expect(file).toContain("last_hop")
-    expect(file).toContain("本跳结论摘要")
-    expect(file).toContain("默认接力任务")
-    expect(file).toContain("共 N 个交接单")
-    expect(file).not.toContain("archive")
-    expect(file).toContain("`delete`")
-    expect(file).toContain("`export <n> [path]`")
-    expect(file).toContain("`import <path>`")
-    expect(file).toContain("删 2，4，5")
-    expect(file).toContain("删 4~9")
-    expect(file).toContain("留 5，7")
-    expect(file).toContain("never silently auto-select")
-    const frontmatter = file.split("---")[1] ?? ""
-    expect(frontmatter).not.toContain("agent:")
-  })
-
-  test("is idempotent: a second call leaves the file unchanged", async () => {
-    // given
-    const configDir = await tempConfigDir()
-    await installHandoffCommand(envFor(configDir))
-    const first = await readFile(join(configDir, "commands", `${HANDOFF_COMMAND_PREFIX}.md`), "utf8")
-    // when
-    await installHandoffCommand(envFor(configDir))
-    const second = await readFile(join(configDir, "commands", `${HANDOFF_COMMAND_PREFIX}.md`), "utf8")
-    // then
-    expect(second).toBe(first)
-  })
-
-  test("does not overwrite a user-modified command file", async () => {
-    // given
-    const configDir = await tempConfigDir()
+describe("pruneRetiredCommands", () => {
+  async function stageCommand(configDir: string, name: string, content: string): Promise<string> {
     const commandsDir = join(configDir, "commands")
     await mkdir(commandsDir, { recursive: true })
-    const target = join(commandsDir, `${HANDOFF_COMMAND_PREFIX}.md`)
-    await writeFile(target, "<!-- user-modified -->\ncustom", "utf8")
+    const target = join(commandsDir, name)
+    await writeFile(target, content, "utf8")
+    return target
+  }
+
+  const retiredProbeContent = `---
+description: retired janus command probe
+---
+
+Run the CLI at $XDG_DATA_HOME/janus-agent/legacy-tool.
+`
+
+  test("removes a fingerprint-bearing retired janus command that is not user-modified", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    const probe = await stageCommand(configDir, "janus-retired-probe.md", retiredProbeContent)
     // when
-    await installHandoffCommand(envFor(configDir))
-    const after = await readFile(target, "utf8")
+    await pruneRetiredCommands(envFor(configDir))
     // then
-    expect(after).toBe("<!-- user-modified -->\ncustom")
+    expect(existsSync(probe)).toBe(false)
+  })
+
+  test("keeps a janus command the user modified", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    const target = await stageCommand(
+      configDir,
+      "janus-retired-probe.md",
+      `<!-- user-modified -->\n${retiredProbeContent}`,
+    )
+    // when
+    await pruneRetiredCommands(envFor(configDir))
+    // then
+    expect(existsSync(target)).toBe(true)
+  })
+
+  test("keeps a janus command without the janus data-root fingerprint", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    const target = await stageCommand(
+      configDir,
+      "janus-retired-probe.md",
+      "---\ndescription: my own janus-named command\n---\n\nNo janus data paths here.\n",
+    )
+    // when
+    await pruneRetiredCommands(envFor(configDir))
+    // then
+    expect(existsSync(target)).toBe(true)
+  })
+
+  test("never considers a non-janus command file", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    const target = await stageCommand(
+      configDir,
+      "my-command.md",
+      `Fingerprint-looking text: $XDG_DATA_HOME/janus-agent/`,
+    )
+    // when
+    await pruneRetiredCommands(envFor(configDir))
+    // then
+    expect(existsSync(target)).toBe(true)
+  })
+
+  test("never touches the currently installed commands", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    for (const prefix of INSTALLED_COMMAND_PREFIXES) {
+      await stageCommand(configDir, `${prefix}.md`, `fingerprint $XDG_DATA_HOME/janus-agent/ ${prefix}`)
+    }
+    // when
+    await pruneRetiredCommands(envFor(configDir))
+    // then
+    for (const prefix of INSTALLED_COMMAND_PREFIXES) {
+      expect(existsSync(join(configDir, "commands", `${prefix}.md`))).toBe(true)
+    }
+  })
+
+  test("returns silently when the commands directory does not exist", async () => {
+    // given
+    const configDir = await tempConfigDir()
+    // when
+    await pruneRetiredCommands(envFor(configDir))
+    // then
+    expect(existsSync(join(configDir, "commands"))).toBe(false)
   })
 })
 

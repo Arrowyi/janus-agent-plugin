@@ -4,7 +4,7 @@ import { createDispatchCancel, createSystemClock } from "./dispatch-cancel.ts"
 import { createKeyedMutex, parseOutcomeEnvelope, type DispatchSdk, type SdkAssistantMessage, type SdkResult } from "./dispatch-contract.ts"
 import { appendRecord, createAttemptSession, createJob, loadJob } from "./dispatch-journal.ts"
 import { createDispatchLifecycle } from "./dispatch-lifecycle.ts"
-import { createFakeClock, createFakeSdk, FAKE_DIRECTORY, FAKE_PARENT_ID, legacyRoleSpecs, makeJobSpec, validRoleSpecs } from "./dispatch-test-fixtures.ts"
+import { createFakeClock, createFakeSdk, FAKE_DIRECTORY, FAKE_PARENT_ID, makeJobSpec, validRoleSpecs } from "./dispatch-test-fixtures.ts"
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => { throw new Error("deferred not initialized") }
@@ -280,50 +280,4 @@ test("serializes cancel behind fallback submission already in progress", async (
   expect(f.aborts).toEqual([child])
   expect(status(await lifecycle.wait({ ...f.input, waitMs: 0 })).status).toBe("cancelled")
   expect(await f.intents()).toHaveLength(1)
-})
-
-test("cancels a legacy coder-lite job read-only through the durable journal", async () => {
-  // Given: a historical job root whose spec records the retired coder-lite
-  // role, with an active attempt confirmed by durable reservation/receipt.
-  const host = createFakeSdk()
-  const clock = createFakeClock()
-  const mutex = createKeyedMutex()
-  const aborts: string[] = []
-  const sdk: DispatchSdk = { session: { ...host.session, abort: async (input) => {
-    aborts.push(input.path.id)
-    host.seedMessages(input.path.id, [{ info: { id: `msg-answer-${input.path.id}`, role: "assistant", sessionID: input.path.id, parentID: "msg-legacy-req", modelID: "model", providerID: "provider", time: { created: clock.now(), completed: clock.now() }, finish: "stop", error: aborted } as SdkAssistantMessage, parts: [{ type: "text", text: "legacy report" }] }])
-    return { data: true }
-  } } }
-  const root = await sdk.session.create({
-    body: { parentID: FAKE_PARENT_ID, title: "[consultation-dispatch:v1] coder-lite" },
-    query: { directory: FAKE_DIRECTORY },
-  })
-  if (root.data === undefined) throw new Error("missing root")
-  const jobID = root.data.id
-  await sdk.session.prompt({
-    path: { id: jobID },
-    body: { noReply: true, messageID: "msg-legacy-spec", parts: [{ type: "text", synthetic: true, ignored: true, text: JSON.stringify(legacyRoleSpecs[0]!.record) }] },
-    query: { directory: FAKE_DIRECTORY },
-  })
-  const child = await sdk.session.create({
-    body: { parentID: jobID, title: "[consultation-dispatch:v1] attempt coder-lite" },
-    query: { directory: FAKE_DIRECTORY },
-  })
-  if (child.data === undefined) throw new Error("missing attempt child")
-  const sessionID = child.data.id
-  for (const record of [
-    { v: 1, kind: "attempt-reservation", job_id: jobID, attempt_index: 0, model: "opencode-go/glm-5.3-flash", message_id: "msg-legacy-req", reserved_at: clock.now() } as const,
-    { v: 1, kind: "attempt-receipt", job_id: jobID, attempt_index: 0, session_id: sessionID, message_id: "msg-legacy-req", received_at: clock.now() } as const,
-  ]) {
-    const appended = await appendRecord(sdk, { jobID, directory: FAKE_DIRECTORY, record })
-    if (!appended.ok) throw appended.error
-  }
-  const cancel = createDispatchCancel({ sdk, clock, mutex })
-
-  // When
-  const result = status(await cancel.cancel({ jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY }))
-
-  // Then: the legacy job is cancelled like any other, with its role intact.
-  expect(result).toMatchObject({ status: "cancelled", role: "coder-lite", job_id: jobID, session_id: sessionID })
-  expect(aborts).toEqual([sessionID])
 })

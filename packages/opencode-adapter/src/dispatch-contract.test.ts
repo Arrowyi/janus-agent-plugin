@@ -23,7 +23,6 @@ import {
   adversarialRecords,
   createFakeClock,
   createFakeSdk,
-  legacyRoleSpecs,
   makeAttemptReceipt,
   makeAttemptReservation,
   makeCancelledEnvelope,
@@ -65,8 +64,8 @@ describe("dispatch role parsing", () => {
     }
   })
 
-  it("rejects unknown and removed role names", () => {
-    for (const role of ["explorer", "analyst", "critic", "arch-critic", "auditor", "writer", "ask-lite", "lite", "verifier", "build", "coder-lite"]) {
+  it("rejects names that are not dispatch roles", () => {
+    for (const role of ["explorer", "writer", "build", "janus", "architect", "nope"]) {
       const result = parseDispatchRole(role)
       expect(result.ok).toBe(false)
     }
@@ -210,7 +209,7 @@ describe("continuation journal fields", () => {
     }
   })
 
-  it("still parses legacy job specs without the continuation fields", () => {
+  it("parses job specs without the continuation fields", () => {
     for (const { record } of validRoleSpecs) {
       const parsed = assertOk(parseJournalRecord(record))
       expect(parsed.kind).toBe("job-spec")
@@ -227,26 +226,8 @@ describe("continuation journal fields", () => {
   })
 })
 
-describe("legacy journal roles", () => {
-  it("still parses historical journal records carrying a retired coder-lite role", () => {
-    for (const { role, record } of legacyRoleSpecs) {
-      const parsed = assertOk(parseJournalRecord(record))
-      expect(parsed.kind).toBe("job-spec")
-      if (parsed.kind !== "job-spec") continue
-      expect(parsed.role).toBe(role)
-      expect(parsed.agent_name).toBe(record.agent_name)
-      expect(parsed.model_chain).toEqual(record.model_chain)
-    }
-  })
-
-  it("still parses historical envelopes carrying a retired coder-lite role", () => {
-    const legacy = makeEnvelope("pending", { role: "coder-lite" })
-    const parsed = assertOk(parseOutcomeEnvelope(serializeOutcome({ kind: "nonterminal", envelope: legacy })))
-    expect(parsed.status).toBe("pending")
-    if (parsed.status !== "completed") expect(parsed.role).toBe("coder-lite")
-  })
-
-  it("rejects unknown legacy role spellings", () => {
+describe("journal roles", () => {
+  it("rejects unknown role spellings", () => {
     expect(parseJournalRecord({ ...makeJobSpec(), role: "coderlites" }).ok).toBe(false)
   })
 })
@@ -258,8 +239,8 @@ describe("job spec protocol field", () => {
     if (parsed.kind === "job-spec") expect(parsed.protocol).toBe("design_premortem")
   })
 
-  it("still parses historical job specs without a protocol field", () => {
-    for (const { record } of [...validRoleSpecs, ...legacyRoleSpecs]) {
+  it("parses job specs without a protocol field", () => {
+    for (const { record } of validRoleSpecs) {
       const parsed = assertOk(parseJournalRecord(record))
       expect(parsed.kind).toBe("job-spec")
       if (parsed.kind === "job-spec") expect(parsed.protocol).toBeUndefined()
@@ -280,8 +261,8 @@ describe("job spec stage field", () => {
     }
   })
 
-  it("still parses historical job specs without a stage field", () => {
-    for (const { record } of [...validRoleSpecs, ...legacyRoleSpecs]) {
+  it("parses job specs without a stage field", () => {
+    for (const { record } of validRoleSpecs) {
       const parsed = assertOk(parseJournalRecord(record))
       expect(parsed.kind).toBe("job-spec")
       if (parsed.kind === "job-spec") expect(parsed.stage).toBeUndefined()
@@ -302,8 +283,8 @@ describe("job spec tier field", () => {
     }
   })
 
-  it("still parses historical job specs without a tier field", () => {
-    for (const { record } of [...validRoleSpecs, ...legacyRoleSpecs]) {
+  it("parses job specs without a tier field", () => {
+    for (const { record } of validRoleSpecs) {
       const parsed = assertOk(parseJournalRecord(record))
       expect(parsed.kind).toBe("job-spec")
       if (parsed.kind === "job-spec") expect(parsed.tier).toBeUndefined()

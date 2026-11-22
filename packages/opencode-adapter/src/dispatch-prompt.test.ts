@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { z } from "zod"
 import {
+  buildAuthorReviewerRuntimeBindings,
   buildAuthorWriterRuntimeBindings,
   injectCommonPrinciples,
   injectRuntimeBindings,
@@ -62,7 +63,7 @@ const pluginConfig = {
 
 // Each read-only role runs a default model that resolves a shipped
 // model-prompt block, keyed by the normalized model key (provider-agnostic).
-// The writer is separate: it also gets runtime bindings injected.
+// The writer is separate; the reviewer also gets its runtime bindings injected.
 const roles = [
   {
     asset: "common-explorer.md",
@@ -113,6 +114,7 @@ const roles = [
       }
     },
     extras: ["principles/user-facing-style.md"],
+    bindings: buildAuthorReviewerRuntimeBindings,
   },
 ] as const
 
@@ -212,8 +214,9 @@ describe("dispatch prompt routing contract", () => {
           body += `\n\n${(await readFile(resolveAsset(extra), "utf8")).trim()}`
         }
       }
+      const assembled = injectCommonPrinciples(body, base)
       expect(promptSchema.parse(config.agent?.[role.name]).prompt).toBe(
-        injectCommonPrinciples(body, base),
+        "bindings" in role ? injectRuntimeBindings(assembled, role.bindings(pluginConfig)) : assembled,
       )
     })
   }

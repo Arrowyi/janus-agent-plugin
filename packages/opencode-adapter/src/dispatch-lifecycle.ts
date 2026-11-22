@@ -1,4 +1,4 @@
-import { DISPATCH_ROLES, LEGACY_JOURNAL_ROLES, PRODUCTION_WAIT_BUDGET_MS, createKeyedMutex, serializeOutcome, type Clock, type DispatchOutcome, type DispatchProtocol, type DispatchRole, type DispatchSdk, type DispatchStage, type DispatchTier, type JobSpec, type JournalRole, type KeyedMutex } from "./dispatch-contract.ts"
+import { DISPATCH_ROLES, PRODUCTION_WAIT_BUDGET_MS, createKeyedMutex, serializeOutcome, type Clock, type DispatchOutcome, type DispatchProtocol, type DispatchRole, type DispatchSdk, type DispatchStage, type DispatchTier, type JobSpec, type KeyedMutex } from "./dispatch-contract.ts"
 import { createJob, loadJob } from "./dispatch-journal.ts"
 import { STARTUP_GRACE_MS } from "./dispatch-observer.ts"
 import { buildChainFailureMessage, embedsProviderErrorText, errorText, formatModel, isProviderErrorText, makeEnvelope, modelFailureHint, observationToOutcome } from "./dispatch-helpers.ts"
@@ -231,13 +231,13 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
           // Transient transport failure reading the journal, not an invalid job or
           // a specialist failure. Retain job identity and surface a recoverable
           // nonterminal envelope so the caller retries rather than degrading.
-          let role: JournalRole = "consultant-analyst"
+          let role: DispatchRole = "consultant-analyst"
           try {
             const got = await sdk.session.get({ path: { id: request.jobID }, query: { directory: request.directory } })
             if (got.error === undefined && got.data !== undefined && got.data.title.startsWith("[consultation-dispatch:v1] ")) {
               const candidate = got.data.title.slice("[consultation-dispatch:v1] ".length)
-              if ((DISPATCH_ROLES as readonly string[]).includes(candidate) || (LEGACY_JOURNAL_ROLES as readonly string[]).includes(candidate)) {
-                role = candidate as JournalRole
+              if ((DISPATCH_ROLES as readonly string[]).includes(candidate)) {
+                role = candidate as DispatchRole
               }
             }
           } catch { /* best-effort role recovery on read outage */ }

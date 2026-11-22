@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Generate the four shipped skills from the repo-only sources.
+// Generate the three shipped skills from the repo-only sources.
 //
 // Run: bun run gen:skill   (also invoked by script/build.ts before bundling)
 //
@@ -106,13 +106,6 @@ export const SKILLS: readonly SkillDefinition[] = [
     ],
     fragments: [],
   },
-  {
-    name: "handoff",
-    srcDir: join(SKILLS_ROOT, "handoff"),
-    outputPath: join(REPO_ROOT, "assets/skills/handoff/SKILL.md"),
-    modules: [{ file: "core.md" }],
-    fragments: [],
-  },
 ]
 
 export const CORE_SKILL = SKILLS[0]!
@@ -213,7 +206,7 @@ export async function writeSkillFile(skill: SkillDefinition = CORE_SKILL): Promi
   return skill.outputPath
 }
 
-/** Generate all four shipped skills. */
+/** Generate the three shipped skills. */
 export async function writeSkillFiles(): Promise<string[]> {
   const paths: string[] = []
   for (const skill of SKILLS) paths.push(await writeSkillFile(skill))

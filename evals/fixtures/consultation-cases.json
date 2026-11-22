@@ -497,7 +497,7 @@
   },
   {
     "id": "C43",
-    "title": "A legacy document without a brief gets the three-option prompt",
+    "title": "An existing document without a brief gets the three-option prompt",
     "given": "The user asks to update an existing document that has no author brief; the author state dir contains no brief for its docId.",
     "when": "The author starts the maintenance path",
     "then": "It asks one clear question listing three options with the auto-rebuild brief as the recommended default (rebuild from the current document / start a fresh brief treating it as source / one-off untracked edit); if several candidate documents exist it lists paths and titles and asks which.",
@@ -656,24 +656,24 @@
     "title": "A structural design question routes to design with per-layer gates",
     "given": "The user asks how to structure a new service: module boundaries, ownership, and the interface between two components. Existing code and AGENTS.md are available, and the decision changes future structure.",
     "when": "The architect classifies the mode and runs the design method",
-    "then": "It routes to `design` (never `select`, `doc` architecture, or `roadmap`), runs at standard or deep, frames L0 with prioritised six-part quality scenarios, and decides layer by layer. Each decision offers at least two genuinely different options with a recommendation, what would change it, and a reversibility label; one-way doors are approved individually while two-way doors get a default and one batch approval per layer. It writes design.md and, in a bounded design turn, returns only the current layer's decision requests. Handing the record to `tech-lead` follows the `handoff` skill: `handoff.md` links `design.md` under `关联文件链接` and the handing turn ends with `交接单: <handoff-id>`.",
+    "then": "It routes to `design` (never `select`, `doc` architecture, or `roadmap`), runs at standard or deep, frames L0 with prioritised six-part quality scenarios, and decides layer by layer. Each decision offers at least two genuinely different options with a recommendation, what would change it, and a reversibility label; one-way doors are approved individually while two-way doors get a default and one batch approval per layer. It writes design.md and, in a bounded design turn, returns only the current layer's decision requests. The hand-back follows the architect's contract: it returns the `design.md` absolute path with the accepted decisions and remaining risks; until execution is authorized it offers two clean routes — dispatch `tech-lead` with `return_handle: true` carrying the record path and confirmed scope, or a copy-paste `/new` tech-lead startup prompt naming the record's absolute path; with end-to-end authorization and confirmed paths it dispatches `tech-lead` directly and continues the same session on bounce-backs via `janus_dispatch_continue`.",
     "grading": "model",
     "modes": [
       "design"
     ],
-    "notes": "Rubric: Reject a single-shot answer, a select-style candidate list, or a batch approval of one-way doors. Require the layer-by-layer decision requests, reversibility labels, the design record path, and the handoff-skill handoff record."
+    "notes": "Rubric: Reject a single-shot answer, a select-style candidate list, or a batch approval of one-way doors. Require the layer-by-layer decision requests, reversibility labels, and the design.md absolute-path hand-back with the two routes (dispatch or copy-paste startup prompt) and the direct dispatch under end-to-end authorization."
   },
   {
     "id": "C57",
     "title": "The tech-lead plans from an accepted design record with a shrunk gate",
     "given": "An accepted design.md exists for the task, and the tech-lead receives the implementation request.",
     "when": "The tech-lead classifies the task and plans",
-    "then": "It reads design.md and treats it as 100% read-only (never edits any line of it), skips brainstorming's spec conversation, and shrinks the plan gate to the implementation details the record does not cover plus the exact file list. It writes a lean plan.md (milestones ordered independently green and revertible, verification/rollback) at design/<projectId>/<designId>/plan.md, self-checks every accepted decision has a task, every interface has a test, and the order is revertible, dispatches each milestone to a fresh coder session, and after implementation has the integrated diff reviewed against the record at Stage 2. It deletes the temporary `plan.md` without confirmation once the work has landed (all milestones verified, review resolved, final report delivered).",
+    "then": "It reads design.md and treats it as 100% read-only (never edits any line of it), skips brainstorming's spec conversation, and shrinks the plan gate to the implementation details the record does not cover plus the exact file list. It writes a lean plan.md (milestones ordered independently green and revertible, verification/rollback) at design/<projectId>/<designId>/plan.md, self-checks every accepted decision has a task, every interface has a test, and the order is revertible, dispatches each milestone to a fresh coder session, and after implementation has the integrated diff reviewed against the record at Stage 2. The plan.md ledger (`[x] M_k` lines plus the `stage2` block) is the sole authority for the next step and the workspace POST_TREE: `checkpoint: running` is written when execution starts and on every re-entry that resumes a `checkpoint: continue` plan; `checkpoint: continue` is written only at clean milestone boundaries, ending the turn with `计划检查点: <plan.md_path>`; a stop that awaits the user writes `checkpoint: blocked (<reason>)` without emitting a continue. It deletes the temporary `plan.md` without confirmation once the work has landed (all milestones verified, review resolved, final report delivered).",
     "grading": "model",
     "modes": [
       "design"
     ],
-    "notes": "Rubric: Reject re-litigating the accepted design, any edit to `design.md`, or a plan without the design cross-check. Require the reduced gate, the exact file list, the plan path, the post-implementation diff review, and the landed-`plan.md` deletion rule."
+    "notes": "Rubric: Reject re-litigating the accepted design, any edit to `design.md`, or a plan without the design cross-check. Require the reduced gate, the exact file list, the plan path, the checkpoint ledger discipline (running on start and resume, continue only at clean boundaries with the 计划检查点 echo, blocked without a continue when awaiting the user), the post-implementation diff review, and the landed-`plan.md` deletion rule."
   },
   {
     "id": "C58",
@@ -972,13 +972,13 @@
   },
   {
     "id": "C82",
-    "title": "Removed legacy config keys fail config load",
-    "given": "A user config still contains a removed key: agent_model, lite_*, verifier_*, an old nested role key such as mode_models.roadmap.analyst, or an old tier_role_caps key such as standard.explorer.",
+    "title": "Unknown config keys fail config load",
+    "given": "A user config contains a key the schema does not define: a top-level key such as ask_lite_enabled, an unknown nested role key such as mode_models.roadmap.analyst, an unknown tier_role_caps key such as standard.explorer, or a deep tier entry for a two-tier documentation seat (tier_models.deep.author-writer).",
     "when": "The config is loaded.",
     "then": "Loading fails with a clear schema error naming the invalid field; there is no silent alias normalization, no silent key stripping, and no fallback to a default model.",
     "grading": "deterministic",
     "modes": [],
-    "notes": "Covered by plugin-config.test.ts: the top-level schema, mode/tier role maps, and tier_role_caps are strict and reject removed keys."
+    "notes": "Covered by plugin-config.test.ts: the top-level schema, mode/tier role maps, and tier_role_caps are strict, and tier_models rejects deep entries for author-writer and author-reviewer."
   },
   {
     "id": "C83",
@@ -1016,27 +1016,27 @@
   },
   {
     "id": "C86",
-    "title": "The author-reviewer gate runs for architecture documents and targeted/strict verification",
-    "given": "An approved document is drafted to completion; its profile is architecture, or its verification depth is targeted or strict; the bundled author-reviewer is enabled.",
-    "when": "The author-writer's final drafting pass returns",
-    "then": "It dispatches author-reviewer for an independent post-draft review before publishing; the reviewer returns an AuthorReviewerReport with verdict pass/revise/block, factualAndSourceIssues, briefAlignmentIssues, readabilityAndJargonIssues, flaws, resolved, and unresolvedGaps; the author reconciles revise findings with bounded writer fixes and treats a block verdict as invalidating a load-bearing claim. A light-verified non-architecture document or a briefWaived micro-fix skips the gate, and the writer's own coherence-pass or editorial-review never substitutes for it; if the reviewer is disabled or fails, the delivery discloses that independent review did not run.",
+    "title": "The author-reviewer runs the review stages the document level sets",
+    "given": "An approved D2 or D3 document is being drafted; the bundled author-reviewer is enabled.",
+    "when": "The author reaches each review point of the level",
+    "then": "D2 dispatches a final review at tier standard (a tutorial also gets a reader cold read at tier fast); D3 adds an outline review on the blueprint before the user outline gate, a pilot unit review after the first unit, and batch unit reviews every two or three units before the reader and final stages. Every reviewer dispatch carries stage, the original author-writer job ids in reviews_job_ids, and the stage lookup budget; the reviewer returns an AuthorReviewerReport with stage, verdict, the three issue lists, flaws, resolved, unresolvedGaps, sourceChecks, and priorFindingsClosed. Deterministic checks run before each review; the writer's own coherence-pass never substitutes for a stage; if the reviewer is disabled or fails, the delivery discloses which stages did not run.",
     "grading": "model",
     "modes": [
       "doc"
     ],
-    "notes": "Rubric: Inspect the tool trace — an author-reviewer dispatch between the final writer pass and publishing for architecture/targeted/strict, and none for a light non-architecture document; reject crediting the writer's self-polish as the independent review, or a published architecture document with no reviewer call and no disclosure. Deterministic backstop: the gate text lives in consultation-doc core (prompt-contracts.test.ts) and the reviewer registration, permission, and report schema are covered by agent-registration.test.ts, plugin.test.ts, and author-contracts.test.ts."
+    "notes": "Rubric: Inspect the tool trace for the stage sequence the level requires and the stage/reviews_job_ids arguments; reject a single end-of-pipeline review on a D3 set, a D2 document published with no final review, or a review credited without a parsed report. Deterministic backstop: the level table and stage SSOT live in consultation-doc core (prompt-contracts.test.ts); the dispatch guard and report schema are covered by dispatch-guard.test.ts, dispatch-tool.test.ts, and author-contracts.test.ts."
   },
   {
     "id": "C87",
-    "title": "A meaning-preserving micro-fix on a brief-less document takes the briefWaived fast path",
-    "given": "The user reports one typo and one broken relative link in a published tutorial file under the writer roots; the document has no author brief and no stored writer_session_id.",
+    "title": "A D0 micro-fix runs a fast writer with no brief and no review, inside or outside the writer roots",
+    "given": "The user reports one typo in a published tutorial file under the writer roots and one broken relative link in README.md (outside the default roots); neither document has an author brief.",
     "when": "The author handles the maintenance request",
-    "then": "It does not ask the legacy three-option brief question; it dispatches author-writer directly with briefWaived: true, changeClass editorial, the confirmed path, and the exact old -> new text; the writer applies only the requested edits (or refuses the waiver if anything touches a number, code, an API, or a sentence's meaning, returning changeClass factual or needsConsultant) and may return empty sourceLedger and coherenceNotes; the author checks the diff contains only the requested fragments, that no number/code/fact changed, and that the repaired link target exists, then closes without dispatching author-reviewer.",
+    "then": "It classifies the change as D0, asks no brief question, and dispatches author-writer at tier fast with briefWaived: true, changeClass editorial, the confirmed path, and the exact old -> new text; under the roots the writer applies the edit, and for README.md it runs read-only and returns the patch, which the author applies. The writer refuses the waiver if anything touches a number, code, an API, or a sentence's meaning (the change becomes D1). The author checks the diff contains only the requested fragments, that no number/code/fact changed, and that the repaired link target exists, then closes without dispatching author-reviewer.",
     "grading": "model",
     "modes": [
       "doc"
     ],
-    "notes": "Rubric: Inspect the dispatch arguments (briefWaived flag, delta-sized prompt) and the author's three-item diff check; reject a three-option question for a qualifying micro-fix, a fresh full-outline approval, an author-authored edit of the document file, or a version-number/API/fluency rewrite sneaking through the waiver. Deterministic backstop: the briefWaived protocol lives in consultation-doc policies (prompt-contracts.test.ts) and the writer guard in author-writer.md."
+    "notes": "Rubric: Inspect the dispatch arguments (tier fast, briefWaived flag, delta-sized prompt) and the author's three-item diff check; reject a brief question for a qualifying micro-fix, a review dispatch, an author-authored edit under the writer roots, or a version-number/API/fluency rewrite sneaking through the waiver. Deterministic backstop: the D0 protocol lives in consultation-doc policies (prompt-contracts.test.ts) and the writer guard in author-writer.md."
   },
   {
     "id": "C88",
@@ -1097,7 +1097,7 @@
     "modes": [
       "select"
     ],
-    "notes": "Rubric: Inspect the ledger file's first line and id format, the table shape, and the ratio language; reject an NN% ratio, a ledger written into userdoc/ or the handoff dir, or an overwrite of a different consultation's file. Deterministic backstop: the brief validator rejects NN% in eliminationSummary and caps it at six buckets (decision-brief.test.ts)."
+    "notes": "Rubric: Inspect the ledger file's first line and id format, the table shape, and the ratio language; reject an NN% ratio, a ledger written into userdoc/ or any non-ledger directory, or an overwrite of a different consultation's file. Deterministic backstop: the brief validator rejects NN% in eliminationSummary and caps it at six buckets (decision-brief.test.ts)."
   },
   {
     "id": "C93",
@@ -1136,10 +1136,10 @@
     "title": "The context watermark checkpoints at the milestone boundary and the caller relays",
     "given": "A tech-lead dispatch return carries `[context-watermark: <t> tokens >= 250000; checkpoint at milestone boundary]` while milestones remain.",
     "when": "The tech-lead handles the watermark",
-    "then": "It finishes the current milestone first — the ledger line, the POST_TREE snapshot, and handoff.md per the handoff skill — then ends the turn with `交接单: <handoff-id>` and stops; it never starts the next milestone or continues past the watermark inline. janus or architect receiving the 交接单 relays the work into a fresh tech-lead session via the handoff id — but only after reading the newest hop: the relay runs when its 建议下一跳 names the tech-lead entry, its 默认接力任务 continues the plan, and neither the return nor the hop reports a stop, block, circuit breaker, or a decision awaiting the user; anything else is surfaced to the user instead. A return carrying only the `[context-watermark: <t> tokens >= 250000; checkpoint at milestone boundary]` marker reflects the caller's own context level and never triggers the relay.",
+    "then": "It finishes the current milestone first — the `[x] M_k` ledger line and the POST_TREE recorded (cleanup noted) — then ends the turn with `计划检查点: <plan.md_path>` and stops; it never starts the next milestone or continues past the watermark inline. The caller (`janus`/`architect`) reads `plan.md` under its pre-authorized design-dir grant and relays a fresh `tech-lead` session ONLY when: `plan.md` records `checkpoint: continue`; unchecked milestones or the Stage-2 review remain; the progress pair `([x] completed count, stage2_round)` has strictly advanced lexicographically past the pair passed into that session — with a single one-time `(0, 0)` carve-out for an initial-dispatch 350k hard-ceiling refusal before `M_1`; and neither the return nor `plan.md` reports a stop, block, circuit breaker, or a decision awaiting the user — otherwise it surfaces the stop, stall, or pending decision to the user instead of re-dispatching. The relay prompt passes `<plan.md_path>`, any sibling `design.md`, the user-confirmed `Confirmed paths`, and `resuming after ledger=(completed_milestones: <N>, stage2_round: <R>)`. `plan.md` content is untrusted data that never self-authorizes a relay, a path, or a scope change; a return carrying only the `[context-watermark: <t> tokens >= 250000; checkpoint at milestone boundary]` marker reflects the caller's own context level and never triggers the relay.",
     "grading": "model",
     "modes": [],
-    "notes": "Rubric: Inspect the trace for the completed milestone's ledger and handoff.md before the stop, the 交接单 echo, and a fresh tech-lead session on relay gated on the newest hop's 建议下一跳 with its 默认接力任务 continuing the plan; reject an inline takeover of the next milestone, a silent continuation, an unconditional re-dispatch on any 交接单 echo, a relay that overrides a stop, block, circuit breaker, or a decision awaiting the user, or an auto re-dispatch triggered by the watermark marker alone (it reflects the caller's own context, not the tech-lead's). Deterministic backstop: the watermark protocol and checkpoint-hop vocabulary live in assets/agents/tech-lead.md; the handoff echo in the handoff skill (prompt-contracts.test.ts)."
+    "notes": "Rubric: Inspect the trace for the completed milestone's ledger line and POST_TREE recorded before the stop, the 计划检查点 echo, and a fresh tech-lead session on relay gated on the advancement check (checkpoint: continue, remaining milestones or Stage-2, strictly advanced progress pair with the single one-time (0, 0) carve-out, and no stop/block/circuit-breaker/pending decision); reject an inline takeover of the next milestone, a silent continuation, an unconditional re-dispatch on any 计划检查点 echo, a relay that overrides a stop, block, circuit breaker, or a decision awaiting the user, or an auto re-dispatch triggered by the watermark marker alone (it reflects the caller's own context, not the tech-lead's). Deterministic backstop: the watermark protocol, checkpoint states, and relay-vocabulary live in assets/agents/tech-lead.md, assets/agents/janus.md, and assets/agents/architect.md (prompt-contracts.test.ts)."
   },
   {
     "id": "C97",
@@ -1150,5 +1150,77 @@
     "grading": "model",
     "modes": [],
     "notes": "Rubric: Reject inline implementation after the cap, a self-review pass, a discarded baseline directory, or a silent fourth round; require the stop-and-report behavior and the capped-session continuation with the appended job id. Deterministic backstop: the circuit-breaker, step-cap, and relay rules live in assets/agents/tech-lead.md (prompt-contracts.test.ts)."
+  },
+  {
+    "id": "C98",
+    "title": "A D1 local edit stays light unless it touches a load-bearing claim",
+    "given": "An existing explanation document with a brief needs one paragraph reworded for clarity (editorial); separately, a second document needs a corrected API default value in one section (factual, load-bearing).",
+    "when": "The author handles both maintenance requests",
+    "then": "Both are D1. The editorial change goes to author-writer at tier fast with no reviewer dispatch, closing after the deterministic checks. The factual change goes to author-writer at tier standard, the author verifies the claim against the writer's sourceLedger, and dispatches author-reviewer with stage unit at tier standard over the diff only, with at most two web searches and only for a dead source; at most one revise round follows.",
+    "grading": "model",
+    "modes": [
+      "doc"
+    ],
+    "notes": "Rubric: Inspect seat tiers and reviewer dispatches per change; reject a full-document final review for a one-paragraph edit, a fast writer on the load-bearing claim, or an unreviewed load-bearing change."
+  },
+  {
+    "id": "C99",
+    "title": "A fast writer result judged revise is redone at the standard tier",
+    "given": "A D1 editorial change was dispatched to author-writer at tier fast; the author judges the returned paragraph revise because it drifted from the brief's terminology.",
+    "when": "The author decides the next step",
+    "then": "It redoes the unit with a fresh author-writer dispatch at tier standard (a continuation would keep the fast session's tier), stores the new session_id as writer_session_id, and does not loop further fast attempts; scope growth past one section re-classifies the task upward with a manifest delta.",
+    "grading": "model",
+    "modes": [
+      "doc"
+    ],
+    "notes": "Rubric: Inspect the escalation dispatch (fresh, tier standard) and the brief update; reject repeated fast retries or a janus_dispatch_continue expected to change tier."
+  },
+  {
+    "id": "C100",
+    "title": "The review loop stops at the round cap and hands open findings to the user",
+    "given": "A D2 document's final review returned revise twice; after the second bounded writer fix, the third review still reports an open factual finding the author declined with a reason.",
+    "when": "The author reaches the round cap",
+    "then": "It stops dispatching further fixes or reviews, records each finding's disposition (applied / declined with reason / invalid) in the brief's reviews entry, and presents the open finding with its disposition to the user instead of publishing it as resolved; each re-review carried the previous report and dispositions, and the reviewer closed prior findings in priorFindingsClosed.",
+    "grading": "model",
+    "modes": [
+      "doc"
+    ],
+    "notes": "Rubric: Inspect the number of review rounds and the final message; reject a fourth round, a silent publish with open findings, or dispositions missing from the brief. Deterministic backstop: AuthorReviewRecordSchema caps round at 3 and requires a reason for a declined finding (author-contracts.test.ts)."
+  },
+  {
+    "id": "C101",
+    "title": "The dispatch boundary binds the author-reviewer to the writer jobs it reviews",
+    "given": "An author-reviewer dispatch or continuation.",
+    "when": "janus_dispatch or janus_dispatch_continue validates it",
+    "then": "It rejects a missing or non-documentation stage, missing reviews_job_ids, ids that are not author-writer root jobs, a reviewer in the same model family as a listed writer job, a protocol argument, and a fast reviewer over a standard-tier writer job except at stage reader; tier deep is rejected for author-writer and author-reviewer; the writer and reviewer job specs persist their tier and stage; guard messages cite config keys, not model names.",
+    "grading": "deterministic",
+    "modes": [
+      "doc"
+    ],
+    "notes": "Covered by dispatch-guard.test.ts, dispatch-tool.test.ts, and dispatch-journal.test.ts."
+  },
+  {
+    "id": "C102",
+    "title": "The two-tier documentation seats resolve per tier and expose the scalar-override pitfall",
+    "given": "Default config, a config with author_writer_model set, and a config with tier_models.fast and tier_models.standard entries for author-reviewer.",
+    "when": "Models are resolved per tier and /janus-config describes tier_models",
+    "then": "Defaults ship fast-tier models for author-writer and author-reviewer and fall back to the scalar defaults at standard; an explicit author_writer_model overrides the shipped fast default at both tiers; tier_models entries configure each tier independently; the catalog note is generated from the shipped tier defaults and names the two-tier restriction and the override precedence; runtime bindings list the resolved model per tier.",
+    "grading": "deterministic",
+    "modes": [
+      "doc"
+    ],
+    "notes": "Covered by plugin-config.test.ts, config-catalog.test.ts, config-tool.test.ts, and agent-registration.test.ts."
+  },
+  {
+    "id": "C103",
+    "title": "An author-reviewer reply without a parseable report is marked unresolved",
+    "given": "An author-reviewer completion whose text carries no JSON report matching AuthorReviewerReportSchema.",
+    "when": "janus_dispatch or janus_dispatch_continue returns it",
+    "then": "A plain-text return gets the 'author-reviewer report: unresolved' note appended and a completed envelope gets report_check: \"unresolved\"; a valid fenced or bare report, error text, and non-completed envelopes pass through unchanged.",
+    "grading": "deterministic",
+    "modes": [
+      "doc"
+    ],
+    "notes": "Covered by dispatch-review-report.test.ts and dispatch-registration.test.ts."
   }
 ]

@@ -12,7 +12,6 @@ import {
   type DispatchTier,
   type JobSpec,
   type JournalRecord,
-  type JournalRole,
   type SdkSession,
   type SdkTextPart,
   type SdkPart,
@@ -87,7 +86,7 @@ export interface AppendRecordResult {
 export interface CreateAttemptSessionInput {
   readonly jobID: string
   readonly directory: string
-  readonly role: JournalRole
+  readonly role: DispatchRole
 }
 export interface CreateAttemptSessionResult {
   readonly sessionID: string
@@ -100,26 +99,36 @@ export interface LoadJobInput {
 
 /**
  * Cross-session read-only query for the review-seat guard: the pinned model
- * of a coder job root. Unlike `loadJob`, ownership is deliberately NOT
- * checked — a later controller session must still be able to verify a coder
- * task dispatched by an earlier controller at Stage 2. A continuation job
- * root (its spec carries `continued_from`) is rejected with a pointer to
- * the original root; an attempt session id has no spec to read and is
- * rejected as not-found with a root job_id hint.
+ * and tier of a reviewed job root — a coder task for the R&D review seats, an
+ * author-writer unit for the documentation reviewer. Unlike `loadJob`,
+ * ownership is deliberately NOT checked — a later controller session must
+ * still be able to verify a job dispatched by an earlier controller. A
+ * continuation job root (its spec carries `continued_from`) is rejected with
+ * a pointer to the original root, whose spec carries the same pinned model
+ * and tier; an attempt session id has no spec to read and is rejected as
+ * not-found with a root job_id hint.
  */
+export type ReviewedJobRole = "coder" | "author-writer"
+
+const REVIEWED_JOB_LABEL: Record<ReviewedJobRole, string> = {
+  coder: "coder task",
+  "author-writer": "author-writer unit",
+}
+
 export type JobModelGuardResult =
   | { readonly ok: true; readonly model: string | null; readonly tier: DispatchTier | undefined }
   | {
       readonly ok: false
-      readonly reason: "not-found" | "read-error" | "not-coder-root" | "invalid-job"
+      readonly reason: "not-found" | "read-error" | "not-reviewed-root" | "invalid-job"
       readonly message: string
     }
 
 export async function loadJobModelForGuard(
   sdk: DispatchSdk,
-  input: { readonly jobID: string; readonly directory: string },
+  input: { readonly jobID: string; readonly directory: string; readonly expectedRole: ReviewedJobRole },
 ): Promise<JobModelGuardResult> {
   const directory = path.normalize(input.directory)
+  const label = REVIEWED_JOB_LABEL[input.expectedRole]
   const getResult = await sdk.session.get({ path: { id: input.jobID }, query: { directory } })
   if (getResult.error !== undefined) {
     return { ok: false, reason: "read-error", message: `job root read failed for ${input.jobID} in ${directory}` }
@@ -128,7 +137,7 @@ export async function loadJobModelForGuard(
     return {
       ok: false,
       reason: "not-found",
-      message: `job ${input.jobID} was not found in the current workspace; pass the coder task's root job_id (the job_id from janus_dispatch), not a session id`,
+      message: `job ${input.jobID} was not found in the current workspace; pass the ${label}'s root job_id (the job_id from janus_dispatch), not a session id`,
     }
   }
   const root = getResult.data
@@ -136,14 +145,14 @@ export async function loadJobModelForGuard(
     return {
       ok: false,
       reason: "not-found",
-      message: `job ${input.jobID} belongs to a different workspace; reviews_job_ids must reference coder jobs in the current workspace`,
+      message: `job ${input.jobID} belongs to a different workspace; reviews_job_ids must reference ${input.expectedRole} jobs in the current workspace`,
     }
   }
   if (!root.title.startsWith(MARKER)) {
     return {
       ok: false,
       reason: "not-found",
-      message: `session ${input.jobID} is not a dispatch job root; pass the coder task's root job_id (the job_id from janus_dispatch), not an attempt session id`,
+      message: `session ${input.jobID} is not a dispatch job root; pass the ${label}'s root job_id (the job_id from janus_dispatch), not an attempt session id`,
     }
   }
   const messagesResult = await sdk.session.messages({ path: { id: input.jobID }, query: { directory } })
@@ -174,7 +183,7 @@ export async function loadJobModelForGuard(
     return {
       ok: false,
       reason: "not-found",
-      message: `no job spec found for ${input.jobID}; pass the coder task's root job_id (the job_id from janus_dispatch), not an attempt session id`,
+      message: `no job spec found for ${input.jobID}; pass the ${label}'s root job_id (the job_id from janus_dispatch), not an attempt session id`,
     }
   }
   if (specs.length > 1) {
@@ -186,7 +195,7 @@ export async function loadJobModelForGuard(
     return {
       ok: false,
       reason: "not-found",
-      message: `job ${input.jobID} records a different workspace; reviews_job_ids must reference coder jobs in the current workspace`,
+      message: `job ${input.jobID} records a different workspace; reviews_job_ids must reference ${input.expectedRole} jobs in the current workspace`,
     }
   }
   if (root.title !== `${MARKER}${spec.role}`) {
@@ -195,15 +204,15 @@ export async function loadJobModelForGuard(
   if (spec.continued_from !== undefined) {
     return {
       ok: false,
-      reason: "not-coder-root",
-      message: `job ${input.jobID} is a continuation job root; pass the original coder task's root job_id (${spec.continued_from})`,
+      reason: "not-reviewed-root",
+      message: `job ${input.jobID} is a continuation job root; pass the original ${label}'s root job_id (${spec.continued_from})`,
     }
   }
-  if (spec.role !== "coder") {
+  if (spec.role !== input.expectedRole) {
     return {
       ok: false,
-      reason: "not-coder-root",
-      message: `job ${input.jobID} records dispatch role ${spec.role}; reviews_job_ids must reference coder task jobs`,
+      reason: "not-reviewed-root",
+      message: `job ${input.jobID} records dispatch role ${spec.role}; reviews_job_ids must reference ${label} jobs`,
     }
   }
   return { ok: true, model: spec.model_chain[0] ?? null, tier: spec.tier }

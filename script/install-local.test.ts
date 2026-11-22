@@ -63,9 +63,8 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/principles/user-facing-style.md")
   })
 
-  test("requires the janus-models and janus-handoff command assets", () => {
+  test("requires the janus-models and janus-config command assets", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/commands/janus-models.md")
-    expect(REQUIRED_INSTALLED_FILES).toContain("assets/commands/janus-handoff.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/commands/janus-config.md")
   })
 
@@ -75,7 +74,7 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(keysShimContent("/opt/janus")).toBe('#!/bin/sh\nexec bun "/opt/janus/dist/janus-keys.js" "$@"\n')
   })
 
-  test("requires the bundled entry points, role assets, protocols, and four skills", () => {
+  test("requires the bundled entry points, role assets, protocols, and three skills", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("dist/index.js")
     expect(REQUIRED_INSTALLED_FILES).toContain("dist/memory-mcp-server.js")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/consultant.md")
@@ -87,7 +86,6 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation/SKILL.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation-design/SKILL.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/consultation-doc/SKILL.md")
-    expect(REQUIRED_INSTALLED_FILES).toContain("assets/skills/handoff/SKILL.md")
   })
 
   test("requires the coder, simple, tech-lead, and solution-reviewer agents and the shipped model-prompt library", () => {
@@ -95,7 +93,6 @@ describe("REQUIRED_INSTALLED_FILES", () => {
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/simple.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/tech-lead.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/agents/solution-reviewer.md")
-    expect(REQUIRED_INSTALLED_FILES).not.toContain("assets/agents/coder-lite.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/claudehaiku55.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/claudesonnet55.md")
     expect(REQUIRED_INSTALLED_FILES).toContain("assets/model-prompts/gemini38flash.md")

@@ -15,8 +15,6 @@ import {
   CONFIG_ROLES,
   JanusPluginConfigSchema,
   TIER_MODEL_DEFAULTS,
-  formatRemovedCoderLiteKeyHint,
-  formatRemovedCoderLiteMigrationHint,
   formatZodError,
   normalizeWriterDocsRoots,
   resolveCostGuardUsd,
@@ -103,9 +101,7 @@ export function validateConfigText(text: string): ValidationResult {
   }
   const result = JanusPluginConfigSchema.safeParse(parsed)
   if (!result.success) {
-    const detail = `schema 校验失败:\n${formatZodError(result.error)}`
-    const hint = formatRemovedCoderLiteMigrationHint(text)
-    return { raw: parsed, config: undefined, errors: hint.length > 0 ? [`${detail}\n\n${hint}`] : [detail] }
+    return { raw: parsed, config: undefined, errors: [`schema 校验失败:\n${formatZodError(result.error)}`] }
   }
   try {
     normalizeWriterDocsRoots(result.data.writer_docs_roots)
@@ -316,10 +312,7 @@ export function planChange(state: ConfigState, op: ConfigOp): ChangePlan {
   }
   if (op.kind === "unset") return planUnset(state, op.key)
   const resolved = resolveField(op.key)
-  if (resolved === undefined) {
-    const hint = formatRemovedCoderLiteKeyHint(op.key)
-    return errorPlan(state, hint.length > 0 ? hint : `未知配置项 "${op.key}"；用 catalog 查看可配置项`)
-  }
+  if (resolved === undefined) return errorPlan(state, `未知配置项 "${op.key}"；用 catalog 查看可配置项`)
   return planSet(state, resolved, op.value)
 }
 

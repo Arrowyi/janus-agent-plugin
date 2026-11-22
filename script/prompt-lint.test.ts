@@ -33,9 +33,9 @@ const AGENT_BUDGETS: Record<string, number> = {
   "consultant.md": 4500,
   "coder.md": 3600,
   "tech-lead.md": 3600,
-  // architect.md: the gated 交接单 relay rule replaced the shorter watermark bullet,
-  // adding net words to an already dense dispatch-safety section; compression would cut rules.
-  "architect.md": 1560,
+  // architect.md: the gated 计划检查点 relay rule — with its untrusted-data guard and the
+  // self-limiting (0, 0) carve-out bound — is dense dispatch-safety content; compression would cut rules.
+  "architect.md": 1620,
 }
 
 const FRAGMENT_BUDGET = 500
@@ -48,7 +48,6 @@ const SKILL_TOTAL_BUDGETS: Record<string, number> = {
   consultation: 8500,
   "consultation-design": 2500,
   "consultation-doc": 4500,
-  handoff: 2500,
 }
 
 /**
@@ -234,7 +233,7 @@ describe("prompt layering discipline", () => {
   // A model prompt is shared by every role that runs the model, so it must
   // stay role-agnostic; a role asset is shared by every model that drives the
   // role, so it must stay model-agnostic. The 15 tokens are the 15 registered
-  // role names (the coder-lite alias has been removed with the role).
+  // role names.
   const ROLE_NAME_PATTERNS: RegExp[] = [
     /\bjanus\b/i,
     /\bsimple\b/i,

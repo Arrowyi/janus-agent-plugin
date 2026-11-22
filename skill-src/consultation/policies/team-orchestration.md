@@ -15,7 +15,7 @@ Effectiveness first, cost-performance second — never the reverse.
 - Causal mechanism, outside view, KAC, or ACH -> `consultant-analyst`.
 - Premature convergence, hypothesis stress-testing, fragile ordered steps -> `consultant-critic` with `protocol: "counter_evidence"`, `"hypothesis_matrix"`, or `"plan_robustness"`.
 - One-way architecture or interface boundaries, an implementation plan, or an implemented diff -> hand the work to `architect` (`design_premortem`) or `tech-lead` (`code_plan_review` at `stage: "plan"` or `stage: "final"`), which dispatch `solution-reviewer`.
-- Reader-facing durable prose -> hand the deliverable to the `author` team (a primary entry dispatches it with `role: "author"`), which dispatches `author-writer` and, at its review gate, `author-reviewer`; a coding project -> hand it to the `tech-lead` entry, while a bounded one-off executable verification or example may go straight to `coder` at `tier: "fast"`.
+- Reader-facing durable prose -> hand the deliverable to the `author` team (a primary entry dispatches it with `role: "author"`), which dispatches `author-writer` and, at the review stages its document level sets, `author-reviewer`; a coding project -> hand it to the `tech-lead` entry, while a bounded one-off executable verification or example may go straight to `coder` at `tier: "fast"`.
 
 **Inline ceiling.** Self-service lookup is allowed only for a single conflict-free authoritative primary source settling the claim within two tool calls, with no cross-source synthesis and no bias audit. Beyond that the main session delegates instead of searching.
 
@@ -25,11 +25,13 @@ Effectiveness first, cost-performance second — never the reverse.
 
 Default per-tier role **maximums** (not minimums or a required roster):
 
-| Tier | common-explorer | consultant-analyst | consultant-critic | coder-reviewer | consultant-auditor | author-writer |
-|------|----------|---------|--------|-------------|---------|--------|
-| fast | 5 | 0 | 0 | 0 | 0 | 0 |
-| standard | 5 | 1 | 1 | 1 | 1 | 1 |
-| deep | 5 | 3 | 2 | 2 | 2 | 2 |
+| Tier | common-explorer | consultant-analyst | consultant-critic | coder-reviewer | consultant-auditor |
+|------|----------|---------|--------|-------------|---------|
+| fast | 5 | 0 | 0 | 0 | 0 |
+| standard | 5 | 1 | 1 | 1 | 1 |
+| deep | 5 | 3 | 2 | 2 | 2 |
+
+The documentation seats are sized by the document level (`D0`–`D3` in `consultation-doc`), not by this table.
 
 The `simple` agent is the economical quick-answer leaf, not a fifth research specialist: the consultant may route bounded, low-risk lookups to it and relay its answer-first format. A one-liner stays inline; specialist profiles are never substituted by simple. Code, design, and documentation requests are handed to their owning entries (`tech-lead`, `architect`, `author`) rather than run in the consultant. A disabled or unavailable lane is disclosed like any other missing capability.
 
@@ -83,7 +85,7 @@ Structured handoffs:
 - **Coder-reviewer** (dispatched by `tech-lead`): `codePlanReview` for a single milestone's patch review, with correctness-affecting deviations, missing tasks, untested interfaces, and residual uncertainty.
 - **Solution-reviewer** (dispatched by `architect` and `tech-lead`): `designReview` for a one-way-door pre-mortem, or `codePlanReview` for `stage: "plan"` (the tech-lead's plan.md) and `stage: "final"` (the integrated diff), each with the same correctness-affecting fields.
 - **Author-writer** (owned by `author`): pre-approval blueprint with the global model, profile-aware `sectionPlan`, `continuityMap`, and `teachingBeats`; post-approval prose with `filesWritten` (scoped mode), `changeSummary`, `changeClass`, `sourceLedger`, `unsupportedClaims`, `coherenceNotes`, and `needsConsultant` on structural or out-of-scope changes.
-- **Author-reviewer** (owned by `author`): post-draft `AuthorReviewerReport` — `verdict` (`pass`/`revise`/`block`), `factualAndSourceIssues`, `briefAlignmentIssues`, `readabilityAndJargonIssues`, `flaws`, `resolved`, `unresolvedGaps` — at the `architecture`/`targeted`/`strict` gate.
+- **Author-reviewer** (owned by `author`): a staged `AuthorReviewerReport` (`outline` / `unit` / `reader` / `final`) — `stage`, `verdict` (`pass`/`revise`/`block`), `factualAndSourceIssues`, `briefAlignmentIssues`, `readabilityAndJargonIssues`, `flaws`, `resolved`, `unresolvedGaps`, `sourceChecks`, `priorFindingsClosed` — at the stages the document level sets.
 
 Give each subagent only the slice needed, a clear deliverable, and its stopping boundary; never replay the full history. Independent common-explorer instances may run concurrently; pass evidence to the consultant-analyst, a candidate conclusion to the consultant-critic, and an approved outline plus evidence before substantive author-writer prose. Use a bounded `explore -> analyze -> critique` loop where it matters, stopping on a resolved critique or the round cap and marking residual uncertainty. Cost limits further rounds but never justifies skipping an initial decision-changing check. The consultant owns final synthesis, verification, and delivery.
 

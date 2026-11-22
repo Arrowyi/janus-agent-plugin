@@ -17,15 +17,6 @@ export const DISPATCH_ROLES = [
 ] as const
 export type DispatchRole = (typeof DISPATCH_ROLES)[number]
 
-/** Retired dispatch roles that historical journals still record. */
-export const LEGACY_JOURNAL_ROLES = ["coder-lite"] as const
-export type LegacyJournalRole = (typeof LEGACY_JOURNAL_ROLES)[number]
-export type JournalRole = DispatchRole | LegacyJournalRole
-
-export function isLegacyJournalRole(role: JournalRole): role is LegacyJournalRole {
-  return (LEGACY_JOURNAL_ROLES as readonly string[]).includes(role)
-}
-
 export const DISPATCH_PROTOCOLS = [
   "counter_evidence",
   "hypothesis_matrix",
@@ -37,13 +28,23 @@ export const DISPATCH_PROTOCOLS = [
 export type DispatchProtocol = (typeof DISPATCH_PROTOCOLS)[number]
 
 /**
- * The review stage a `solution-reviewer` + `code_plan_review` dispatch
- * declares: "plan" reviews the approved plan only (no coder job ids);
- * "final" reviews the integrated final diff and must list the coder job
- * ids it covers. Runtime enforcement lives at the dispatch boundary.
+ * The review stage a review dispatch declares. A `solution-reviewer` +
+ * `code_plan_review` dispatch uses "plan" (the approved plan only, no coder
+ * job ids) or "final" (the integrated final diff, listing the coder job ids
+ * it covers). An `author-reviewer` dispatch uses "outline" (the blueprint
+ * before the user outline gate), "unit" (one drafted unit or batch),
+ * "reader" (a cold read for reader comprehension), or "final" (the whole
+ * finished document), always listing the author-writer job ids it reviews.
+ * Runtime enforcement lives at the dispatch boundary.
  */
-export const DISPATCH_STAGES = ["plan", "final"] as const
+export const SOLUTION_REVIEWER_STAGES = ["plan", "final"] as const
+export const AUTHOR_REVIEWER_STAGES = ["outline", "unit", "reader", "final"] as const
+export const DISPATCH_STAGES = ["plan", "outline", "unit", "reader", "final"] as const
 export type DispatchStage = (typeof DISPATCH_STAGES)[number]
+export type AuthorReviewerStage = (typeof AUTHOR_REVIEWER_STAGES)[number]
+
+/** Roles that run only the fast and standard tiers; a deep-tier dispatch is rejected. */
+export const TWO_TIER_DISPATCH_ROLES = ["author-writer", "author-reviewer"] as const
 
 /**
  * Execution tiers a dispatch can request. Persisted on the coder and review
@@ -71,17 +72,6 @@ const roleSchema = z.string().transform((value, ctx): DispatchRole => {
     return z.NEVER
   }
   return normalized
-})
-
-const journalRoleSchema = z.string().transform((value, ctx): JournalRole => {
-  if ((DISPATCH_ROLES as readonly string[]).includes(value) || (LEGACY_JOURNAL_ROLES as readonly string[]).includes(value)) {
-    return value as JournalRole
-  }
-  ctx.addIssue({
-    code: z.ZodIssueCode.custom,
-    message: `expected one of: ${[...DISPATCH_ROLES, ...LEGACY_JOURNAL_ROLES].join(", ")}`,
-  })
-  return z.NEVER
 })
 
 /** Public role argument schema: canonical dispatch names only. */
@@ -119,7 +109,7 @@ function journalRecord<K extends string, S extends z.ZodRawShape>(kind: K, shape
 }
 
 export const JobSpecSchema = journalRecord("job-spec", {
-  role: journalRoleSchema,
+  role: roleSchema,
   agent_name: z.string().min(1),
   model_chain: z.array(z.string().nullable()),
   prompt: z.string(),
@@ -128,11 +118,12 @@ export const JobSpecSchema = journalRecord("job-spec", {
   created_at: z.number().int(),
   protocol: z.enum(DISPATCH_PROTOCOLS).optional(),
   // Caller-declared review stage for solution-reviewer + code_plan_review
-  // jobs, persisted for the record (see dispatch-guard.ts for the trust
-  // boundary and runtime enforcement).
+  // and author-reviewer jobs, persisted for the record (see dispatch-guard.ts
+  // for the trust boundary and runtime enforcement).
   stage: z.enum(DISPATCH_STAGES).optional(),
   // Execution tier the dispatch requested, persisted for the review-seat
-  // floor. Absent on historical specs and on roles the guard never reads back.
+  // floor. Absent on default-seat dispatches and on roles the guard never
+  // reads back.
   tier: z.enum(DISPATCH_TIERS).optional(),
   // Continuation fields. `session_id` is the existing dispatch session a
   // continuation job reuses as its attempt-0 target; it is not a child of the
@@ -197,7 +188,7 @@ const envelopeBaseSchema = z
   .object({
     v: z.literal(1),
     job_id: sessionIdSchema,
-    role: journalRoleSchema,
+    role: roleSchema,
     attempt: attemptSchema,
     session_id: sessionIdSchema,
     waited_ms: z.number().int().nonnegative(),
@@ -237,12 +228,15 @@ export const DispatchCompletedEnvelopeSchema = z
     v: z.literal(1),
     status: z.literal("completed"),
     job_id: sessionIdSchema,
-    role: journalRoleSchema,
+    role: roleSchema,
     attempt: attemptSchema,
     session_id: sessionIdSchema,
     waited_ms: z.number().int().nonnegative(),
     text: z.string(),
     context_watermark: contextWatermarkSchema.optional(),
+    // Set on an author-reviewer completion whose text carries no parseable
+    // structured review report (see dispatch-review-report.ts).
+    report_check: z.literal("unresolved").optional(),
   })
   .strict()
 

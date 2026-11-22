@@ -62,7 +62,7 @@ c 查看已改项   v 校验   r 全部重置   ? 帮助   0 退出
    - Model (`model`): run `opencode models` and list up to 10 candidates from configured providers, marking the current value and the shipped default; the user may also type any `provider/model`. Add one line: to compare or evaluate models, use `/janus-models`.
    - Number (`integer`/`number`): state the allowed range from the description (positive integer, ≥ 0, positive number) and ask for a number; offer `恢复默认`.
    - List (`string[]`): show the current items numbered and offer `1 添加 / 2 删除某项 / 3 整体替换 / 4 清空 [] / 5 恢复默认`; compose the full new list and pass it as one value (comma-separated or a JSON array).
-   - Template keys: first ask for each placeholder with numbered choices taken from the `describe` output (mode → role, tier → role, tier → cap role), then the value.
+   - Template keys: first ask for each placeholder with numbered choices taken from the `describe` output (mode → role, tier → role, tier → cap role), then the value. For `tier_models`, offer only `fast` and `standard` when the role is `author-writer` or `author-reviewer` (they have no deep tier), and mention that an explicit `<role>_model` overrides every shipped tier default, so changing one tier needs a `tier_models` entry.
    - `embedding`: collect all four sub-fields one at a time (`base_url`, `api_key_env`, `model`, `dimensions`), then set `embedding` once as a JSON object. The block is all-or-nothing; never set one sub-field alone on a file without it. `api_key_env` is the name of an environment variable, never the key itself; if the user pastes a secret, do not echo or store it.
    - `model_prompts.<model_key>`: compute the key from the model id (drop the provider prefix up to the last `/`, lowercase, keep letters and digits only), and show the key before asking for the block text. `""` disables that model's shipped block.
    - Free text (`string`): ask for the value and show the example.
@@ -72,7 +72,7 @@ c 查看已改项   v 校验   r 全部重置   ? 帮助   0 退出
 
 ## Clear a value
 
-Same as "Change a value" steps 3–5 with `action: "unset"`. Clearing restores the shipped default. For a `team_caps` / `tier_role_caps` sub-field it writes the shipped value back and drops the block once it matches the defaults. A key the catalog does not know (for example a legacy field that makes validation fail) can still be cleared; this is how to repair an invalid file.
+Same as "Change a value" steps 3–5 with `action: "unset"`. Clearing restores the shipped default. For a `team_caps` / `tier_role_caps` sub-field it writes the shipped value back and drops the block once it matches the defaults.
 
 ## Reset everything
 

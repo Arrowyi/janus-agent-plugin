@@ -11,7 +11,7 @@ import {
 import {
   DISPATCH_ROLES,
   DISPATCH_STAGES,
-  isLegacyJournalRole,
+  TWO_TIER_DISPATCH_ROLES,
   parseDispatchRole,
   parseOutcomeEnvelope,
   createKeyedMutex,
@@ -20,7 +20,6 @@ import {
   type Clock,
   type DispatchRole,
   type DispatchSdk,
-  type JournalRole,
   type KeyedMutex,
 } from "./dispatch-contract.ts"
 import { createDispatchLifecycle, createSystemClock, type DispatchLifecycle } from "./dispatch-lifecycle.ts"
@@ -34,6 +33,7 @@ import {
   readCallerContextTokens,
 } from "./dispatch-guard.ts"
 import { splitModel, errorText, isRetryableModelError } from "./dispatch-helpers.ts"
+import { annotateAuthorReviewerReturn } from "./dispatch-review-report.ts"
 import {
   DISPATCH_PROTOCOLS,
   PROTOCOL_ROLES,
@@ -59,11 +59,17 @@ const DISPATCH_MARKER = "[consultation-dispatch:v1] "
 
 /**
  * Roles whose job spec records the dispatch tier. Only the jobs the
- * review-seat floor reads back — coder tasks and the two review seats — write
- * it; every other role keeps its historical spec shape even when the caller
+ * review-seat floor reads back — coder tasks, author-writer units, and their
+ * review seats — write it; every other role omits it even when the caller
  * passes a tier.
  */
-const TIER_PERSISTING_ROLES: ReadonlySet<DispatchRole> = new Set(["coder", "coder-reviewer", "solution-reviewer"])
+const TIER_PERSISTING_ROLES: ReadonlySet<DispatchRole> = new Set([
+  "coder",
+  "coder-reviewer",
+  "solution-reviewer",
+  "author-writer",
+  "author-reviewer",
+])
 
 /**
  * Rejection text for a dispatched sub-session trying to dispatch a primary
@@ -207,6 +213,9 @@ export function createJanusDispatchTools(
         if (mode === undefined) return `Error: invalid mode "${args.mode}"; expected select, verify, roadmap, research, guide, doc, or design`
       }
       const tier: ConfigTier | undefined = args.tier
+      if (tier === "deep" && (TWO_TIER_DISPATCH_ROLES as readonly string[]).includes(role)) {
+        return `Error: ${role} runs only the fast and standard tiers; dispatch tier: "standard" (configured via tier_models.standard.${role} or ${role.replace("-", "_")}_model)`
+      }
       if (args.protocol !== undefined && !PROTOCOL_ROLES[args.protocol].includes(role)) {
         return `Error: protocol ${args.protocol} is not supported by role ${role}; use ${PROTOCOL_ROLES[args.protocol].join(" or ")}`
       }
@@ -240,7 +249,7 @@ export function createJanusDispatchTools(
       // sub-session. Fail-fast before any job session is created.
       if (role === "coder" && callerTokens !== undefined && callerTokens >= CODER_HARD_CEILING_TOKENS) {
         return applyContextWatermark(
-          `Error: controller context exceeded ${CODER_HARD_CEILING_TOKENS} tokens hard ceiling; checkpoint to plan.md and handoff.md before continuing. Recovery: update the plan.md ledger and write handoff.md, resume from a fresh controller session with 继续交接, or reduce context and retry.`,
+          `Error: controller context exceeded ${CODER_HARD_CEILING_TOKENS} tokens hard ceiling; checkpoint to plan.md before continuing. Recovery: update the plan.md ledger and checkpoint state, resume from a fresh tech-lead session with the plan.md path, or reduce context and retry.`,
           callerTokens,
         )
       }
@@ -289,22 +298,20 @@ export function createJanusDispatchTools(
       })
       if (!guard.ok) return applyContextWatermark(`Error: ${guard.message}`, callerTokens)
 
-      return applyContextWatermark(
-        await lifecycle.launch({
-          role,
-          prompt,
-          agentName,
-          modelChain,
-          parentID: context.sessionID,
-          directory: context.directory,
-          signal: context.abort,
-          returnHandle: args.return_handle,
-          protocol: args.protocol,
-          stage: args.stage,
-          ...(tier !== undefined && TIER_PERSISTING_ROLES.has(role) ? { tier } : {}),
-        }),
-        callerTokens,
-      )
+      const launched = await lifecycle.launch({
+        role,
+        prompt,
+        agentName,
+        modelChain,
+        parentID: context.sessionID,
+        directory: context.directory,
+        signal: context.abort,
+        returnHandle: args.return_handle,
+        protocol: args.protocol,
+        stage: args.stage,
+        ...(tier !== undefined && TIER_PERSISTING_ROLES.has(role) ? { tier } : {}),
+      })
+      return applyContextWatermark(role === "author-reviewer" ? annotateAuthorReviewerReturn(launched) : launched, callerTokens)
     },
   })
 
@@ -349,7 +356,7 @@ export function createJanusDispatchTools(
       // spec carries session_id) is rejected: callers must continue the
       // original session, not a continuation job.
       let jobRootID: string
-      let role: JournalRole
+      let role: DispatchRole
       if (target.parentID === context.sessionID) {
         jobRootID = target.id
       } else if (target.parentID === undefined) {
@@ -373,11 +380,6 @@ export function createJanusDispatchTools(
         return `Error: ${targetSessionID} is a continuation job${target.parentID === context.sessionID ? "" : " attempt"}; use the original dispatch session_id, not a continuation job_id`
       }
       role = loaded.spec.role
-      // A retired role's historical session is read-only: wait and cancel keep
-      // working, but continuation is blocked with migration guidance.
-      if (isLegacyJournalRole(role)) {
-        return `Error: the ${role} role is retired; continue the same lane with role "coder" (tier: "fast"); migrate config keys per tier_models.fast.coder`
-      }
       if (target.parentID !== context.sessionID) {
         if (!loaded.children.some((child) => child.id === targetSessionID)) {
           return "Error: target session is not an attempt of an owned dispatch job"
@@ -407,15 +409,16 @@ export function createJanusDispatchTools(
       }
       if (!enabled[role]) return `Error: ${role} is disabled by configuration`
 
-      // Author ≠ reviewer guard for continuations: a coder-reviewer session,
-      // or a solution-reviewer session carrying the code_plan_review
-      // contract, must again prove reviewer ≠ author before the target
-      // session is prompted.
+      // Author ≠ reviewer guard for continuations: a coder-reviewer or
+      // author-reviewer session, or a solution-reviewer session carrying the
+      // code_plan_review contract, must again prove reviewer ≠ author before
+      // the target session is prompted.
       const guard = await enforceContinueReviewGuard(sdk, {
         targetRole: role,
         targetProtocol: loaded.spec.protocol,
         targetModel: loaded.spec.model_chain[0] ?? null,
         targetTier: loaded.spec.tier,
+        targetStage: loaded.spec.stage,
         reviewsJobIDs: parsed.value.reviews_job_ids,
         config,
         directory: context.directory,
@@ -475,7 +478,7 @@ export function createJanusDispatchTools(
         }
         throw error
       }
-      return applyContextWatermark(outcome, callerTokens)
+      return applyContextWatermark(role === "author-reviewer" ? annotateAuthorReviewerReturn(outcome) : outcome, callerTokens)
     },
   })
 

@@ -75,7 +75,7 @@ const AUTHOR_WRITER_DESCRIPTION =
   "Documentation team's scoped-write author executor and the sole author of reader-facing prose. Produces the pre-approval writing blueprint, drafts and maintains approved document files under the configured writer roots, and runs coherence and editorial passes; targeted web lookups with a source ledger only — no shell, no dispatch, no memory."
 
 const AUTHOR_REVIEWER_DESCRIPTION =
-  "Documentation team's independent read-only reviewer, dispatched by the author after the writer's draft: checks facts, source symbols, and paths against the source ledger and current source, alignment with the brief's outline, audience, and section goals, and human readability including first-use term explanations. Returns a structured report; no shell, no web, no dispatch, no edits."
+  "Documentation team's independent read-only reviewer, dispatched by the author after the writer's draft: checks facts, source symbols, and paths against the source ledger and current source, alignment with the brief's outline, audience, and section goals, and human readability including first-use term explanations. Returns a structured report; budgeted web lookups only — no shell, no dispatch, no edits."
 
 const SIMPLE_DESCRIPTION =
   "Economical quick-answer entry (DeepSeek V4.1-Flash by default) for low-risk facts, concepts, and simple how-to. A leaf: never dispatches; escalates multi-source/contested questions to the consultant, architecture questions to the architect, coding to the tech-lead, documents to the author, and general questions to janus."

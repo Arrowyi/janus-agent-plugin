@@ -49,7 +49,8 @@ flowchart TB
     SQ --> MC
     SQ --> DB[(SQLite 权威账本)]
     SQ --> IDX[可重建索引]
-    CC["consultation-core: 契约与策略"] -.-> T["evals/ 与 script/ 测试"]
+    OA -.->|"运行时仅导入 AuthorReviewerReportSchema"| CC["consultation-core: 契约与策略"]
+    CC -.->|"其余契约与策略"| T["包内单测 / script/ 测试（由 evals/ 映射）"]
 ```
 
 ### 4.1 仓库形态
@@ -78,14 +79,14 @@ janus-agent-plugin/
 ```text
 consultation-core          memory-core
 (无工作区依赖)                  ^
-                                |
-                          memory-sqlite
-                                ^
-                                |
-                           memory-mcp （同时直接依赖 memory-core）
+        ^                       |
+        |                 memory-sqlite
+opencode-adapter                ^
+(运行时仅导入                    |
+ AuthorReviewerReportSchema)  memory-mcp （同时直接依赖 memory-core）
 ```
 
-`opencode-adapter` 不导入其他工作区包；它只按路径解析 `memory-mcp` 服务器入口（已安装形态为同目录的 `memory-mcp-server.js`）并注册为本地 MCP。`consultation-core` 与 `memory-core` 只依赖 `zod`，不导入 OpenCode 或 MCP SDK；MCP SDK 只出现在 `memory-mcp`，OpenCode 插件类型只出现在 `opencode-adapter`。`consultation-core` 由 `evals/` 与 `script/` 中的测试引用。
+`opencode-adapter` 在运行时只从 `consultation-core` 导入 `AuthorReviewerReportSchema`（`dispatch-review-report.ts`，由 `script/build.ts` 打入 `dist/index.js`），用于对 `author-reviewer` 报告做软校验（不阻断返回，仅对缺失合规报告的回复附加未消解标记）；它不导入其他工作区包，对 `memory-mcp` 只按路径解析服务器入口（已安装形态为同目录的 `memory-mcp-server.js`）并注册为本地 MCP。`consultation-core` 与 `memory-core` 只依赖 `zod`，不导入 OpenCode 或 MCP SDK；MCP SDK 只出现在 `memory-mcp`，OpenCode 插件类型只出现在 `opencode-adapter`。`consultation-core` 的其余契约与策略辅助由其包内单测（`packages/consultation-core/src/*.test.ts`，由 `evals/run-evals.ts` 映射）与 `script/skill-consistency.test.ts` 直接引用。
 
 ## 5. 组件职责
 
@@ -138,7 +139,7 @@ consultant 在其五个证据模式上共用一个会话：每一轮重新评估
 - 来源与记忆溯源要求；
 - 推理、搜索、记忆与时钟的端口。
 
-推理仍是模型驱动的。核心校验结构化的模型输出，并强制那些不能依赖提示词自觉遵守的规则。当前适配器不在运行时导入咨询核心；它的契约由 `evals/` 与 `script/` 中的测试消费（例如 `script/skill-consistency.test.ts` 用 `ConsultationModeSchema` 对照 skill 与提示词）。
+推理仍是模型驱动的。核心校验结构化的模型输出，并强制那些不能依赖提示词自觉遵守的规则。适配器在运行时只导入咨询核心的 `AuthorReviewerReportSchema`（`dispatch-review-report.ts`，打入 `dist/index.js`），用于对 `author-reviewer` 报告做软校验；其余契约与策略辅助由其包内单测（`packages/consultation-core/src/*.test.ts`，由 `evals/run-evals.ts` 映射）与 `script/skill-consistency.test.ts` 消费（后者用 `ConsultationModeSchema` 对照 skill 与提示词）。
 
 ### 5.4 记忆核心
 
@@ -311,7 +312,7 @@ consultant 通过 `janus_dispatch` 领导四个咨询子 agent：`common-explore
 | `janus_dispatch` | `{role, prompt, return_handle?, mode?, tier?, protocol?, reviews_job_ids?, stage?}`；role 取十三个派发角色之一（`consultant`、`tech-lead`、`author`、`simple`、`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`、`solution-reviewer`、`coder`、`coder-reviewer`、`author-writer`、`author-reviewer`）；`mode`/`tier` 选择模型，`protocol` 在首轮前置入五张方法论卡片之一，`reviews_job_ids`/`stage` 由审查席守卫（下文）强制 | 发起一个持久宿主会话 job 并在软等待窗口内观察；`return_handle: true` 时成功不再返回纯文本，而是返回已完成的 JSON 信封（`job_id`、`role`、`attempt`、`session_id`、`waited_ms`、`text`）；pending/失败形态不变 |
 | `janus_dispatch_wait` | `{job_id, wait_ms?}` | 恢复/观察同一个 job；可选整数 `wait_ms` 为 0..1800000，默认 1800000；零做快照 |
 | `janus_dispatch_cancel` | `{job_id}` | 请求显式取消，并对持久完成/中止证据做对账 |
-| `janus_dispatch_continue` | `{session_id, prompt, role?}` | 向既有派发会话发送新提示（`session_id` 取自 `return_handle` 完成信封或 pending 信封）；role 从目标 job spec 推断、显式给出时校验。续接继承 spec 的 `agent_name` 与 `model_chain`，绝不切换模型。返回响应文本或以续接 job id 为键的可恢复 pending 信封 |
+| `janus_dispatch_continue` | `{session_id, prompt, role?, reviews_job_ids?}` | 向既有派发会话发送新提示（`session_id` 取自 `return_handle` 完成信封或 pending 信封）；role 从目标 job spec 推断、显式给出时校验。续接继承 spec 的 `agent_name` 与 `model_chain`，绝不切换模型。返回响应文本或以续接 job id 为键的可恢复 pending 信封 |
 
 `role` 恰为 13 个：9 个子 agent 加 `consultant`、`tech-lead`、`simple`、`author`；`janus` 与 `architect` 是用户选择的主入口，不可派发（`DISPATCH_ROLES`，`dispatch-contract.ts`）。`consultant`、`tech-lead` 与 `author` 三者带调用方 DAG 守卫（`dispatch-tool.ts`）：调用方会话本身是被派发的子会话时，派发这三个主协调角色在创建任何 job 之前就被拒绝，分别返回 `Error: dispatched session cannot dispatch consultant; return the consultation request to the primary caller`、`…cannot dispatch tech-lead; return the coding task to the primary caller` 或 `…cannot dispatch author; return the documentation request to the primary caller`；其余角色不受此限。
 

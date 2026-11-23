@@ -19,7 +19,7 @@ Every case is marked with one of two grading tiers:
 
 ## Files
 
-- `fixtures/consultation-cases.json` - 97 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 entry routing/tech-lead milestone routing plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, C60-C74 the lexicographic dispatch floor, reasoning-failure/auditor/KAC (key-assumptions check)/outside-view/VOI (value-of-information stop rule)/plan pre-mortem cases, and the multi-ask/one-goal/GRADE-lite (evidence-body confidence up/downgrade)/mode-card/ACH (competing-hypothesis matrix) cases, C75-C85 the mode-stack, solution-reviewer, dynamic model routing, continuation-lock, strict unknown-key rejection, critique-contract, specialist-floor, and inline-ceiling cases, C86-C89 the author-reviewer gate, briefWaived micro-fix, user-facing-style, and tech-lead milestone-delegation cases, C90-C93 the open-pool tier floor, the four-stage discovery funnel, the provisional-taxonomy external ledger, and the quota-degrade cases, and C94-C97 the tech-lead milestone orchestration, reviewer-guard, watermark-checkpoint, and circuit-breaker cases.
+- `fixtures/consultation-cases.json` - 103 cases: 14 from architecture 17.1, C15-C25 task-fit routing scenarios, C26-C30 recoverable lifecycle cases, C31-C39 entry routing/tech-lead milestone routing plus terminal-output usability cases, C40-C48 doc-mode separation (author-writer/author) cases, C49-C55 author-writer-session reuse and continuation cases, C56-C59 design mode, C60-C74 the lexicographic dispatch floor, reasoning-failure/auditor/KAC (key-assumptions check)/outside-view/VOI (value-of-information stop rule)/plan pre-mortem cases, and the multi-ask/one-goal/GRADE-lite (evidence-body confidence up/downgrade)/mode-card/ACH (competing-hypothesis matrix) cases, C75-C85 the mode-stack, solution-reviewer, dynamic model routing, continuation-lock, strict unknown-key rejection, critique-contract, specialist-floor, and inline-ceiling cases, C86-C89 the author-reviewer gate, briefWaived micro-fix, user-facing-style, and tech-lead milestone-delegation cases, C90-C93 the open-pool tier floor, the four-stage discovery funnel, the provisional-taxonomy external ledger, and the quota-degrade cases, C94-C97 the tech-lead milestone orchestration, reviewer-guard, watermark-checkpoint, and circuit-breaker cases, and C98-C103 the D1 local-maintenance tier split, fast-writer escalation, review round-cap, author-reviewer dispatch-guard, two-tier documentation-seat resolution, and unresolved review-report cases.
 - `fixtures/memory-cases.json` - 12 cases from architecture 17.2.
 - `run-evals.ts` - The runner script.
 
@@ -86,6 +86,10 @@ id encodes the scenario, and the test file encodes the function under test.
 | C81 | packages/opencode-adapter/src/dispatch-tool.test.ts; packages/opencode-adapter/src/dispatch-lifecycle.test.ts |
 | C82 | packages/opencode-adapter/src/plugin-config.test.ts |
 | C83 | packages/consultation-core/src/team.test.ts; packages/consultation-core/src/prompt-contracts.test.ts |
+| C90 | packages/consultation-core/src/tier-router.test.ts |
+| C101 | packages/opencode-adapter/src/dispatch-guard.test.ts; packages/opencode-adapter/src/dispatch-tool.test.ts; packages/opencode-adapter/src/dispatch-journal.test.ts |
+| C102 | packages/opencode-adapter/src/plugin-config.test.ts; packages/opencode-adapter/src/config-catalog.test.ts; packages/opencode-adapter/src/config-tool.test.ts; packages/opencode-adapter/src/agent-registration.test.ts |
+| C103 | packages/opencode-adapter/src/dispatch-review-report.test.ts; packages/opencode-adapter/src/dispatch-registration.test.ts |
 | M1 | packages/memory-sqlite/src/store.test.ts |
 | M2 | packages/memory-sqlite/src/store.test.ts |
 | M4 | packages/memory-sqlite/src/store.test.ts; packages/memory-core/src/retrieval-plan.test.ts |
@@ -98,7 +102,7 @@ id encodes the scenario, and the test file encodes the function under test.
 | M12 | packages/memory-sqlite/src/multi-instance.test.ts |
 
 Model-graded cases (C3, C4, C5, C6, C7, C8, C10, C11, C12, C13, C14, C15-C25,
-C31-C40, C42-C48, C49-C53, C55, C56-C79, C84-C89, C91-C97, M3, M5) have no test-file mapping by design (C6, C7, C10, C11, C12, C40, C44, C45, C47, C49-C53, C55, C77, and C86-C89 carry deterministic backstops named in their notes).
+C31-C40, C42-C48, C49-C53, C55, C56-C79, C84-C89, C91-C97, C98-C100, M3, M5) have no test-file mapping by design (C6, C7, C10, C11, C12, C40, C44, C45, C47, C49-C53, C55, C77, C86-C89, and C100 carry deterministic backstops named in their notes).
 
 ## Recoverable lifecycle evaluation (C26-C30)
 
@@ -131,7 +135,8 @@ of repository evidence; retain only redacted structural observations and verdict
 
 All 13 dispatch roles share the identical recoverable launch/wait/cancel lifecycle:
 `janus_dispatch{role,prompt}`, `janus_dispatch_wait{job_id,wait_ms?}`,
-and `janus_dispatch_cancel{job_id}`. Every role has exactly one configured
+`janus_dispatch_cancel{job_id}`, and
+`janus_dispatch_continue{session_id,prompt,role?,reviews_job_ids?}`. Every role has exactly one configured
 attempt and resolves to a single-model chain — the plugin ships no model-fallback
 advance. A delegate model may be `null` in the durable job spec (host model selection),
 and its host permissions are retained, not replaced by bundled restrictions.
@@ -147,7 +152,7 @@ and its host permissions are retained, not replaced by bundled restrictions.
 | consultant-auditor | Same launch/wait/cancel | One | Separate execution status from evidence-quality uncertainty |
 | bundled author-writer | Same launch/wait/cancel | One (single-model chain) | No fallback advance — a confirmed terminal retryable failure ends the job after one attempt; preserve outline gate and scoped-write roots (edit only under `writer_docs_roots`; `[]` or an approved path outside the roots = read-only, and `author` applies the returned prose) |
 | delegate author-writer | Same launch/wait/cancel | One, pinned model or host selection | No plugin fallback advance; retain external host permissions |
-| author-reviewer | Same launch/wait/cancel | One | Await the independent report before publishing an architecture/targeted/strict document; a disabled or failed reviewer is disclosed, never credited |
+| author-reviewer | Same launch/wait/cancel | One | Await the staged independent report (outline / unit / reader / final, scaled by document level D1–D3; D0 micro-fixes are not reviewed) before publishing; a disabled, failed, or unresolved reviewer report is disclosed, never credited |
 | coder | Same launch/wait/cancel | One (dual-tier: fast or standard, picked by the dispatching tech-lead) | Await the bounded implementation report before dependent steps; follow-ups continue the pinned session; no duplicate implementation on expiry; file changes only on confirmed paths |
 | tech-lead | Same launch/wait/cancel | One | Milestone orchestration: PRE/POST tree snapshots, review patches, the plan ledger, the three-round circuit breaker, and the watermark checkpoint relay use the same launch/wait/cancel lifecycle |
 | consultant | Same launch/wait/cancel | One | Integrate the returned consultation; the dispatcher owns the memory record unless the task says `Memory ownership: consultant saves`; a dispatched consultant never asks the end user |
@@ -252,14 +257,16 @@ Model-graded. Record the tool trace and the named output fields, then answer eac
 - **C80-C83** (deterministic, see the coverage map) — `mode_models` beats `tier_models` beats the scalar model, and the system-transform hook injects the prompt for the model actually serving the turn; a continuation inherits the original `agent_name` and `model_chain`; unknown config keys fail strict config load; `CritiqueDraftSchema` carries `planReview` and a nullable `designReview`.
 - **C84/C85** (model) — a `select` over biased or multi-source evidence uses `common-explorer` and `consultant-auditor` instead of ad-hoc inline search; a claim settled by one conflict-free primary record within two calls stays inline with its residual uncertainty stated.
 
-## Reviewer gate, micro-fix, user-facing style, and delegation evaluation (C86-C89)
+## Reviewer gate, micro-fix, user-facing style, delegation, and review-loop evaluation (C86-C89, C98-C103)
 
-These cases cover the documentation team's third seat and the shared output style:
+These cases cover the documentation team's review seat and its level-scaled maintenance routing, the shared output style, and tech-lead milestone delegation. `C101`-`C103` are deterministic (see the coverage map); the rest are model-graded:
 
-- **C86** — the `author-reviewer` gate: an independent dispatch between the writer's final pass and publishing for `architecture` documents and `targeted`/`strict` verification, returning an `AuthorReviewerReport`; `light` non-architecture documents and waived micro-fixes skip it, the writer's self-polish never substitutes, and a disabled or failed reviewer is disclosed, never credited.
-- **C87** — the `briefWaived` fast path: a qualifying micro-fix (typo, punctuation, broken relative link, at most two edits) on a brief-less document under `writer_docs_roots` takes a single delta-sized `author-writer` dispatch with `briefWaived: true`, the writer refuses anything touching numbers, code, APIs, or meaning, and the author closes after the three-item diff check with no reviewer dispatch.
+- **C86** — the `author-reviewer` gate: the review stages the document level (`D0`–`D3`) sets — `D2` runs `final` at `tier: "standard"` (a tutorial also gets a `reader` cold read at `tier: "fast"`), and `D3` adds an `outline` review before the user outline gate, a pilot `unit` review, and batch `unit` reviews. Every reviewer dispatch carries `stage` and `reviews_job_ids` and returns an `AuthorReviewerReport`. Deterministic checks run before each review, the writer's self-polish never substitutes, and a disabled or failed reviewer is disclosed, never credited.
+- **C87** — the `briefWaived` fast path: a `D0` micro-fix (typo, punctuation, broken relative link, at most two edits) on a brief-less document takes a single delta-sized `author-writer` dispatch at `tier: "fast"` with `briefWaived: true`, inside or outside `writer_docs_roots` (outside the roots the writer runs read-only and the author applies the returned patch). The writer refuses anything touching numbers, code, APIs, or meaning (the change becomes `D1`), and the author closes after the three-item diff check with no reviewer dispatch.
 - **C88** — the shared user-facing style: the eight human-facing roles gloss a technical term at its first occurrence and never paraphrase exact identifiers, commands, paths, or config keys for plainness; the seven structural leaves stay exempt.
 - **C89** — tech-lead milestone delegation: an approved plan's spec-complete milestones go serially to the `coder` at `tier: "fast"` after the `.baseline-mK/` PRE-tree snapshot, with exact-content restore, quarantine, and one bounded re-do on pollution, an ephemeral probe staying on the direct fast-tier path, per-milestone `coder-reviewer` patch reviews, and `solution-reviewer` held to the two Stage 1/Stage 2 gate reviews.
+- **C98-C100** (model) — `D1` local maintenance and the review loop: an editorial change stays at `tier: "fast"` with no review, while a change touching a load-bearing claim runs a `tier: "standard"` writer plus a `stage: "unit"` review over the diff only; a fast writer result judged `revise` is redone with a fresh `tier: "standard"` dispatch that updates `writer_session_id`; the review loop stops at the 3-round cap and hands open findings with their dispositions (`applied` / `declined` with reason / `invalid`) to the user. `C100` has a deterministic backstop in `packages/consultation-core/src/author-contracts.test.ts`.
+- **C101-C103** (deterministic, see the coverage map) — the dispatch boundary binds `author-reviewer` to the `author-writer` root jobs it reviews (`stage`, `reviews_job_ids`, cross-family check, tier floor except at `reader`, two-tier restriction); the two-tier documentation seats resolve per tier, and `/janus-config` exposes the scalar-override precedence; an `author-reviewer` reply without a parseable `AuthorReviewerReportSchema` report is marked unresolved (`author-reviewer report: unresolved`, or `report_check: "unresolved"` on a completed envelope).
 
 ## Tech-lead orchestration evaluation (C94-C97)
 

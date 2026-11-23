@@ -41,7 +41,7 @@ Quick fact / how-to                -> simple
 
 Start at `janus` when unsure; start directly at the specialist when you already know the task type. Coding work flows through `tech-lead`, which plans the milestones and dispatches isolated `coder` sessions; the `coder` leaf is normally dispatched by `tech-lead`, not selected directly.
 
-Every agent's model is configurable (`*_model` fields), and every prompt layers a role asset with an optional model-adaptation block keyed by the model (`model_prompts` map overrides the shipped `assets/model-prompts/` library, extendable by dropping a file) — swap a model, keep the role, and the driving notes follow the model. Blocks are matched **provider-agnostically**: the key drops the provider prefix, lowercases, and keeps only letters and digits, so `deepseek/deepseek-v4-pro` and `opencode-go/deepseek-v4-pro` both resolve to `deepseekv4pro` (see the "模型适配提示词" section of [docs/deployment.md](docs/deployment.md)).
+Every agent's model is configurable (`*_model` fields), and every prompt layers a role asset with an optional model-adaptation block keyed by the model (`model_prompts` map overrides the shipped `assets/model-prompts/` library) — swap a model, keep the role, and the driving notes follow the model. Blocks are matched **provider-agnostically**: the key drops the provider prefix, lowercases, and keeps only letters and digits, so `deepseek/deepseek-v4-pro` and `opencode-go/deepseek-v4-pro` both resolve to `deepseekv4pro` (see the "模型适配提示词" section of [docs/deployment.md](docs/deployment.md)).
 
 ## Prerequisites
 
@@ -124,8 +124,6 @@ bun run install:local        # build + install the bundle (replaces the installe
 bun run integration          # isolated OpenCode integration proof
 bun run evals/run-evals.ts   # print the evaluation checklist
 ```
-
-TypeScript strict, zod, SQLite FTS5 (SQLite full-text search), five-package Bun workspace, no native dependencies. Harness-neutral core packages (`consultation-core`, `memory-core`); host-specific code stays in the adapters.
 
 Contributor rules (generated skills, prompt goldens, change → verification map) live in [AGENTS.md](AGENTS.md).
 

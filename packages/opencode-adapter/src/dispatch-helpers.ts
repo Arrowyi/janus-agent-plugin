@@ -1,5 +1,5 @@
-import type { DispatchEnvelope, DispatchOutcome, DispatchRole } from "./dispatch-contract.ts"
-import type { ObservationOutcome } from "./dispatch-observer.ts"
+import type { DispatchEnvelope, DispatchOutcome, DispatchRole, DispatchSessionStatus } from "./dispatch-contract.ts"
+import type { ObservationDiagnostics, ObservationOutcome } from "./dispatch-observer.ts"
 
 export const RETRYABLE_MODEL_ERROR_CODES = ["402", "429", "500", "502", "503", "504"] as const
 
@@ -100,6 +100,63 @@ export function buildChainFailureMessage(
   return `Error: ${role} dispatch failed on every model in the chain (${tried.join(" -> ")}): ${lastError}${hint}; degrade by answering inline and say so.`
 }
 
+const SESSION_STATUSES: ReadonlyArray<DispatchSessionStatus> = ["idle", "busy", "retry"]
+
+/**
+ * The health subset of an envelope, each field included only when the observer
+ * supplied a strictly valid value. The envelope schema is the second guard.
+ */
+function healthEnvelopeFields(diagnostics: ObservationDiagnostics | undefined): {
+  last_activity_ms?: number
+  running_tool?: string
+  running_tool_ms?: number
+  session_status?: DispatchSessionStatus
+  stalled_suspect?: true
+} {
+  const fields: {
+    last_activity_ms?: number
+    running_tool?: string
+    running_tool_ms?: number
+    session_status?: DispatchSessionStatus
+    stalled_suspect?: true
+  } = {}
+  if (diagnostics === undefined) return fields
+  if (diagnostics.last_activity_ms !== undefined && Number.isInteger(diagnostics.last_activity_ms) && diagnostics.last_activity_ms >= 0) {
+    fields.last_activity_ms = diagnostics.last_activity_ms
+  }
+  const tool = diagnostics.running_tool?.trim()
+  if (tool !== undefined && tool.length > 0) fields.running_tool = tool
+  if (diagnostics.running_tool_ms !== undefined && Number.isInteger(diagnostics.running_tool_ms) && diagnostics.running_tool_ms >= 0) {
+    fields.running_tool_ms = diagnostics.running_tool_ms
+  }
+  if (diagnostics.session_status !== undefined && SESSION_STATUSES.includes(diagnostics.session_status)) {
+    fields.session_status = diagnostics.session_status
+  }
+  if (diagnostics.stalled_suspect === true) fields.stalled_suspect = true
+  return fields
+}
+
+/**
+ * Self-describing reason for a stalled non-terminal turn. Returns undefined
+ * when the turn is not stalled (or was aborted locally, which never gets extra
+ * reason text).
+ */
+function stalledSuspectReason(diagnostics: ObservationDiagnostics | undefined): string | undefined {
+  if (diagnostics === undefined || diagnostics.stalled_suspect !== true || diagnostics.aborted === true) return undefined
+  if (diagnostics.running_tool !== undefined) {
+    const ms = diagnostics.running_tool_ms ?? diagnostics.last_activity_ms
+    if (ms === undefined) return undefined
+    return `tool "${diagnostics.running_tool}" has been running for ${ms}ms without new activity (stalled_suspect); call janus_dispatch_wait to keep waiting or janus_dispatch_cancel to abort`
+  }
+  if (diagnostics.last_activity_ms === undefined && diagnostics.running_tool_ms === undefined) return undefined
+  // Blank-name running tools emit no `running_tool` (normalized away upstream)
+  // but do emit a name-independent `running_tool_ms`; quote the honest age —
+  // the larger of the activity gap and the tool-part age — so a flag that
+  // fired via the tool's age never reports a sub-threshold activity gap.
+  const ms = Math.max(diagnostics.last_activity_ms ?? 0, diagnostics.running_tool_ms ?? 0)
+  return `no specialist activity for ${ms}ms (stalled_suspect); call janus_dispatch_wait to keep waiting or janus_dispatch_cancel to abort`
+}
+
 export function makeEnvelope(
   status: DispatchEnvelope["status"],
   jobID: string,
@@ -108,22 +165,22 @@ export function makeEnvelope(
   sessionID: string,
   waitedMs: number,
   reason: string,
+  diagnostics?: ObservationDiagnostics,
   next: DispatchEnvelope["next"] = "janus_dispatch_wait",
 ): DispatchOutcome {
-  return {
-    kind: "nonterminal",
-    envelope: {
-      v: 1,
-      status,
-      job_id: jobID,
-      role,
-      attempt: { index: attempt.index, model: attempt.model },
-      session_id: sessionID,
-      waited_ms: Math.max(0, Math.floor(waitedMs)),
-      reason,
-      next,
-    },
+  const envelope: DispatchEnvelope = {
+    v: 1,
+    status,
+    job_id: jobID,
+    role,
+    attempt: { index: attempt.index, model: attempt.model },
+    session_id: sessionID,
+    waited_ms: Math.max(0, Math.floor(waitedMs)),
+    reason,
+    next,
+    ...healthEnvelopeFields(diagnostics),
   }
+  return { kind: "nonterminal", envelope }
 }
 
 export function observationToOutcome(
@@ -147,7 +204,7 @@ export function observationToOutcome(
           attempt: { index: attempt.index, model: attempt.model },
           session_id: attempt.sessionID,
           waited_ms: Math.max(0, Math.floor(waitedMs)),
-          reason: "dispatch was cancelled",
+          reason: observation.reason ?? "dispatch was cancelled",
           next: "janus_dispatch_wait",
         },
       }
@@ -166,10 +223,21 @@ export function observationToOutcome(
         attempt,
         attempt.sessionID,
         waitedMs,
-        observation.diagnostics?.aborted ? "observation aborted" : observation.diagnostics?.reason ??
-          (observation.diagnostics?.status === "retry" ? "specialist is retrying" : observation.diagnostics?.status === "busy" ? "specialist is busy" : "waiting for specialist"),
+        stalledSuspectReason(observation.diagnostics) ??
+          (observation.diagnostics?.aborted ? "observation aborted" : observation.diagnostics?.reason ??
+            (observation.diagnostics?.status === "retry" ? "specialist is retrying" : observation.diagnostics?.status === "busy" ? "specialist is busy" : "waiting for specialist")),
+        observation.diagnostics,
       )
     case "unknown":
-      return makeEnvelope("unknown", jobID, role, attempt, attempt.sessionID, waitedMs, observation.reason)
+      return makeEnvelope(
+        "unknown",
+        jobID,
+        role,
+        attempt,
+        attempt.sessionID,
+        waitedMs,
+        stalledSuspectReason(observation.diagnostics) ?? observation.reason,
+        observation.diagnostics,
+      )
   }
 }

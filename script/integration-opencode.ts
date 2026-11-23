@@ -28,6 +28,11 @@
  *       run by comparing `git status --porcelain` before and after.
  *   (h) Kill the server, print a PASS/FAIL evidence summary per assertion,
  *       exit non-zero on any FAIL.
+ *   (i) Raw JSON-RPC stdio proof (initialize → tools/list over newline-
+ *       delimited frames, no MCP SDK import) that the installed memory-mcp
+ *       bundle advertises object element schemas for the memory_prepare /
+ *       memory_commit items & preferences arrays, using its own JANUS_* temp
+ *       sandbox under ${TMPDIR:-/tmp}/opencode/.
  *
  * Run from the repo root:  bun run integration
  *
@@ -40,6 +45,7 @@ import { tmpdir } from "node:os"
 import { dirname, join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import { computeProjectId, editAllowTwins } from "../packages/opencode-adapter/src/agent-registration.ts"
+import { resolveBunExecutable } from "../packages/opencode-adapter/src/mcp-registration.ts"
 import { buildCleanRoomEnv } from "./integration-env.ts"
 import { proveDispatchPrimitives } from "./integration-dispatch-primitives.ts"
 import {
@@ -79,6 +85,174 @@ function readAgentPrompt(configJson: unknown, agent: string): string | undefined
   return typeof prompt === "string" ? prompt : undefined
 }
 
+/**
+ * Resolve the installed memory-mcp bundle sibling of the plugin entry,
+ * mirroring resolveMemoryMcpServerEntry's "bundled memory-mcp-server.js
+ * sibling first" rule. Returns undefined when the entry is not an installed
+ * dist/index.js or the sibling bundle does not exist.
+ */
+function resolveMemoryBundlePath(pluginEntry: string): string | undefined {
+  const entryPath = pluginEntry.startsWith("file://") ? fileURLToPath(pluginEntry) : pluginEntry
+  if (!entryPath.endsWith(join("dist", "index.js"))) return undefined
+  const bundle = join(dirname(entryPath), "memory-mcp-server.js")
+  return existsSync(bundle) ? bundle : undefined
+}
+
+type JsonRpcResponse = { readonly id: number; readonly result: unknown }
+
+/**
+ * Newline-delimited JSON-RPC response reader over the spawned server's
+ * stdout. Returns a waiter function keyed by response id with its own timeout.
+ */
+function createStdioJsonRpcReader(stdout: ReadableStream<Uint8Array>): (id: number, timeoutMs: number) => Promise<JsonRpcResponse> {
+  let buffer = ""
+  const waiters = new Map<number, { resolve: (response: JsonRpcResponse) => void; reject: (error: Error) => void }>()
+  const handleLine = (line: string): void => {
+    let message: unknown
+    try {
+      message = JSON.parse(line)
+    } catch {
+      return
+    }
+    if (typeof message !== "object" || message === null) return
+    const record = message as Record<string, unknown>
+    const id = record["id"]
+    if (typeof id !== "number") return
+    const waiter = waiters.get(id)
+    if (waiter === undefined) return
+    waiters.delete(id)
+    if (record["error"] !== undefined && record["error"] !== null) {
+      waiter.reject(new Error(`JSON-RPC error for id ${id}: ${JSON.stringify(record["error"])}`))
+    } else {
+      waiter.resolve({ id, result: record["result"] })
+    }
+  }
+  void (async () => {
+    const decoder = new TextDecoder()
+    const reader = stdout.getReader()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let newline = buffer.indexOf("\n")
+        while (newline !== -1) {
+          const line = buffer.slice(0, newline).trim()
+          buffer = buffer.slice(newline + 1)
+          if (line.length > 0) handleLine(line)
+          newline = buffer.indexOf("\n")
+        }
+      }
+    } catch {
+      // fall through: stream error rejects pending waiters below
+    } finally {
+      reader.releaseLock()
+    }
+    for (const waiter of waiters.values()) {
+      waiter.reject(new Error("memory-mcp stdout closed before the response arrived"))
+    }
+    waiters.clear()
+  })()
+  return (id, timeoutMs) =>
+    new Promise<JsonRpcResponse>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (waiters.delete(id)) {
+          reject(new Error(`timed out after ${timeoutMs}ms waiting for JSON-RPC response id ${id}`))
+        }
+      }, timeoutMs)
+      waiters.set(id, {
+        resolve: (response) => {
+          clearTimeout(timer)
+          resolve(response)
+        },
+        reject: (error) => {
+          clearTimeout(timer)
+          reject(error)
+        },
+      })
+    })
+}
+
+/**
+ * Spawn the installed memory-mcp bundle exactly the way mcp-registration.ts
+ * does ([bun, serverEntry] with JANUS_NAMESPACE), run the raw JSON-RPC stdio
+ * handshake (initialize → notifications/initialized → tools/list), and return
+ * the listed tools. Always kills the spawned process.
+ */
+async function proveMemoryMcpToolsList(bundlePath: string, dataDir: string): Promise<Array<Record<string, unknown>>> {
+  const proc = Bun.spawn([resolveBunExecutable(), bundlePath], {
+    cwd: dataDir,
+    env: {
+      ...process.env,
+      JANUS_DATA_DIR: dataDir,
+      JANUS_STATE_DIR: dataDir,
+      JANUS_CACHE_DIR: dataDir,
+      JANUS_NAMESPACE: "integration-opencode",
+    },
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "inherit",
+  })
+  try {
+    const nextResponse = createStdioJsonRpcReader(proc.stdout)
+    const writeFrame = (message: Record<string, unknown>): void => {
+      proc.stdin.write(`${JSON.stringify(message)}\n`)
+      proc.stdin.flush()
+    }
+    writeFrame({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "integration-opencode", version: "0.0.1" } },
+    })
+    await nextResponse(1, 15000)
+    writeFrame({ jsonrpc: "2.0", method: "notifications/initialized" })
+    writeFrame({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} })
+    const listing = await nextResponse(2, 15000)
+    if (typeof listing.result !== "object" || listing.result === null) throw new Error("tools/list returned no result")
+    const tools = (listing.result as Record<string, unknown>)["tools"]
+    if (!Array.isArray(tools)) throw new Error("tools/list returned no tools array")
+    return tools as Array<Record<string, unknown>>
+  } finally {
+    try {
+      proc.kill("SIGTERM")
+    } catch {
+      // process already exited
+    }
+    try {
+      await proc.exited
+    } catch {
+      // exit code of a killed probe process is irrelevant
+    }
+  }
+}
+
+/**
+ * Check one advertised array property on a tools/list entry: it must carry an
+ * element schema of type "object" with a non-empty properties record
+ * containing requiredKey (the P1 bare-array regression).
+ */
+function checkObjectArrayElement(tool: Record<string, unknown>, property: string, requiredKey: string): { pass: boolean; detail: string } {
+  const inputSchema = tool["inputSchema"]
+  if (typeof inputSchema !== "object" || inputSchema === null) return { pass: false, detail: `${property}: no inputSchema` }
+  const properties = (inputSchema as Record<string, unknown>)["properties"]
+  if (typeof properties !== "object" || properties === null) return { pass: false, detail: `${property}: no properties record` }
+  const propertySchema = (properties as Record<string, unknown>)[property]
+  if (typeof propertySchema !== "object" || propertySchema === null) return { pass: false, detail: `${property}: property missing` }
+  if ((propertySchema as Record<string, unknown>)["type"] !== "array") return { pass: false, detail: `${property}: not advertised as array` }
+  const items = (propertySchema as Record<string, unknown>)["items"]
+  if (typeof items !== "object" || items === null) return { pass: false, detail: `${property}: bare array (no element schema)` }
+  if ((items as Record<string, unknown>)["type"] !== "object") return { pass: false, detail: `${property}: element schema is not object` }
+  const elementProperties = (items as Record<string, unknown>)["properties"]
+  if (typeof elementProperties !== "object" || elementProperties === null || Object.keys(elementProperties).length === 0) {
+    return { pass: false, detail: `${property}: element object has no properties` }
+  }
+  if (!(requiredKey in (elementProperties as Record<string, unknown>))) {
+    return { pass: false, detail: `${property}: element properties missing ${requiredKey}` }
+  }
+  return { pass: true, detail: `${property}: object element with ${Object.keys(elementProperties).sort().join(", ")}` }
+}
+
 async function main(): Promise<void> {
   const onPath = await isOpencodeOnPath()
   if (!onPath) {
@@ -99,6 +273,12 @@ async function main(): Promise<void> {
   for (const dir of [sandboxData, sandboxConfig, sandboxState, sandboxCache, sandboxHome, sandboxProj]) {
     mkdirSync(dir, { recursive: true })
   }
+
+  // Separate isolated sandbox for the memory-mcp stdio proof (kept apart from
+  // the consult-integration sandbox above; cleaned up in the finally block).
+  const opencodeTmpRoot = join(tmpdir(), "opencode")
+  mkdirSync(opencodeTmpRoot, { recursive: true })
+  const memorySandbox = realpathSync(mkdtempSync(join(opencodeTmpRoot, "memory-mcp-integration-")))
 
   const password = `int-${Math.random().toString(36).slice(2)}`
   const auth = `Basic ${btoa(`opencode:${password}`)}`
@@ -691,6 +871,46 @@ async function main(): Promise<void> {
       }, sandboxProj))
     }
 
+    // Memory MCP proof: raw JSON-RPC stdio exchange against the installed
+    // memory-mcp bundle (no MCP SDK import here — the SDK is a
+    // packages/memory-mcp dependency, not a root one). The bundle must
+    // advertise object element schemas for the memory_prepare /
+    // memory_commit items & preferences arrays (P1).
+    const memoryBundle = resolveMemoryBundlePath(adapterEntry)
+    if (memoryBundle === undefined) {
+      assertions.push({
+        name: "memory-mcp bundle installed next to the plugin entry",
+        pass: false,
+        detail: `NOT FOUND next to ${adapterEntry}`,
+      })
+    } else {
+      try {
+        const listedTools = await proveMemoryMcpToolsList(memoryBundle, memorySandbox)
+        assertions.push({
+          name: "memory-mcp raw stdio JSON-RPC initialize + tools/list",
+          pass: true,
+          detail: `${listedTools.length} tools from ${memoryBundle}`,
+        })
+        for (const toolName of ["memory_prepare", "memory_commit"]) {
+          const tool = listedTools.find((entry) => entry["name"] === toolName)
+          const itemsCheck = tool === undefined
+            ? { pass: false, detail: "tool missing from tools/list" }
+            : checkObjectArrayElement(tool, "items", "topicKey")
+          const preferencesCheck = tool === undefined
+            ? { pass: false, detail: "tool missing from tools/list" }
+            : checkObjectArrayElement(tool, "preferences", "key")
+          assertions.push({
+            name: `${toolName} tools/list carries object element schemas for items and preferences`,
+            pass: itemsCheck.pass && preferencesCheck.pass,
+            detail: `items: ${itemsCheck.detail}; preferences: ${preferencesCheck.detail}`,
+          })
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
+        assertions.push({ name: "memory-mcp raw stdio JSON-RPC initialize + tools/list", pass: false, detail })
+      }
+    }
+
     const gitAfter = await gitStatusPorcelain()
     const repoUntouched = gitBefore === gitAfter
     assertions.push({
@@ -714,6 +934,7 @@ async function main(): Promise<void> {
       }
     }
     rmSync(sandbox, { recursive: true, force: true })
+    rmSync(memorySandbox, { recursive: true, force: true })
     if (installPrefix !== undefined) {
       rmSync(installPrefix, { recursive: true, force: true })
     }

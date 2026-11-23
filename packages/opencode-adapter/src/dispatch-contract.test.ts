@@ -472,3 +472,49 @@ describe("context watermark envelope field", () => {
     expect(result.ok).toBe(false)
   })
 })
+
+describe("health envelope fields", () => {
+  it("round-trips the five health fields through parseOutcomeEnvelope", () => {
+    const parsed = assertOk(parseOutcomeEnvelope(JSON.stringify({
+      ...makeEnvelope("pending"),
+      last_activity_ms: 5_000,
+      running_tool: "grep",
+      running_tool_ms: 4_000,
+      session_status: "busy",
+      stalled_suspect: true,
+    })))
+    if (parsed.status !== "pending") throw new Error("expected pending envelope")
+    expect(parsed.last_activity_ms).toBe(5_000)
+    expect(parsed.running_tool).toBe("grep")
+    expect(parsed.running_tool_ms).toBe(4_000)
+    expect(parsed.session_status).toBe("busy")
+    expect(parsed.stalled_suspect).toBe(true)
+  })
+
+  it("rejects invalid health values", () => {
+    for (const bad of [
+      { stalled_suspect: false },
+      { last_activity_ms: -1 },
+      { last_activity_ms: 1.5 },
+      { running_tool_ms: -1 },
+      { running_tool: "" },
+      { session_status: "paused" },
+    ]) {
+      expect(parseOutcomeEnvelope(JSON.stringify({ ...makeEnvelope("pending"), ...bad })).ok).toBe(false)
+    }
+  })
+
+  it("keeps envelopes without health fields valid and undecorated", () => {
+    const parsed = assertOk(parseOutcomeEnvelope(JSON.stringify(makeEnvelope("unknown"))))
+    if (parsed.status !== "unknown") throw new Error("expected unknown envelope")
+    expect("last_activity_ms" in parsed).toBe(false)
+    expect("running_tool" in parsed).toBe(false)
+    expect("session_status" in parsed).toBe(false)
+    expect("stalled_suspect" in parsed).toBe(false)
+  })
+
+  it("does not add health fields to cancelled or completed envelope forms", () => {
+    expect(parseOutcomeEnvelope(JSON.stringify({ ...makeCancelledEnvelope(), session_status: "busy" })).ok).toBe(false)
+    expect(parseOutcomeEnvelope(JSON.stringify({ ...makeCompletedEnvelope(), running_tool: "grep" })).ok).toBe(false)
+  })
+})

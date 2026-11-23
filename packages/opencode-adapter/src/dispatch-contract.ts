@@ -205,9 +205,25 @@ const envelopeBaseSchema = z
  */
 const contextWatermarkSchema = z.number().int().nonnegative()
 
+/**
+ * Child-session host status surfaced on non-terminal envelopes. Only these
+ * three host states are advertised; any other host string is dropped by the
+ * observer before it reaches the envelope.
+ */
+export const DispatchSessionStatusSchema = z.enum(["idle", "busy", "retry"])
+export type DispatchSessionStatus = z.infer<typeof DispatchSessionStatusSchema>
+
 export const DispatchEnvelopeSchema = envelopeBaseSchema.extend({
   status: z.enum(["pending", "unknown", "cancelling"], { message: "unsupported envelope status" }),
   context_watermark: contextWatermarkSchema.optional(),
+  // Health diagnostics carried on non-terminal envelopes (see
+  // dispatch-observer.ts). The observer validates each value before attaching;
+  // the strict schema is the second guard, so a malformed value never parses.
+  last_activity_ms: z.number().int().nonnegative().optional(),
+  running_tool: z.string().min(1).optional(),
+  running_tool_ms: z.number().int().nonnegative().optional(),
+  session_status: DispatchSessionStatusSchema.optional(),
+  stalled_suspect: z.literal(true).optional(),
 })
 
 export type DispatchEnvelope = z.infer<typeof DispatchEnvelopeSchema>

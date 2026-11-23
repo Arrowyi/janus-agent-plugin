@@ -1,8 +1,8 @@
 import { DISPATCH_ROLES, PRODUCTION_WAIT_BUDGET_MS, createKeyedMutex, serializeOutcome, type Clock, type DispatchOutcome, type DispatchProtocol, type DispatchRole, type DispatchSdk, type DispatchStage, type DispatchTier, type JobSpec, type KeyedMutex } from "./dispatch-contract.ts"
 import { createJob, loadJob } from "./dispatch-journal.ts"
-import { STARTUP_GRACE_MS } from "./dispatch-observer.ts"
+import { STARTUP_GRACE_MS, type ObservationOutcome } from "./dispatch-observer.ts"
 import { buildChainFailureMessage, embedsProviderErrorText, errorText, formatModel, isProviderErrorText, makeEnvelope, modelFailureHint, observationToOutcome } from "./dispatch-helpers.ts"
-import { abortAndReconcile, createSystemClock, findActiveAttempt, type ActiveAttempt } from "./dispatch-cancel.ts"
+import { abortAndReconcile, createSystemClock, findActiveAttempt, reconcileObservationOutcome, type ActiveAttempt } from "./dispatch-cancel.ts"
 import { launchAttempt, observeAttempt, LaunchError, type AttemptSubmission } from "./dispatch-attempt.ts"
 export { createSystemClock } from "./dispatch-cancel.ts"
 
@@ -93,7 +93,9 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
         case "completed": return { kind: "success", text: observation.text }
         case "cancelled":
         case "pending":
-        case "unknown": return observationToOutcome(observation, jobID, spec.role, attempt, waitedMs)
+        case "unknown": return reconcileObservationOutcome(observation, {
+          sdk, clock, jobID, directory: spec.directory, role: spec.role, attempt, cancelIntents: [], waitedMs,
+        })
         case "failed": {
           lastError = observation.error
           tried.push(formatModel(attempt.model, spec.agent_name))
@@ -247,19 +249,47 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
       }
       const loaded = loadedResult.value
       const blockFallback = loaded.cancelIntents.length > 0
+      const hostStopped = loaded.cancelIntents.some((intent) => intent.reason === "host-stopped")
       const active = findActiveAttempt(loaded)
-      if (active === undefined) return serializeOutcome(makeEnvelope("unknown", request.jobID, loaded.spec.role,
-        { index: loaded.reservations.at(-1)?.attempt_index ?? 0, model: null }, request.jobID,
-        clock.now() - startTime, "launch interrupted or no active attempt"))
+      if (active === undefined) {
+        if (hostStopped) {
+          return serializeOutcome(observationToOutcome(
+            { kind: "cancelled", reason: "child session stopped by host before response completed" },
+            request.jobID, loaded.spec.role,
+            { index: loaded.reservations.at(-1)?.attempt_index ?? 0, model: loaded.reservations.at(-1)?.model ?? null, sessionID: request.jobID },
+            clock.now() - startTime,
+          ))
+        }
+        return serializeOutcome(makeEnvelope("unknown", request.jobID, loaded.spec.role,
+          { index: loaded.reservations.at(-1)?.attempt_index ?? 0, model: null }, request.jobID,
+          clock.now() - startTime, "launch interrupted or no active attempt"))
+      }
       const reservation = loaded.reservations.find((record) => record.attempt_index === active.index)
       const elapsedMs = reservation === undefined ? 0 : Math.max(0, clock.now() - reservation.reserved_at)
       const effectiveGraceMs = Math.max(0, (request.startupGraceMs ?? STARTUP_GRACE_MS) - elapsedMs)
       const observationRequest = { jobID: request.jobID, directory: request.directory, active,
         waitBudgetMs, signal: request.signal, startupGraceMs: effectiveGraceMs }
+      // Host-stop short-circuit runs before the cancel-intent fallback block: a
+      // persisted host-stopped intent converges on terminal `cancelled` after
+      // one racing snapshot, never sdk.session.abort, even if the child session
+      // was resumed to busy/retry.
+      if (hostStopped) {
+        const snapshot = await observeAttempt(context, { ...observationRequest, waitBudgetMs: 0 })
+        if (snapshot.kind === "completed" || snapshot.kind === "failed" || snapshot.kind === "cancelled") {
+          return serializeOutcome(await reconcileObservationOutcome(snapshot, {
+            sdk, clock, jobID: request.jobID, directory: loaded.spec.directory, role: loaded.spec.role,
+            attempt: active, cancelIntents: loaded.cancelIntents, waitedMs: clock.now() - startTime,
+          }))
+        }
+        return serializeOutcome(observationToOutcome(
+          { kind: "cancelled", reason: "child session stopped by host before response completed" },
+          request.jobID, loaded.spec.role, active, clock.now() - startTime,
+        ))
+      }
       if (blockFallback) {
         const snapshot = await observeAttempt(context, { ...observationRequest, waitBudgetMs: 0, signal: undefined })
         if (snapshot.kind === "failed") return serializeOutcome(observationToOutcome(snapshot, request.jobID, loaded.spec.role, active, clock.now() - startTime))
-        return serializeOutcome(await abortAndReconcile({ sdk, clock, loaded, active }))
+        return serializeOutcome(await abortAndReconcile({ sdk, clock, loaded, active, startupGraceMs: request.startupGraceMs }))
       }
       const observation = await observeAttempt(context, observationRequest)
       const waitedMs = clock.now() - startTime
@@ -268,7 +298,10 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
           index: active.index + 1, waitBudgetMs, signal: request.signal, startupGraceMs: request.startupGraceMs,
         }, startTime, blockFallback))
       }
-      return serializeOutcome(observationToOutcome(observation, request.jobID, loaded.spec.role, active, waitedMs))
+      return serializeOutcome(await reconcileObservationOutcome(observation, {
+        sdk, clock, jobID: request.jobID, directory: loaded.spec.directory, role: loaded.spec.role,
+        attempt: active, cancelIntents: loaded.cancelIntents, waitedMs,
+      }))
     }, request.signal).catch(async (error: unknown) => {
       if (error instanceof DOMException && error.name === "AbortError") {
         try {

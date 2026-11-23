@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { getEventListeners } from "node:events"
-import { createDispatchCancel, createSystemClock } from "./dispatch-cancel.ts"
-import { createKeyedMutex, parseOutcomeEnvelope, type DispatchSdk, type SdkAssistantMessage, type SdkResult } from "./dispatch-contract.ts"
+import { abortAndReconcile, createDispatchCancel, createSessionStatusProbe, createSystemClock, findActiveAttempt } from "./dispatch-cancel.ts"
+import { createKeyedMutex, parseOutcomeEnvelope, type DispatchSdk, type SdkAssistantMessage, type SdkMessageWithParts, type SdkResult } from "./dispatch-contract.ts"
 import { appendRecord, createAttemptSession, createJob, loadJob } from "./dispatch-journal.ts"
 import { createDispatchLifecycle } from "./dispatch-lifecycle.ts"
 import { createFakeClock, createFakeSdk, FAKE_DIRECTORY, FAKE_PARENT_ID, makeJobSpec, validRoleSpecs } from "./dispatch-test-fixtures.ts"
@@ -280,4 +280,157 @@ test("serializes cancel behind fallback submission already in progress", async (
   expect(f.aborts).toEqual([child])
   expect(status(await lifecycle.wait({ ...f.input, waitMs: 0 })).status).toBe("cancelled")
   expect(await f.intents()).toHaveLength(1)
+})
+
+function denyHostStoppedWrites(sdk: DispatchSdk): void {
+  const base = sdk.session.prompt.bind(sdk.session)
+  sdk.session.prompt = async (input) => {
+    if (input.body.parts.some((part) => part.type === "text" && typeof part.text === "string" && part.text.includes('"reason":"host-stopped"'))) {
+      throw new Error("journal write rejected")
+    }
+    return base(input)
+  }
+}
+
+async function activeAttemptOf(f: Awaited<ReturnType<typeof fixture>>) {
+  const loaded = await loadJob(f.sdk, { jobID: f.input.jobID, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+  if (!loaded.ok) throw loaded.error
+  const active = findActiveAttempt(loaded.value)
+  if (active === undefined) throw new Error("missing active attempt")
+  return { loaded: loaded.value, active }
+}
+
+test("createSessionStatusProbe throws on transport error, returns undefined on non-object data, maps a missing key to idle", async () => {
+  const throwing = createFakeSdk()
+  throwing.session.status = async () => { throw new Error("status down") }
+  await expect(createSessionStatusProbe(throwing, FAKE_DIRECTORY, "ses_x")()).rejects.toThrow("status down")
+
+  const nonObject = createFakeSdk()
+  nonObject.session.status = async () => ({ data: undefined })
+  expect(await createSessionStatusProbe(nonObject, FAKE_DIRECTORY, "ses_x")()).toBeUndefined()
+
+  const fake = createFakeSdk()
+  expect(await createSessionStatusProbe(fake, FAKE_DIRECTORY, "ses_x")()).toEqual({ status: "idle" })
+  fake.setStatusResult({ data: { ses_x: { type: "busy" } } })
+  expect(await createSessionStatusProbe(fake, FAKE_DIRECTORY, "ses_x")()).toEqual({ status: "busy" })
+})
+
+test("snapshot uses the decayed startup grace: 9999ms stays pending, 10000ms cancels", async () => {
+  for (const [age, expected] of [[9_999, "pending"], [10_000, "cancelled"]] as const) {
+    const f = await fixture()
+    f.active.seed(undefined, "working", false)
+    f.clock.advance(age)
+    const result = status(await f.lifecycle.wait({ ...f.input, waitMs: 0 }))
+    expect(result.status).toBe(expected)
+  }
+})
+
+test("cancel pre-snapshot fails closed to unknown when the host-stopped intent cannot be persisted", async () => {
+  const f = await fixture()
+  f.active.seed(undefined, "working", false)
+  f.clock.advance(20_000)
+  denyHostStoppedWrites(f.sdk)
+  const result = status(await f.cancel.cancel(f.input))
+  expect(result.status).toBe("unknown")
+  expect(f.aborts).toEqual([])
+})
+
+test("abortAndReconcile before-snapshot fails closed to unknown when the host-stopped intent cannot be persisted", async () => {
+  const f = await fixture()
+  f.active.seed(undefined, "working", false)
+  f.clock.advance(20_000)
+  denyHostStoppedWrites(f.sdk)
+  const { loaded, active } = await activeAttemptOf(f)
+  const outcome = await abortAndReconcile({ sdk: f.sdk, clock: f.clock, loaded, active })
+  if (outcome.kind !== "nonterminal") throw new Error("expected nonterminal outcome")
+  expect(outcome.envelope.status).toBe("unknown")
+  expect(f.aborts).toEqual([])
+})
+
+test("abortAndReconcile after-snapshot fails closed to unknown when the host-stopped intent cannot be persisted", async () => {
+  const f = await fixture()
+  const baseMessages = f.sdk.session.messages.bind(f.sdk.session)
+  let createdAt = 19_000
+  f.sdk.session.messages = async (input) => {
+    if (input.path.id !== f.active.sessionID) return baseMessages(input)
+    const info: SdkAssistantMessage = { id: "msg-active", role: "assistant", sessionID: f.active.sessionID, parentID: f.active.messageID, modelID: "m", providerID: "p", time: { created: createdAt } }
+    const message: SdkMessageWithParts = { info, parts: [{ type: "text", text: "working" }] }
+    return { data: [message] }
+  }
+  f.clock.advance(20_000)
+  f.setAbort(async () => { createdAt = 0; return { data: true } })
+  denyHostStoppedWrites(f.sdk)
+  const { loaded, active } = await activeAttemptOf(f)
+  const outcome = await abortAndReconcile({ sdk: f.sdk, clock: f.clock, loaded, active })
+  if (outcome.kind !== "nonterminal") throw new Error("expected nonterminal outcome")
+  expect(outcome.envelope.status).toBe("unknown")
+  expect(f.aborts).toEqual([f.active.sessionID])
+})
+
+test("cancel appends host-stopped beside a user intent and a resumed busy child stays cancelled with zero aborts", async () => {
+  const f = await fixture()
+  f.active.seed(undefined, "working", false)
+  const userIntent = await appendRecord(f.sdk, {
+    jobID: f.input.jobID, directory: FAKE_DIRECTORY,
+    record: { v: 1, kind: "cancel-intent", job_id: f.input.jobID, intent_at: f.clock.now() },
+  })
+  if (!userIntent.ok) throw userIntent.error
+  f.clock.advance(20_000)
+
+  const first = status(await f.cancel.cancel(f.input))
+  expect(first.status).toBe("cancelled")
+  expect(f.aborts).toEqual([])
+  expect((await f.intents()).filter((intent) => intent.reason === "host-stopped")).toHaveLength(1)
+
+  f.host.setStatusResult({ data: { [f.active.sessionID]: { type: "busy" } } })
+  const second = status(await f.cancel.cancel(f.input))
+  expect(second.status).toBe("cancelled")
+  expect(f.aborts).toEqual([])
+  expect((await f.intents()).filter((intent) => intent.reason === "host-stopped")).toHaveLength(1)
+})
+
+test("cancel lets a racing terminal snapshot beat a persisted host-stopped intent", async () => {
+  const completed = await fixture()
+  completed.active.seed()
+  const intent = await appendRecord(completed.sdk, {
+    jobID: completed.input.jobID, directory: FAKE_DIRECTORY,
+    record: { v: 1, kind: "cancel-intent", job_id: completed.input.jobID, intent_at: completed.clock.now(), reason: "host-stopped" },
+  })
+  if (!intent.ok) throw intent.error
+  expect(await completed.cancel.cancel(completed.input)).toBe("original report")
+  expect(completed.aborts).toEqual([])
+
+  const failed = await fixture()
+  failed.active.seed({ name: "APIError", data: { isRetryable: false, statusCode: 500 } })
+  const failedIntent = await appendRecord(failed.sdk, {
+    jobID: failed.input.jobID, directory: FAKE_DIRECTORY,
+    record: { v: 1, kind: "cancel-intent", job_id: failed.input.jobID, intent_at: failed.clock.now(), reason: "host-stopped" },
+  })
+  if (!failedIntent.ok) throw failedIntent.error
+  expect((await failed.cancel.cancel(failed.input)).startsWith("Error:")).toBe(true)
+  expect(failed.aborts).toEqual([])
+})
+
+test("abortAndReconcile forwards after-snapshot health diagnostics on the cancelling envelope", async () => {
+  const f = await fixture()
+  const baseMessages = f.sdk.session.messages.bind(f.sdk.session)
+  const info: SdkAssistantMessage = { id: "msg-active", role: "assistant", sessionID: f.active.sessionID, parentID: f.active.messageID, modelID: "m", providerID: "p", time: { created: 0 } }
+  const message = {
+    info,
+    parts: [
+      { type: "text", text: "working" },
+      { id: "prt-1", messageID: "msg-active", sessionID: f.active.sessionID, type: "tool", tool: "grep", callID: "call-1", state: { status: "running", input: {}, time: { start: 0 } } },
+    ],
+  } as unknown as SdkMessageWithParts
+  f.sdk.session.messages = async (input) => input.path.id === f.active.sessionID ? { data: [message] } : baseMessages(input)
+  f.clock.advance(20_000)
+  f.host.setStatusResult({ data: { [f.active.sessionID]: { type: "busy" } } })
+  const { loaded, active } = await activeAttemptOf(f)
+  const outcome = await abortAndReconcile({ sdk: f.sdk, clock: f.clock, loaded, active })
+  if (outcome.kind !== "nonterminal") throw new Error("expected nonterminal outcome")
+  expect(outcome.envelope.status).toBe("cancelling")
+  expect(outcome.envelope.running_tool).toBe("grep")
+  expect(outcome.envelope.running_tool_ms).toBe(20_000)
+  expect(outcome.envelope.session_status).toBe("busy")
+  expect(f.aborts).toEqual([f.active.sessionID])
 })

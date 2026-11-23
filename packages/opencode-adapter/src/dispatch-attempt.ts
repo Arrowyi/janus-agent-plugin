@@ -2,7 +2,7 @@ import type { Clock, DispatchSdk, JobSpec } from "./dispatch-contract.ts"
 import { appendRecord, createAttemptSession } from "./dispatch-journal.ts"
 import { errorText, splitModel } from "./dispatch-helpers.ts"
 import { observeDispatch, type ObservationOutcome } from "./dispatch-observer.ts"
-import type { ActiveAttempt } from "./dispatch-cancel.ts"
+import { createSessionStatusProbe, type ActiveAttempt } from "./dispatch-cancel.ts"
 
 export class LaunchError extends Error {
   constructor(message: string, readonly jobID?: string) {
@@ -45,12 +45,7 @@ export function observeAttempt(context: AttemptContext, request: AttemptObservat
     sdk, clock, jobID: request.jobID, directory: request.directory,
     childSessionID: request.active.sessionID, requestMessageID: request.active.requestMessageID,
     waitBudgetMs: request.waitBudgetMs, signal: request.signal, startupGraceMs: request.startupGraceMs,
-    sessionStatus: async () => {
-      const result = await sdk.session.status({ query: { directory: request.directory } })
-      if (result.error !== undefined) throw result.error
-      const status = result.data?.[request.active.sessionID]
-      return status === undefined ? undefined : { status: status.type }
-    },
+    sessionStatus: createSessionStatusProbe(sdk, request.directory, request.active.sessionID),
   })
 }
 

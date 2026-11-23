@@ -32,10 +32,127 @@ const TOOL_NAMES = [
 
 export const MEMORY_TOOL_NAMES = TOOL_NAMES
 
+type JsonSchemaValue = {
+  readonly type: "string" | "integer" | "number" | "boolean" | "array" | "object"
+  readonly properties?: Record<string, JsonSchemaValue>
+  readonly required?: readonly string[]
+  readonly items?: JsonSchemaValue
+  readonly enum?: readonly (string | number)[]
+  readonly maxItems?: number
+  readonly description?: string
+}
+
 type JsonSchema = {
   readonly type: "object"
-  readonly properties?: Record<string, unknown>
+  readonly properties?: Record<string, JsonSchemaValue>
   readonly required?: readonly string[]
+}
+
+// Provider-safe JSON Schema mirrors of the Zod shapes in schemas.ts (and the
+// memory-core enums they import), restricted to the keys providers accept:
+// type / properties / required / items / enum / maxItems / description. The
+// contract test (tools-schema.test.ts) locks these to the Zod schemas 1:1.
+export const APPLICABILITY_JSON_SCHEMA: JsonSchemaValue = {
+  type: "object",
+  properties: {
+    time: { type: "string" },
+    region: { type: "string" },
+    conditions: { type: "string" },
+  },
+}
+
+export const PREPARED_CLAIM_JSON_SCHEMA: JsonSchemaValue = {
+  type: "object",
+  properties: {
+    claimType: {
+      type: "string",
+      enum: ["verifiable_fact", "causal_efficacy", "experiential_judgment", "future_prediction", "value_preference"],
+    },
+    text: { type: "string" },
+    applicability: APPLICABILITY_JSON_SCHEMA,
+    confidence: { type: "string", enum: ["high", "medium", "low"] },
+  },
+  required: ["claimType", "text"],
+}
+
+export const SOURCE_META_JSON_SCHEMA: JsonSchemaValue = {
+  type: "object",
+  properties: {
+    url: { type: "string" },
+    stableId: { type: "string" },
+    title: { type: "string" },
+    authorOrInstitution: { type: "string" },
+    publishedAt: { type: "string" },
+    accessedAt: { type: "string" },
+  },
+  required: ["title", "accessedAt"],
+  description: "Source metadata; at least one of url or stableId must be provided.",
+}
+
+export const PREPARED_EVIDENCE_JSON_SCHEMA: JsonSchemaValue = {
+  type: "object",
+  properties: {
+    claimText: { type: "string" },
+    relation: { type: "string", enum: ["supports", "refutes", "qualifies", "supersedes"] },
+    source: SOURCE_META_JSON_SCHEMA,
+    excerpt: { type: "string" },
+    grade: { type: "string", enum: ["high", "medium", "low", "lead_only"] },
+    independenceChainId: { type: "string" },
+    note: { type: "string" },
+  },
+  required: ["claimText", "relation", "source", "grade", "independenceChainId"],
+}
+
+export const PREPARED_DECISION_JSON_SCHEMA: JsonSchemaValue = {
+  type: "object",
+  properties: {
+    conclusion: { type: "string" },
+    assumptions: { type: "array", items: { type: "string" } },
+    preferencesUsed: { type: "array", items: { type: "string" } },
+    confidence: { type: "string", enum: ["high", "medium", "low"] },
+    stability: { type: "string", enum: ["stable", "conditional", "provisional"] },
+    changeConditions: { type: "array", items: { type: "string" } },
+    reason: { type: "string" },
+    pendingOutcome: { type: "boolean" },
+  },
+  required: ["conclusion", "confidence", "stability"],
+}
+
+export const SENSITIVE_FIELD_JSON_SCHEMA: JsonSchemaValue = {
+  type: "object",
+  properties: {
+    field: { type: "string" },
+    label: { type: "string" },
+    confirmed: { type: "boolean" },
+  },
+  required: ["field", "label", "confirmed"],
+}
+
+export const PREPARED_ITEM_JSON_SCHEMA: JsonSchemaValue = {
+  type: "object",
+  properties: {
+    topicKey: { type: "string" },
+    title: { type: "string" },
+    oneLineSummary: { type: "string" },
+    applicability: APPLICABILITY_JSON_SCHEMA,
+    claims: { type: "array", items: PREPARED_CLAIM_JSON_SCHEMA },
+    evidence: { type: "array", items: PREPARED_EVIDENCE_JSON_SCHEMA },
+    decision: PREPARED_DECISION_JSON_SCHEMA,
+    sensitiveFields: { type: "array", items: SENSITIVE_FIELD_JSON_SCHEMA },
+    taxonomyNodeIds: { type: "array", items: { type: "string" } },
+  },
+  required: ["topicKey", "title", "oneLineSummary"],
+}
+
+export const PREPARED_PREFERENCE_JSON_SCHEMA: JsonSchemaValue = {
+  type: "object",
+  properties: {
+    key: { type: "string" },
+    value: { type: "string" },
+    sensitive: { type: "boolean" },
+    confirmed: { type: "boolean" },
+  },
+  required: ["key", "value", "sensitive"],
 }
 
 type ToolDefinition = {
@@ -85,8 +202,8 @@ export const MEMORY_TOOL_DEFINITIONS: readonly ToolDefinition[] = [
       properties: {
         hostSessionId: { type: "string" },
         title: { type: "string" },
-        items: { type: "array" },
-        preferences: { type: "array" },
+        items: { type: "array", items: PREPARED_ITEM_JSON_SCHEMA },
+        preferences: { type: "array", items: PREPARED_PREFERENCE_JSON_SCHEMA },
       },
       required: ["hostSessionId", "title", "items"],
     },
@@ -99,8 +216,8 @@ export const MEMORY_TOOL_DEFINITIONS: readonly ToolDefinition[] = [
       properties: {
         hostSessionId: { type: "string" },
         title: { type: "string" },
-        items: { type: "array" },
-        preferences: { type: "array" },
+        items: { type: "array", items: PREPARED_ITEM_JSON_SCHEMA },
+        preferences: { type: "array", items: PREPARED_PREFERENCE_JSON_SCHEMA },
         previewToken: { type: "string" },
       },
       required: ["hostSessionId", "title", "items", "previewToken"],

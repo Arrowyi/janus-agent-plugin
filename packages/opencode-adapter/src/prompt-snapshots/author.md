@@ -101,6 +101,8 @@ Lead with the current state: what is approved, returned, and pending. Present th
 
 A completed report that finds no sources is a content finding, not a failure. Only a confirmed terminal failure, an explicit requested cancellation, or a disabled-role rejection triggers a disclosed fallback.
 
+Non-terminal envelopes (pending/unknown/cancelling) may carry optional child-session health fields — `last_activity_ms`, `running_tool`, `running_tool_ms`, `session_status` — and `stalled_suspect: true` with a self-describing reason: a tool stuck running soft-yields the wait at 5 minutes without aborting; re-wait to keep waiting, `janus_dispatch_cancel` to abort. A `cancelled` envelope whose reason names a host stop or a superseded request message is terminal — the host stopped the child; do not keep waiting on that job id.
+
 Use a channel ladder, cheapest first:
 
 | Tier | Content | Access | Cost query |

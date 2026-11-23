@@ -5,6 +5,7 @@ import {
   buildChainFailureMessage,
   embedsProviderErrorText,
   isProviderErrorText,
+  makeEnvelope,
   modelFailureHint,
   observationToOutcome,
 } from "./dispatch-helpers.ts"
@@ -105,5 +106,113 @@ describe("buildChainFailureMessage hint", () => {
     const message = buildChainFailureMessage("author-reviewer", ["opencode-go/kimi-k3.1-pro"], "APIError: 429")
     expect(message).toContain('set "author_reviewer_model"')
     expect(message).toContain("degrade by answering inline")
+  })
+})
+
+function envelopeOf(outcome: ReturnType<typeof makeEnvelope>, kind: "nonterminal") {
+  if (outcome.kind !== kind) throw new Error(`expected ${kind}`)
+  return outcome.envelope
+}
+
+describe("health envelope fields and stalled reasons", () => {
+  it("spreads only validated, defined health fields onto the envelope", () => {
+    const envelope = envelopeOf(makeEnvelope(
+      "pending",
+      "ses_job",
+      "consultant-analyst",
+      { index: 0, model: null },
+      "ses_child",
+      100,
+      "waiting",
+      { last_activity_ms: 5_000, running_tool: " grep ", running_tool_ms: 4_000, session_status: "busy", stalled_suspect: true },
+    ), "nonterminal")
+    expect(envelope.last_activity_ms).toBe(5_000)
+    expect(envelope.running_tool).toBe("grep")
+    expect(envelope.running_tool_ms).toBe(4_000)
+    expect(envelope.session_status).toBe("busy")
+    expect(envelope.stalled_suspect).toBe(true)
+  })
+
+  it("drops invalid or blank health values", () => {
+    const envelope = envelopeOf(makeEnvelope(
+      "pending",
+      "ses_job",
+      "consultant-analyst",
+      { index: 0, model: null },
+      "ses_child",
+      100,
+      "waiting",
+      { last_activity_ms: -1, running_tool: "   ", running_tool_ms: 1.5, session_status: "paused" as never },
+    ), "nonterminal")
+    expect("last_activity_ms" in envelope).toBe(false)
+    expect("running_tool" in envelope).toBe(false)
+    expect("running_tool_ms" in envelope).toBe(false)
+    expect("session_status" in envelope).toBe(false)
+  })
+
+  it("emits the running-tool stalled reason", () => {
+    const outcome = observationToOutcome(
+      { kind: "pending", diagnostics: { stalled_suspect: true, running_tool: "grep", running_tool_ms: 310_000, last_activity_ms: 310_000, session_status: "busy" } },
+      "ses_job", "consultant-analyst", { index: 0, model: null, sessionID: "ses_child" }, 1_000,
+    )
+    const envelope = envelopeOf(outcome as ReturnType<typeof makeEnvelope>, "nonterminal")
+    expect(envelope.reason).toBe('tool "grep" has been running for 310000ms without new activity (stalled_suspect); call janus_dispatch_wait to keep waiting or janus_dispatch_cancel to abort')
+  })
+
+  it("emits the no-tool stalled reason", () => {
+    const outcome = observationToOutcome(
+      { kind: "pending", diagnostics: { stalled_suspect: true, last_activity_ms: 305_000 } },
+      "ses_job", "consultant-analyst", { index: 0, model: null, sessionID: "ses_child" }, 1_000,
+    )
+    const envelope = envelopeOf(outcome as ReturnType<typeof makeEnvelope>, "nonterminal")
+    expect(envelope.reason).toBe("no specialist activity for 305000ms (stalled_suspect); call janus_dispatch_wait to keep waiting or janus_dispatch_cancel to abort")
+  })
+
+  it("quotes an age at or above the threshold for a blank-name stalled tool with a sub-threshold activity gap", () => {
+    const outcome = observationToOutcome(
+      { kind: "pending", diagnostics: { stalled_suspect: true, running_tool_ms: 310_000, last_activity_ms: 20_000, session_status: "busy" } },
+      "ses_job", "consultant-analyst", { index: 0, model: null, sessionID: "ses_child" }, 1_000,
+    )
+    const envelope = envelopeOf(outcome as ReturnType<typeof makeEnvelope>, "nonterminal")
+    expect(envelope.reason).toBe("no specialist activity for 310000ms (stalled_suspect); call janus_dispatch_wait to keep waiting or janus_dispatch_cancel to abort")
+    expect(envelope.reason).not.toContain("20000")
+    expect(envelope.running_tool).toBeUndefined()
+    expect(envelope.running_tool_ms).toBe(310_000)
+  })
+
+  it("never adds a stalled reason on a locally aborted observation", () => {
+    const outcome = observationToOutcome(
+      { kind: "pending", diagnostics: { aborted: true, stalled_suspect: true, running_tool: "grep", running_tool_ms: 400_000 } },
+      "ses_job", "consultant-analyst", { index: 0, model: null, sessionID: "ses_child" }, 1_000,
+    )
+    const envelope = envelopeOf(outcome as ReturnType<typeof makeEnvelope>, "nonterminal")
+    expect(envelope.reason).toBe("observation aborted")
+    expect(envelope.stalled_suspect).toBe(true)
+  })
+
+  it("uses the observation reason for cancelled and falls back to the default", () => {
+    const withReason = observationToOutcome(
+      { kind: "cancelled", reason: "child session stopped by host before response completed" },
+      "ses_job", "consultant-analyst", { index: 0, model: null, sessionID: "ses_child" }, 10,
+    )
+    if (withReason.kind !== "cancelled") throw new Error("expected cancelled")
+    expect(withReason.envelope.reason).toBe("child session stopped by host before response completed")
+    const defaulted = observationToOutcome(
+      { kind: "cancelled" },
+      "ses_job", "consultant-analyst", { index: 0, model: null, sessionID: "ses_child" }, 10,
+    )
+    if (defaulted.kind !== "cancelled") throw new Error("expected cancelled")
+    expect(defaulted.envelope.reason).toBe("dispatch was cancelled")
+  })
+
+  it("forwards diagnostics on unknown envelopes", () => {
+    const outcome = observationToOutcome(
+      { kind: "unknown", reason: "no durable progress", diagnostics: { session_status: "idle", last_activity_ms: 12_000 } },
+      "ses_job", "consultant-analyst", { index: 0, model: null, sessionID: "ses_child" }, 10,
+    )
+    const envelope = envelopeOf(outcome as ReturnType<typeof makeEnvelope>, "nonterminal")
+    expect(envelope.status).toBe("unknown")
+    expect(envelope.session_status).toBe("idle")
+    expect(envelope.last_activity_ms).toBe(12_000)
   })
 })

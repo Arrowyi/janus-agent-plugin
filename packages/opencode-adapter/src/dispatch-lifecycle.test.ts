@@ -1571,3 +1571,181 @@ describe("job spec tier persistence", () => {
     expect("tier" in loaded.value.spec).toBe(false)
   })
 })
+
+function inFlightMessage(sessionID: string, requestMessageID: string, created: number): SdkMessageWithParts {
+  return {
+    info: {
+      id: "msg-active",
+      sessionID,
+      role: "assistant",
+      parentID: requestMessageID,
+      time: { created },
+      modelID: "m",
+      providerID: "p",
+    },
+    parts: [textPart("working")],
+  }
+}
+
+async function jobWithInFlightAttempt(fake: FakeSdk, clock: Clock) {
+  const created = await createJob(fake, {
+    parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "consultant-analyst",
+    agentName: "consultation-analyst", modelChain: ["opencode-go/qwen3.8-max"], prompt: "analyze", clock,
+  })
+  if (!created.ok) throw created.error
+  const jobID = created.value.jobID
+  const child = await fake.session.create({ body: { parentID: jobID, title: "child" }, query: { directory: FAKE_DIRECTORY } })
+  const sessionID = child.data!.id
+  const requestMessageID = "msg-reserved-1"
+  const reservation = await appendRecord(fake, {
+    jobID, directory: FAKE_DIRECTORY, messageID: requestMessageID,
+    record: { v: 1, kind: "attempt-reservation", job_id: jobID, attempt_index: 0, model: "opencode-go/qwen3.8-max", message_id: requestMessageID, reserved_at: clock.now() },
+  })
+  if (!reservation.ok) throw reservation.error
+  const receipt = await appendRecord(fake, {
+    jobID, directory: FAKE_DIRECTORY,
+    record: { v: 1, kind: "attempt-receipt", job_id: jobID, attempt_index: 0, session_id: sessionID, message_id: requestMessageID, received_at: clock.now() },
+  })
+  if (!receipt.ok) throw receipt.error
+  return { jobID, sessionID, requestMessageID }
+}
+
+function envelopeStatus(json: string): string {
+  const parsed = parseOutcomeEnvelope(json)
+  if (!parsed.ok) throw parsed.error
+  return parsed.value.status
+}
+
+function denyHostStoppedWrites(fake: FakeSdk): void {
+  const base = fake.session.prompt.bind(fake.session)
+  fake.session.prompt = async (input) => {
+    if (input.body.parts.some((part) => part.type === "text" && typeof part.text === "string" && part.text.includes('"reason":"host-stopped"'))) {
+      throw new Error("journal write rejected")
+    }
+    return base(input)
+  }
+}
+
+describe("O3 host-stop convergence through launch and wait", () => {
+  it("resolveAttemptChain fails closed to unknown when the host-stopped intent cannot be persisted", async () => {
+    const clock = createFakeClock(20_000)
+    const fake = createFakeSdk()
+    const baseAsync = fake.session.promptAsync.bind(fake.session)
+    fake.session.promptAsync = async (input) => {
+      const result = await baseAsync(input)
+      fake.seedMessages(input.path.id, [inFlightMessage(input.path.id, input.body.messageID!, 0)])
+      return result
+    }
+    denyHostStoppedWrites(fake)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    const result = parseEnvelope(await lifecycle.launch({
+      role: "consultant-analyst", prompt: "fixture", agentName: "consultant-analyst", modelChain: ["p/m"],
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0, startupGraceMs: 0,
+    }))
+    expect(result.status).toBe("unknown")
+    expect(result.reason).toContain("could not be persisted")
+    expect(abortCount(fake)).toBe(0)
+  })
+
+  it("runWait fails closed to unknown when the host-stopped intent cannot be persisted", async () => {
+    const clock = createFakeClock(0)
+    const fake = createFakeSdk()
+    const { jobID, sessionID, requestMessageID } = await jobWithInFlightAttempt(fake, clock)
+    fake.seedMessages(sessionID, [inFlightMessage(sessionID, requestMessageID, 0)])
+    clock.advance(20_000)
+    denyHostStoppedWrites(fake)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    const result = parseEnvelope(await lifecycle.wait({ jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 }))
+    expect(result.status).toBe("unknown")
+    expect(result.reason).toContain("could not be persisted")
+  })
+
+  it("appends host-stopped beside a user intent and cancels a resumed busy child without aborts", async () => {
+    const clock = createFakeClock(0)
+    const fake = createFakeSdk()
+    const { jobID, sessionID, requestMessageID } = await jobWithInFlightAttempt(fake, clock)
+    fake.seedMessages(sessionID, [inFlightMessage(sessionID, requestMessageID, 0)])
+    const intent = await appendRecord(fake, {
+      jobID, directory: FAKE_DIRECTORY,
+      record: { v: 1, kind: "cancel-intent", job_id: jobID, intent_at: clock.now() },
+    })
+    if (!intent.ok) throw intent.error
+    clock.advance(20_000)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+
+    const first = await lifecycle.wait({ jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })
+    expect(envelopeStatus(first)).toBe("cancelled")
+    expect(abortCount(fake)).toBe(0)
+    const afterFirst = await loadJob(fake, { jobID, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+    if (!afterFirst.ok) throw afterFirst.error
+    expect(afterFirst.value.cancelIntents).toHaveLength(2)
+    expect(afterFirst.value.cancelIntents.filter((i) => i.reason === "host-stopped")).toHaveLength(1)
+
+    fake.setStatusResult({ data: { [sessionID]: { type: "busy" } } })
+    const second = await lifecycle.wait({ jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })
+    expect(envelopeStatus(second)).toBe("cancelled")
+    expect(abortCount(fake)).toBe(0)
+    const afterSecond = await loadJob(fake, { jobID, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+    if (!afterSecond.ok) throw afterSecond.error
+    expect(afterSecond.value.cancelIntents.filter((i) => i.reason === "host-stopped")).toHaveLength(1)
+  })
+
+  it("honors a non-default runWait startupGraceMs across abortAndReconcile snapshots", async () => {
+    // Given: a user cancel-intent, an attempt 20s old and quiet for 20s, and an idle host.
+    const clock = createFakeClock(0)
+    const fake = createFakeSdk()
+    const { jobID, sessionID, requestMessageID } = await jobWithInFlightAttempt(fake, clock)
+    fake.seedMessages(sessionID, [inFlightMessage(sessionID, requestMessageID, 0)])
+    const intent = await appendRecord(fake, {
+      jobID, directory: FAKE_DIRECTORY,
+      record: { v: 1, kind: "cancel-intent", job_id: jobID, intent_at: clock.now() },
+    })
+    if (!intent.ok) throw intent.error
+    clock.advance(20_000)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+
+    // When: the caller's 60s grace still covers the attempt in both snapshots.
+    const result = await lifecycle.wait({ jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0, startupGraceMs: 60_000 })
+
+    // Then: the intended abort/reconcile path runs with no premature O3 cancel.
+    expect(envelopeStatus(result)).toBe("cancelling")
+    expect(abortCount(fake)).toBe(1)
+    const loaded = await loadJob(fake, { jobID, directory: FAKE_DIRECTORY, expectedParentID: FAKE_PARENT_ID })
+    if (!loaded.ok) throw loaded.error
+    expect(loaded.value.cancelIntents).toHaveLength(1)
+    expect(loaded.value.cancelIntents.some((i) => i.reason === "host-stopped")).toBe(false)
+  })
+
+  it("lets a racing completed outcome beat a persisted host-stopped intent", async () => {
+    const clock = createFakeClock(0)
+    const fake = createFakeSdk()
+    const { jobID, sessionID, requestMessageID } = await jobWithInFlightAttempt(fake, clock)
+    const intent = await appendRecord(fake, {
+      jobID, directory: FAKE_DIRECTORY,
+      record: { v: 1, kind: "cancel-intent", job_id: jobID, intent_at: clock.now(), reason: "host-stopped" },
+    })
+    if (!intent.ok) throw intent.error
+    fake.seedMessages(sessionID, [completedAssistantMessage(requestMessageID, "racing result", { sessionID, id: "msg-racing", time: { created: 0, completed: 0 } })])
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    expect(await lifecycle.wait({ jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })).toBe("racing result")
+    expect(abortCount(fake)).toBe(0)
+  })
+
+  it("lets a racing failed outcome beat a persisted host-stopped intent", async () => {
+    const clock = createFakeClock(0)
+    const fake = createFakeSdk()
+    const { jobID, sessionID, requestMessageID } = await jobWithInFlightAttempt(fake, clock)
+    const intent = await appendRecord(fake, {
+      jobID, directory: FAKE_DIRECTORY,
+      record: { v: 1, kind: "cancel-intent", job_id: jobID, intent_at: clock.now(), reason: "host-stopped" },
+    })
+    if (!intent.ok) throw intent.error
+    fake.seedMessages(sessionID, [completedAssistantMessage(requestMessageID, "", {
+      sessionID, id: "msg-failed", error: { name: "APIError", data: { isRetryable: false, statusCode: 500 } },
+    })])
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock })
+    const result = await lifecycle.wait({ jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })
+    expect(result.startsWith("Error:")).toBe(true)
+    expect(abortCount(fake)).toBe(0)
+  })
+})

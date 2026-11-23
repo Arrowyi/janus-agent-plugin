@@ -16,7 +16,8 @@ import type {
   SdkSession,
   SdkTextPart,
 } from "./dispatch-contract.ts"
-import { observeDispatch, extractUsableText, POLL_INTERVAL_MS } from "./dispatch-observer.ts"
+import { observeDispatch, extractUsableText, POLL_INTERVAL_MS, STALLED_SUSPECT_MS } from "./dispatch-observer.ts"
+import { extractMatchingActivity } from "./dispatch-classifier.ts"
 import { PRODUCTION_WAIT_BUDGET_MS } from "./dispatch-contract.ts"
 import type { ObservationOutcome } from "./dispatch-observer.ts"
 
@@ -133,6 +134,8 @@ function baseRequest(
     readonly signal: AbortSignal
     readonly sessionStatus: () => Promise<{ readonly status: string } | undefined>
     readonly startupGraceMs: number
+    readonly idleConfirmMs: number
+    readonly stalledSuspectMs: number
   }> = {},
 ) {
   return {
@@ -905,5 +908,273 @@ describe("observeDispatch", () => {
     const outcome = await observeDispatch({ ...baseRequest(sdk, clock, { waitBudgetMs: 20, startupGraceMs: 10 }) })
     expect(outcome.kind).toBe("unknown")
     if (outcome.kind === "unknown") expect(outcome.reason).toContain("clock failed")
+  })
+})
+
+function toolPart(tool: string, state: ToolPart["state"], id = "prt-tool"): ToolPart {
+  return { id, messageID: "msg-active", sessionID: CHILD_SESSION_ID, type: "tool", tool, callID: `call-${id}`, state }
+}
+
+async function advanceUntilSettled(
+  clock: Clock & { advance(ms: number): void },
+  observed: Promise<unknown>,
+  stepMs = 10_000,
+  capMs = 2_000_000,
+): Promise<void> {
+  let settled = false
+  void observed.then(() => { settled = true }, () => { settled = true })
+  let advanced = 0
+  while (!settled && advanced < capMs) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    clock.advance(stepMs)
+    advanced += stepMs
+  }
+}
+
+function inFlightToolMessage(parts: ReadonlyArray<SdkPart>, created = 0): SdkMessageWithParts {
+  return makeMessage(makeAssistant("msg-active", { time: { created } }), parts as unknown as SdkTextPart[])
+}
+
+describe("D1 host-stop terminal convergence (O3)", () => {
+  it("keeps pending at 9999ms quiet and cancels at the 10000ms IDLE_CONFIRM boundary", async () => {
+    for (const [age, expected] of [[9_999, "pending"], [10_000, "cancelled"]] as const) {
+      const sdk = createSeededFakeSdk()
+      const clock = createFakeClock(age)
+      sdk.seedMessages(CHILD_SESSION_ID, [inFlightToolMessage([makeText("working")])])
+      const result = await observeDispatch(baseRequest(sdk, clock, {
+        waitBudgetMs: 0, startupGraceMs: 0, sessionStatus: async () => ({ status: "idle" }),
+      }))
+      expect(result.kind).toBe(expected)
+    }
+  })
+
+  it("cancels with the superseded reason when the request message is superseded by a newer message and the child session went idle", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(20_000)
+    const stale = inFlightToolMessage([makeText("working")])
+    let calls = 0
+    sdk.session.messages = async () => {
+      calls++
+      return { data: calls === 1 ? [stale] : [stale, makeUserMessage("msg-newer", CHILD_SESSION_ID)] }
+    }
+    const result = await observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 0, startupGraceMs: 0, sessionStatus: async () => ({ status: "idle" }),
+    }))
+    expect(result).toEqual({
+      kind: "cancelled",
+      hostStopped: true,
+      reason: "child session became idle after request message was superseded before completion",
+    })
+  })
+
+  it("returns the racing terminal from the post-idle read2 instead of cancelling", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(20_000)
+    const stale = inFlightToolMessage([makeText("working")])
+    const done = makeMessage(makeAssistant("msg-done", { time: { created: 10_500, completed: 10_500 }, finish: "stop" }), [makeText("done")])
+    let calls = 0
+    sdk.session.messages = async () => {
+      calls++
+      return { data: calls === 1 ? [stale] : [stale, done] }
+    }
+    const result = await observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 0, startupGraceMs: 0, sessionStatus: async () => ({ status: "idle" }),
+    }))
+    expect(result).toEqual({ kind: "completed", text: "done" })
+  })
+
+  it("stays pending when read2 is not a messages result", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(20_000)
+    const stale = inFlightToolMessage([makeText("working")])
+    let calls = 0
+    sdk.session.messages = async () => {
+      calls++
+      return calls === 1 ? { data: [stale] } : { error: new Error("read2 transport failure") }
+    }
+    const result = await observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 0, startupGraceMs: 0, sessionStatus: async () => ({ status: "idle" }),
+    }))
+    expect(result.kind).toBe("pending")
+  })
+
+  it("stays pending when read2 shows newer activity (TOCTOU branch)", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(20_000)
+    const stale = inFlightToolMessage([makeText("working")])
+    const newer = makeMessage(makeAssistant("msg-active", { time: { created: 19_000 } }), [makeText("still working")])
+    let calls = 0
+    sdk.session.messages = async () => {
+      calls++
+      return { data: calls === 1 ? [stale] : [stale, newer] }
+    }
+    const result = await observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 0, startupGraceMs: 0, sessionStatus: async () => ({ status: "idle" }),
+    }))
+    expect(result.kind).toBe("pending")
+  })
+
+  it("stays pending, never cancelled, when the status probe fails", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(20_000)
+    sdk.seedMessages(CHILD_SESSION_ID, [inFlightToolMessage([makeText("working")])])
+    const result = await observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 0, startupGraceMs: 0, sessionStatus: async () => { throw new Error("status transport failed") },
+    }))
+    expect(result.kind).toBe("pending")
+  })
+})
+
+describe("D2 stuck-tool soft-yield (O2)", () => {
+  it("soft-yields a stuck running tool at the 300000ms threshold with health fields", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(0)
+    sdk.seedMessages(CHILD_SESSION_ID, [inFlightToolMessage([
+      toolPart("grep", { status: "running", input: {}, time: { start: 0 } }),
+    ])])
+    const observed = observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 1_800_000, startupGraceMs: 0, stalledSuspectMs: STALLED_SUSPECT_MS,
+      sessionStatus: async () => ({ status: "busy" }),
+    }))
+    await advanceUntilSettled(clock, observed)
+    const result = await observed
+    expect(clock.now()).toBeLessThan(1_800_000)
+    expect(result.kind).toBe("pending")
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.stalled_suspect).toBe(true)
+    expect(result.diagnostics?.running_tool).toBe("grep")
+    expect(result.diagnostics?.running_tool_ms).toBeGreaterThanOrEqual(STALLED_SUSPECT_MS)
+    expect(result.diagnostics?.last_activity_ms).toBeGreaterThanOrEqual(STALLED_SUSPECT_MS)
+    expect(result.diagnostics?.session_status).toBe("busy")
+  })
+
+  it("keeps the full wait budget on a pure reasoning turn with no running tool", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(0)
+    sdk.seedMessages(CHILD_SESSION_ID, [inFlightToolMessage([makeText("thinking...")])])
+    const observed = observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 1_800_000, startupGraceMs: 0,
+      sessionStatus: async () => ({ status: "busy" }),
+    }))
+    await advanceUntilSettled(clock, observed)
+    const result = await observed
+    expect(clock.now()).toBeGreaterThanOrEqual(1_800_000)
+    expect(result.kind).toBe("pending")
+  })
+
+  it("does not early-yield when recent activity keeps the quiet window short", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(0)
+    const recentText = { type: "text", text: "recent", time: { created: 290_000 } } as unknown as SdkTextPart
+    sdk.seedMessages(CHILD_SESSION_ID, [inFlightToolMessage([
+      toolPart("grep", { status: "running", input: {}, time: { start: 0 } }),
+      recentText,
+    ])])
+    const observed = observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 400_000, startupGraceMs: 0,
+      sessionStatus: async () => ({ status: "busy" }),
+    }))
+    await advanceUntilSettled(clock, observed)
+    await observed
+    expect(clock.now()).toBeGreaterThanOrEqual(400_000)
+  })
+
+  it("does not early-yield on a pending tool with no finite start", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(0)
+    sdk.seedMessages(CHILD_SESSION_ID, [inFlightToolMessage([
+      toolPart("grep", { status: "pending", input: {}, raw: "" }),
+    ])])
+    const observed = observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 400_000, startupGraceMs: 0,
+      sessionStatus: async () => ({ status: "busy" }),
+    }))
+    await advanceUntilSettled(clock, observed)
+    await observed
+    expect(clock.now()).toBeGreaterThanOrEqual(400_000)
+  })
+
+  it("does not early-yield when the observation window is shorter than the threshold", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(1_000_000)
+    sdk.seedMessages(CHILD_SESSION_ID, [inFlightToolMessage([
+      toolPart("grep", { status: "running", input: {}, time: { start: 0 } }),
+    ])])
+    const observed = observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 200_000, startupGraceMs: 0,
+      sessionStatus: async () => ({ status: "busy" }),
+    }))
+    await advanceUntilSettled(clock, observed)
+    await observed
+    expect(clock.now()).toBeGreaterThanOrEqual(1_200_000)
+  })
+
+  it("never early-yields on a waitBudgetMs=0 snapshot", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(300_000)
+    sdk.seedMessages(CHILD_SESSION_ID, [inFlightToolMessage([
+      toolPart("grep", { status: "running", input: {}, time: { start: 0 } }),
+    ])])
+    const result = await observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 0, startupGraceMs: 0,
+      sessionStatus: async () => ({ status: "busy" }),
+    }))
+    expect(clock.now()).toBe(300_000)
+    expect(result.kind).toBe("pending")
+    if (result.kind === "pending") expect(result.diagnostics?.stalled_suspect).toBe(true)
+  })
+})
+
+describe("classifier activity extraction", () => {
+  it("selects the smallest-start running tool part", () => {
+    const activity = extractMatchingActivity([
+      makeMessage(makeAssistant("msg-active", { time: { created: 0 } }), [
+        toolPart("slow", { status: "running", input: {}, time: { start: 100 } }, "prt-slow"),
+        toolPart("long", { status: "running", input: {}, time: { start: 50 } }, "prt-long"),
+      ] as unknown as SdkTextPart[]),
+    ], CHILD_SESSION_ID, REQUEST_MESSAGE_ID)
+    expect(activity.runningTool).toBe("long")
+    expect(activity.runningToolStartedAt).toBe(50)
+  })
+
+  it("falls back to the first running/pending part when no running part has a finite start", () => {
+    const activity = extractMatchingActivity([
+      makeMessage(makeAssistant("msg-active", { time: { created: 0 } }), [
+        toolPart("pendingTool", { status: "pending", input: {}, raw: "" }, "prt-pending"),
+        toolPart("inf", { status: "running", input: {}, time: { start: Number.POSITIVE_INFINITY } }, "prt-inf"),
+      ] as unknown as SdkTextPart[]),
+    ], CHILD_SESSION_ID, REQUEST_MESSAGE_ID)
+    expect(activity.runningTool).toBe("pendingTool")
+    expect(activity.runningToolStartedAt).toBeUndefined()
+  })
+
+  it("drops a blank tool name but keeps its start", () => {
+    const activity = extractMatchingActivity([
+      makeMessage(makeAssistant("msg-active", { time: { created: 0 } }), [
+        toolPart("   ", { status: "running", input: {}, time: { start: 0 } }),
+      ] as unknown as SdkTextPart[]),
+    ], CHILD_SESSION_ID, REQUEST_MESSAGE_ID)
+    expect(activity.runningTool).toBeUndefined()
+    expect(activity.runningToolStartedAt).toBe(0)
+  })
+
+  it("drops non-finite message and part timestamps", () => {
+    const activity = extractMatchingActivity([
+      makeMessage(makeAssistant("msg-active", { time: { created: Number.POSITIVE_INFINITY, completed: Number.NaN } }), [
+        { type: "text", text: "x", time: { created: Number.NEGATIVE_INFINITY } } as unknown as SdkTextPart,
+      ]),
+    ], CHILD_SESSION_ID, REQUEST_MESSAGE_ID)
+    expect(activity.lastActivityAt).toBeUndefined()
+  })
+
+  it("drops an unknown host session_status string from the envelope diagnostics", async () => {
+    const sdk = createSeededFakeSdk()
+    const clock = createFakeClock(20_000)
+    sdk.seedMessages(CHILD_SESSION_ID, [inFlightToolMessage([makeText("working")])])
+    const result = await observeDispatch(baseRequest(sdk, clock, {
+      waitBudgetMs: 0, startupGraceMs: 0, sessionStatus: async () => ({ status: "paused" }),
+    }))
+    expect(result.kind).toBe("pending")
+    if (result.kind === "pending") expect(result.diagnostics?.session_status).toBeUndefined()
   })
 })

@@ -23,6 +23,32 @@ function parseTextContent(result: unknown): unknown {
   return JSON.parse(first.text)
 }
 
+function assertObjectArrayElementSchema(tool: { readonly name: string }, property: string, requiredElementKey: string): void {
+  const schema = (tool as unknown as { inputSchema?: unknown }).inputSchema
+  if (typeof schema !== "object" || schema === null) throw new Error(`${tool.name}: expected an inputSchema`)
+  const properties = (schema as { properties?: unknown }).properties
+  if (typeof properties !== "object" || properties === null) throw new Error(`${tool.name}: expected inputSchema.properties`)
+  const propertySchema = (properties as Record<string, unknown>)[property]
+  if (typeof propertySchema !== "object" || propertySchema === null) throw new Error(`${tool.name}.${property}: expected an advertised property schema`)
+  if ((propertySchema as { type?: unknown }).type !== "array") {
+    throw new Error(`${tool.name}.${property}: expected advertised type "array"`)
+  }
+  const items = (propertySchema as { items?: unknown }).items
+  if (typeof items !== "object" || items === null) {
+    throw new Error(`${tool.name}.${property}: expected an advertised array element schema (found bare array)`)
+  }
+  if ((items as { type?: unknown }).type !== "object") {
+    throw new Error(`${tool.name}.${property}: expected array element schema type "object"`)
+  }
+  const elementProperties = (items as { properties?: unknown }).properties
+  if (typeof elementProperties !== "object" || elementProperties === null || Object.keys(elementProperties).length === 0) {
+    throw new Error(`${tool.name}.${property}: expected non-empty element properties`)
+  }
+  if (!(requiredElementKey in (elementProperties as Record<string, unknown>))) {
+    throw new Error(`${tool.name}.${property}: element properties missing ${requiredElementKey}`)
+  }
+}
+
 describe("janus-memory-mcp stdio server", () => {
   test("persists, recalls, and forgets an item through all five registered tools", async () => {
     // given
@@ -112,6 +138,15 @@ describe("janus-memory-mcp stdio server", () => {
       "memory_commit",
       "memory_manage",
     ])
+    const prepareTool = tools.tools.find((tool) => tool.name === "memory_prepare")
+    const commitTool = tools.tools.find((tool) => tool.name === "memory_commit")
+    if (prepareTool === undefined || commitTool === undefined) {
+      throw new Error("expected memory_prepare and memory_commit tool definitions")
+    }
+    assertObjectArrayElementSchema(prepareTool, "items", "topicKey")
+    assertObjectArrayElementSchema(prepareTool, "preferences", "key")
+    assertObjectArrayElementSchema(commitTool, "items", "topicKey")
+    assertObjectArrayElementSchema(commitTool, "preferences", "key")
     expect(statsBeforeCommit).toMatchObject({ action: "stats", sessions: 0 })
     expect(committed).toMatchObject({ created: true })
     expect(replay).toMatchObject({ created: false, sessionExperienceId: committed.sessionExperienceId })

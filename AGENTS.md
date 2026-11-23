@@ -38,6 +38,7 @@ Full detail: the "部署规则" section of [docs/deployment.md](docs/deployment.
 5. When changing `/janus-models`, update `assets/commands/janus-models.md`, `command-installer.ts`, `script/install-local.ts` (`REQUIRED_INSTALLED_FILES`), the command tests, the integration assertion, and the README/deployment docs together.
 6. When adding, removing, or renaming a config field in `JanusPluginConfigSchema`, add or update its entry in `config-catalog.ts` (group, type, default, Chinese summary); `config-catalog.test.ts` fails on any schema/catalog drift. `/janus-config` (`assets/commands/janus-config.md`) drives the `janus_config` tool (`config-tool.ts`, writes via `config-editor.ts`), which every leaf denies through `LEAF_DISPATCH_DENY`.
 7. Provider keys (`/janus-config` group 10): `provider-keys.ts` (vault at `$XDG_DATA_HOME/janus-agent/provider-keys.json`, plans, `auth.json` writes), `provider-keys-view.ts` (shared rendering), `provider-keys-tool.ts` (`janus_provider_keys`, leaf-denied, no key-value argument by design), and `provider-keys-cli.ts` (bundled to `dist/janus-keys.js`, launched via the installed `bin/janus-keys` shim; the only place a key value is entered). Never add a tool argument that accepts a key, and never print an unmasked key. `install:local` also syncs the command files into the OpenCode config dir (skip with `JANUS_SKIP_COMMAND_SYNC=1`).
+8. Read [docs/design-rationale.md](docs/design-rationale.md) before changing or removing a guard, lifecycle, or state-directory mechanism it covers.
 
 Role model defaults live in `packages/opencode-adapter/src/plugin-config.ts` (`MODEL_DEFAULTS` and the shipped `TIER_MODEL_DEFAULTS`) and are mirrored in `docs/deployment.md`; update both, plus the assertions in `plugin.test.ts`, `agent-registration.test.ts`, and `dispatch-tool.test.ts`. A shipped model with no `assets/model-prompts/<key>.md` block ships without driving notes, so add the block and its `REQUIRED_INSTALLED_FILES` entry in the same change.
 
@@ -52,7 +53,7 @@ The model-routing surface is `mode_models` > `tier_models` > `<role>_model` > `T
 
 The guards take effect on the first real dispatch after an OpenCode restart. When changing routing, update `plugin-config.ts`, `plugin.ts`, `dispatch-tool.ts`, `dispatch-protocol.ts`, `dispatch-guard.ts`, their tests, and the config reference in `docs/deployment.md`.
 
-The current family has 15 registered agents and 13 dispatch roles; the role map lives in [docs/design.md](docs/design.md). Invariants a change must keep:
+The current family has 15 registered agents and 13 dispatch roles; the role map lives in [docs/architecture.md](docs/architecture.md). Invariants a change must keep:
 
 - `janus` and `architect` are not dispatchable. `dispatch-tool.ts` carries the caller DAG guard set `{consultant, tech-lead, author}`: a dispatched sub-session cannot dispatch any of the three.
 - There is no host `build` role.
@@ -88,7 +89,7 @@ Update the role assets, registration, dispatch roles, install list, protocol car
 - `script/skill-consistency.test.ts`, `script/prompt-lint.test.ts`, and the affected prompt goldens;
 - `evals/fixtures/consultation-cases.json` (design cases C56+ and each case's `modes` array).
 
-The design directory is created non-fatally at registration. Deleting `design.md` needs user confirmation; deleting a landed `plan.md` (all milestones verified, review resolved, and the final report delivered) is the one persistent-file deletion exempt from the confirmation gate, and writes/updates to it are still listed for confirmation. The R&D session state lives in `plan.md`, which doubles as the checkpoint file `janus`/`architect` use to relay a fresh `tech-lead` session (protocol: section 7.3 of [docs/design.md](docs/design.md)). The other team-native state artifacts are the documentation team's per-document `brief.md` under `$XDG_DATA_HOME/janus-agent/author/` and the consultation team's per-project candidate ledgers under `$XDG_DATA_HOME/janus-agent/ledger/`.
+The design directory is created non-fatally at registration. Deleting `design.md` needs user confirmation; deleting a landed `plan.md` (all milestones verified, review resolved, and the final report delivered) is the one persistent-file deletion exempt from the confirmation gate, and writes/updates to it are still listed for confirmation. The R&D session state lives in `plan.md`, which doubles as the checkpoint file `janus`/`architect` use to relay a fresh `tech-lead` session (protocol: section 4.3 of [docs/architecture.md](docs/architecture.md); rationale in [docs/design-rationale.md](docs/design-rationale.md)). The other team-native state artifacts are the documentation team's per-document `brief.md` under `$XDG_DATA_HOME/janus-agent/author/` and the consultation team's per-project candidate ledgers under `$XDG_DATA_HOME/janus-agent/ledger/`.
 
 ## Current-state discipline
 

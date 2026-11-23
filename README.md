@@ -133,5 +133,5 @@ Contributor rules (generated skills, prompt goldens, change → verification map
 
 - [docs/deployment.md](docs/deployment.md) — install, full configuration reference, model prerequisites, uninstall
 - [docs/architecture.md](docs/architecture.md) — architecture specification
-- [docs/design.md](docs/design.md) — reference design for the agents, their models and permissions
+- [docs/design-rationale.md](docs/design-rationale.md) — why the key mechanisms, guards, and workflows exist
 - [evals/README.md](evals/README.md) — evaluation fixtures and grading

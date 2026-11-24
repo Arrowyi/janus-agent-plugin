@@ -45,7 +45,7 @@ Escalate, never silently downgrade: scope that outgrows its level is re-classifi
 
 ### Independent review stages
 
-`author-reviewer` reviews in stages. Every dispatch passes `stage` (`outline` / `unit` / `reader` / `final`), the level's `tier`, the stage lookup budget, and `reviews_job_ids` listing the original author-writer job ids it covers (the blueprint job for `outline`, the drafting and fix jobs otherwise). The dispatch boundary rejects a reviewer on the writer's model family, and a fast reviewer over a standard writer job except at `reader`. For a `read-only` unit, write the returned text into the file before its `unit` or `final` review.
+`author-reviewer` reviews in stages. Every dispatch passes `stage` (`outline` / `unit` / `reader` / `final`), the level's `tier`, the stage lookup budget, and `reviews_job_ids` listing the original author-writer job ids it covers (the blueprint job for `outline`, the drafting and fix jobs otherwise). Each dispatch also carries the exact `brief.md` path, any referenced `design.md` path, and the `sourceLedger` content or file path — never just a writer `job_id`. The dispatch boundary rejects a reviewer on the writer's model family, and a fast reviewer over a standard writer job except at `reader`. For a `read-only` unit, write the returned text into the file before its `unit` or `final` review.
 
 Lookup budgets: `outline` and `reader` use no web access; a `D1` `unit` opens the `sourceLedger` URLs and runs at most two web searches, only for a dead source; a `D2` `final` runs at most five; a `D3` `unit` or `final` at most ten; `strict` doubles each budget. The reviewer only re-verifies claims already in the text and logs every lookup in `sourceChecks`.
 

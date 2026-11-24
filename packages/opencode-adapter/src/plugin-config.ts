@@ -159,6 +159,10 @@ export const JanusPluginConfigSchema = z
   // block; the plugin otherwise falls back to its shipped
   // assets/model-prompts library.
   model_prompts: z.record(z.string()).optional(),
+  // Step budget for the two dispatched executor/writer leaves — coder and
+  // author-writer. A runaway backstop: a session that exhausts it stops and
+  // reports up instead of spinning forever; tune via /janus-config.
+  subagent_steps: z.number().int().positive().default(200),
   team_caps: z
     .object({
       round_cap: z.number().int().positive(),

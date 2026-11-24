@@ -9,8 +9,12 @@ import {
   type JanusPluginConfig,
 } from "./plugin-config.ts"
 import {
+  DISPATCH_MARKER,
   DISPATCH_ROLES,
   DISPATCH_STAGES,
+  PERMISSION_REPLY_DECISIONS,
+  PERMISSION_REPLY_TOOL_NAME,
+  PermissionReplyArgsSchema,
   TWO_TIER_DISPATCH_ROLES,
   parseDispatchRole,
   parseOutcomeEnvelope,
@@ -18,6 +22,7 @@ import {
   parseContinueArgs,
   parseWaitArgs,
   type Clock,
+  type DispatchPermissionSdk,
   type DispatchRole,
   type DispatchSdk,
   type KeyedMutex,
@@ -30,8 +35,10 @@ import {
   CONTEXT_WATERMARK_TOKENS,
   enforceContinueReviewGuard,
   enforceDispatchReviewGuard,
+  enforcePermissionReplyGuard,
   readCallerContextTokens,
 } from "./dispatch-guard.ts"
+import { PermissionAskRegistry, createPendingAsksProbe, findLastHumanUserMessageID, resolvePermissionSdk, type PendingAsksProbe } from "./permission-ask.ts"
 import { splitModel, errorText, isRetryableModelError } from "./dispatch-helpers.ts"
 import { annotateAuthorReviewerReturn } from "./dispatch-review-report.ts"
 import {
@@ -54,8 +61,6 @@ export { splitModel, errorText, isRetryableModelError }
  */
 export { DISPATCH_ROLES }
 export type { DispatchRole }
-
-const DISPATCH_MARKER = "[consultation-dispatch:v1] "
 
 /**
  * Roles whose job spec records the dispatch tier. Only the jobs the
@@ -164,6 +169,12 @@ export interface DispatchToolDeps {
   readonly clock?: Clock
   readonly mutex?: KeyedMutex
   readonly lifecycle?: DispatchLifecycle
+  /** Shared permission-ask registry; a fresh one is created when absent. */
+  readonly askRegistry?: PermissionAskRegistry
+  /** Pending-ask probe; defaults to the production probe over the same client. */
+  readonly pendingAsksProbe?: PendingAsksProbe
+  /** Host permission surface; defaults to the surface resolved from the client. */
+  readonly permissionSdk?: DispatchPermissionSdk
 }
 
 /**
@@ -185,10 +196,23 @@ export function createJanusDispatchTools(
   const sdk = client as unknown as DispatchSdk
   const clock = deps.clock ?? createSystemClock()
   const mutex = deps.mutex ?? createKeyedMutex()
+  const askRegistry = deps.askRegistry ?? new PermissionAskRegistry()
+  const permissionSdk = deps.permissionSdk ?? resolvePermissionSdk(client)
+  // The probe performs real lineage/pull reads, so the per-observation gate in
+  // dispatch-attempt/dispatch-cancel skips it entirely while the registry has
+  // no active asks — a completed leaf/coordinator with nothing to escalate
+  // keeps the exact pre-escalation call trace.
+  const pendingAsksProbe = deps.pendingAsksProbe ?? createPendingAsksProbe(client, askRegistry, clock)
   const lifecycle =
     deps.lifecycle ??
-    createDispatchLifecycle({ sdk, clock, mutex })
-  const cancelHandler = createDispatchCancel({ sdk, clock, mutex })
+    createDispatchLifecycle({
+      sdk, clock, mutex, askRegistry, pendingAsksProbe,
+      ...(permissionSdk !== undefined ? { permissionSdk } : {}),
+    })
+  const cancelHandler = createDispatchCancel({
+    sdk, clock, mutex, askRegistry, pendingAsksProbe,
+    ...(permissionSdk !== undefined ? { permissionSdk } : {}),
+  })
 
   const dispatch = tool({
     description:
@@ -311,7 +335,18 @@ export function createJanusDispatchTools(
         stage: args.stage,
         ...(tier !== undefined && TIER_PERSISTING_ROLES.has(role) ? { tier } : {}),
       })
-      return applyContextWatermark(role === "author-reviewer" ? annotateAuthorReviewerReturn(launched) : launched, callerTokens)
+      // A dispatch return may carry pending_asks (a first soft-yield usually
+      // arrives here); record the same-turn watermark so the reply guard can
+      // distinguish the surfacing turn from a later human reply. Write-once and
+      // best-effort.
+      const dispatched = role === "author-reviewer" ? annotateAuthorReviewerReturn(launched) : launched
+      await recordSurfacedTurnWatermark(sdk, askRegistry, {
+        text: dispatched,
+        callerSessionID: context.sessionID,
+        directory: context.directory,
+        now: clock.now(),
+      })
+      return applyContextWatermark(dispatched, callerTokens)
     },
   })
 
@@ -478,7 +513,17 @@ export function createJanusDispatchTools(
         }
         throw error
       }
-      return applyContextWatermark(role === "author-reviewer" ? annotateAuthorReviewerReturn(outcome) : outcome, callerTokens)
+      // A continuation return may carry pending_asks; record the same-turn
+      // watermark before the guard-cleared text leaves the tool. Write-once and
+      // best-effort.
+      const continued = role === "author-reviewer" ? annotateAuthorReviewerReturn(outcome) : outcome
+      await recordSurfacedTurnWatermark(sdk, askRegistry, {
+        text: continued,
+        callerSessionID: context.sessionID,
+        directory: context.directory,
+        now: clock.now(),
+      })
+      return applyContextWatermark(continued, callerTokens)
     },
   })
 
@@ -497,16 +542,23 @@ export function createJanusDispatchTools(
       // unreadable context never decorates). The coder hard ceiling does not
       // apply to wait.
       const callerTokens = await readCallerContextTokens(sdk, context.sessionID, context.directory)
-      return applyContextWatermark(
-        await lifecycle.wait({
-          jobID: parsed.value.job_id,
-          waitMs: parsed.value.wait_ms,
-          parentID: context.sessionID,
-          directory: context.directory,
-          signal: context.abort,
-        }),
-        callerTokens,
-      )
+      const waited = await lifecycle.wait({
+        jobID: parsed.value.job_id,
+        waitMs: parsed.value.wait_ms,
+        parentID: context.sessionID,
+        directory: context.directory,
+        signal: context.abort,
+      })
+      // A wait return may carry pending_asks; record the same-turn watermark
+      // so the reply guard can distinguish the surfacing turn from a later
+      // human reply. Write-once and best-effort.
+      await recordSurfacedTurnWatermark(sdk, askRegistry, {
+        text: waited,
+        callerSessionID: context.sessionID,
+        directory: context.directory,
+        now: clock.now(),
+      })
+      return applyContextWatermark(waited, callerTokens)
     },
   })
 
@@ -515,12 +567,22 @@ export function createJanusDispatchTools(
       "Request cancellation of a pending consultation job. May return a cancelling status if cancellation is not yet confirmed; use janus_dispatch_wait to reconcile. Already completed results are preserved.",
     args: { job_id: tool.schema.string() },
     async execute(args, context: ToolContext): Promise<string> {
-      return cancelHandler.cancel({
+      const outcome = await cancelHandler.cancel({
         jobID: args.job_id,
         parentID: context.sessionID,
         directory: context.directory,
         signal: context.abort,
       })
+      // A cancel snapshot may carry pending_asks; record the same-turn
+      // watermark so a later reply is not mistaken for a same-turn answer.
+      // Write-once and best-effort.
+      await recordSurfacedTurnWatermark(sdk, askRegistry, {
+        text: outcome,
+        callerSessionID: context.sessionID,
+        directory: context.directory,
+        now: clock.now(),
+      })
+      return outcome
     },
   })
 
@@ -537,4 +599,125 @@ export function createJanusDispatchTool(
   deps: DispatchToolDeps = {},
 ): ToolDefinition {
   return createJanusDispatchTools(client, deps).janus_dispatch
+}
+
+export interface SurfacedTurnWatermarkInput {
+  readonly text: string
+  readonly callerSessionID: string
+  readonly directory: string
+  readonly now: number
+}
+
+/**
+ * Record the same-turn surfacing watermark for any `pending_asks` carried in a
+ * tool return (dispatch, wait, continue, or cancel). The watermark is the
+ * caller's newest real human user message at surfacing time; the reply guard
+ * rejects an answer that arrives before a newer human message. Write-once per
+ * requestID and entirely best-effort.
+ */
+export async function recordSurfacedTurnWatermark(
+  sdk: DispatchSdk,
+  askRegistry: PermissionAskRegistry,
+  input: SurfacedTurnWatermarkInput,
+): Promise<void> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(input.text)
+  } catch {
+    return
+  }
+  if (typeof parsed !== "object" || parsed === null) return
+  const pending = (parsed as Record<string, unknown>).pending_asks
+  if (!Array.isArray(pending) || pending.length === 0) return
+  const requestIDs: string[] = []
+  for (const ask of pending) {
+    if (typeof ask !== "object" || ask === null) continue
+    const requestID = (ask as Record<string, unknown>).requestID
+    if (typeof requestID === "string" && requestID.length > 0) requestIDs.push(requestID)
+  }
+  if (requestIDs.length === 0) return
+  let watermark: string | undefined
+  try {
+    const result = await sdk.session.messages({
+      path: { id: input.callerSessionID },
+      query: { directory: input.directory },
+    })
+    if (result.error === undefined && result.data !== undefined) {
+      watermark = findLastHumanUserMessageID(result.data, askRegistry.pluginInjectedMessageIDs)
+    }
+  } catch {
+    watermark = undefined
+  }
+  for (const requestID of requestIDs) {
+    askRegistry.markSurfaced(requestID, {
+      callerSessionID: input.callerSessionID,
+      surfacedAtUserMessageID: watermark,
+      surfacedAt: input.now,
+    })
+  }
+}
+
+/**
+ * Build the `janus_permission_reply` tool. It parses the non-strict reply args,
+ * runs the four-gate runtime guard before any SDK reply call, then forwards
+ * the reply (with the optional message) to the resolved permission surface.
+ */
+export function createPermissionReplyTool(
+  client: PluginInput["client"],
+  deps: DispatchToolDeps = {},
+): Record<string, ToolDefinition> {
+  const sdk = client as unknown as DispatchSdk
+  const askRegistry = deps.askRegistry ?? new PermissionAskRegistry()
+  const clock = deps.clock ?? createSystemClock()
+  return {
+    [PERMISSION_REPLY_TOOL_NAME]: tool({
+      description:
+        "Answer a pending permission ask surfaced to you in a dispatch envelope's pending_asks. Supply the ask's sessionID and requestID plus reply (once, always, or reject) and an optional message. Only the top-level user-facing caller may call this; dispatched sub-sessions must surface pending_asks instead.",
+      args: {
+        sessionID: tool.schema.string(),
+        requestID: tool.schema.string(),
+        reply: tool.schema.enum(PERMISSION_REPLY_DECISIONS),
+        message: tool.schema.string().optional(),
+      },
+      async execute(args, context: ToolContext): Promise<string> {
+        const parsed = PermissionReplyArgsSchema.safeParse(args)
+        if (!parsed.success) {
+          const detail = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")
+          return `Error: invalid permission reply args: ${detail}`
+        }
+        const permissionSdk = resolvePermissionSdk(client)
+        const outcome = await enforcePermissionReplyGuard(sdk, {
+          sessionID: context.sessionID,
+          directory: context.directory,
+          args: parsed.data,
+          askRegistry,
+          permissionSdk,
+          now: clock.now(),
+        })
+        if (!outcome.ok) return outcome.message
+        if (outcome.action === "already-resolved") return outcome.message
+        if (permissionSdk === undefined) {
+          return "Error: the host permission surface is unavailable; retry janus_permission_reply when the permission service recovers"
+        }
+        const { requestID, sessionID, reply, message } = parsed.data
+        let result
+        try {
+          result = await permissionSdk.reply({
+            path: { requestID, sessionID },
+            body: { reply, ...(message !== undefined ? { message } : {}) },
+            query: { directory: context.directory },
+          })
+        } catch (error: unknown) {
+          return `Error: permission reply failed (${errorText(error)}); retry janus_permission_reply`
+        }
+        if (result.error !== undefined) {
+          return `Error: permission reply failed (${errorText(result.error)}); retry janus_permission_reply`
+        }
+        if (result.data === false) {
+          return "Error: the host did not accept the permission reply; the request may already be resolved elsewhere"
+        }
+        return `Permission request ${requestID} on session ${sessionID} replied: ${reply}`
+      },
+    }),
+  }
 }

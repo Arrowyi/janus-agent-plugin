@@ -251,6 +251,13 @@ export const CONFIG_FIELDS: readonly ConfigField[] = [
     summary: "每个提供商的建议性止损线（美元，正数）",
   },
   {
+    key: "subagent_steps",
+    group: "team",
+    type: "number",
+    default: 200,
+    summary: "coder 与 author-writer 两个执行/写手叶的步数上限（失控后备闸，正整数）",
+  },
+  {
     key: "writer_docs_roots",
     group: "writer",
     type: "string[]",

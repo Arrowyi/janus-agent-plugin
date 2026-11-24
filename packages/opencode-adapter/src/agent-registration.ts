@@ -29,7 +29,7 @@ interface SubagentEntry {
   description: string
   prompt: string
   model: string
-  permission: Record<string, string>
+  permission: Record<string, unknown>
 }
 
 const RUNTIME_BINDINGS_PLACEHOLDER = /<!--\s*RUNTIME-BINDINGS[\s\S]*?-->/
@@ -240,6 +240,7 @@ export const LEAF_DISPATCH_DENY = {
   janus_dispatch_wait: "deny",
   janus_dispatch_cancel: "deny",
   janus_dispatch_continue: "deny",
+  janus_permission_reply: "deny",
   janus_config: "deny",
   janus_provider_keys: "deny",
 } as const
@@ -410,7 +411,7 @@ export async function registerSimple(
  * bindings. The consultant appends its author-mode writer-session rule.
  */
 const DISPATCH_JOB_TOOLS_LINE =
-  "- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id`, `session_id`, and the success `text`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..1800000, default 1800000; 0 snapshots). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch a pending job and never continue a pending job — wait on it first."
+  "- Job tools: `janus_dispatch` (role, prompt; optional `return_handle: true` returns a completed envelope with `job_id`, `session_id`, and the success `text`) uses a soft wait; pending/unknown is not failure. Continue the same job with `janus_dispatch_wait` (job_id, wait_ms?; integer 0..1800000, default 1800000; 0 snapshots). A `pending` envelope may carry `pending_asks` — a descendant session is blocked on a host permission ask; surface it to the user and reply with `janus_permission_reply` (sessionID, requestID, reply `once`/`always`/`reject`, message?) after the user's next message, defaulting to `once` or `reject` (`always` grants only within the current process in V1). Only `janus_dispatch_cancel` (job_id) requests cancellation; cancelling is not confirmed cancellation. `janus_dispatch_continue` (session_id, prompt, role?) sends a new prompt to an existing idle dispatch session from the same caller and workspace; never re-dispatch a pending job and never continue a pending job — wait on it first."
 
 const AUTHOR_WRITER_SESSION_LINE =
   " In doc mode, store the first author-writer dispatch envelope's `session_id` as `writer_session_id` in the brief and use `janus_dispatch_continue` for that document's maintenance edits (one writer session per document, no cross-document reuse); on a lost, foreign, or busy writer session, wait or make a fresh dispatch with the brief and update the stored id."
@@ -573,18 +574,22 @@ function tmpdirExternalScopes(): Record<string, "allow"> {
 
 /**
  * coder's permissions: workspace edits allowed without asking, external
- * edits ask, project-native toolchain commands (compile/typecheck/lint/
+ * edits denied, project-native toolchain commands (compile/typecheck/lint/
  * test, any language) allowed with the VCS-write/destructive guardrails
  * above, and further subagent dispatch denied (leaf node). Host edit
  * permissions evaluate worktree-relative paths, so with bases supplied
- * the edit object adds a `../*` ask (the relative shape of every
- * outside-workspace submission) beside the `/*` ask (the hedge for
+ * the edit object adds a `../*` deny (the relative shape of every
+ * outside-workspace submission) beside the `/*` deny (the hedge for
  * absolute-shape submission), both after the catch-all allow, and the
  * shared tmp scopes' allow twins last — findLast semantics keep
  * sanctioned scratch writes uninterrupted. Without bases the edit object
- * keeps `{"*": "allow", "/*": "ask"}`. External reads are limited to the
- * shared temporary directory — the design state directory belongs to the
- * primary seats, never to the execution leaf.
+ * keeps `{"*": "allow", "/*": "ask"}` (test-only shape: the registration
+ * hook always supplies bases, and a `"/*"` deny there without tmp twins
+ * would deny absolute-path tmp writes). External reads deny everything
+ * outside the shared temporary directory — the design state directory
+ * belongs to the primary seats, never to the execution leaf; the leading
+ * `"*": "deny"` fails an un-whitelisted external probe immediately
+ * instead of hanging the non-interactive session on an ask.
  */
 export function buildCoderPermission(bases: string[] = []): Record<string, unknown> {
   const tmpAllowTwins: Record<string, "allow"> = {}
@@ -594,20 +599,21 @@ export function buildCoderPermission(bases: string[] = []): Record<string, unkno
   return {
     edit:
       bases.length > 0
-        ? { "*": "allow", "../*": "ask", "/*": "ask", ...tmpAllowTwins }
+        ? { "*": "allow", "../*": "deny", "/*": "deny", ...tmpAllowTwins }
         : { "*": "allow", "/*": "ask" },
     bash: { "*": "allow", ...CODER_BASH_DENY_RULES },
     webfetch: "allow",
     websearch: "allow",
-    external_directory: tmpdirExternalScopes(),
+    external_directory: { "*": "deny", ...tmpdirExternalScopes() },
     task: "deny",
     ...LEAF_DISPATCH_DENY,
   }
 }
 
 /**
- * Register the `coder` dual-tier execution leaf: mode "subagent", a step cap
- * of 80 with report-up, a static prompt (leaf node — never dispatches, so no
+ * Register the `coder` dual-tier execution leaf: mode "subagent", the
+ * configurable `subagent_steps` step cap with report-up, a static prompt
+ * (leaf node — never dispatches, so no
  * runtime bindings block), and the workspace-allow permission set. The
  * registration replaces any pre-existing entry unconditionally: a stale
  * user-side `agent.coder` block is always overwritten by the plugin-owned
@@ -629,7 +635,7 @@ export async function registerCoder(
     description: CODER_DESCRIPTION,
     prompt,
     model: resolveRoleModel(pluginConfig, "coder"),
-    steps: 80,
+    steps: pluginConfig.subagent_steps,
     permission: buildCoderPermission(bases),
   }
 
@@ -1047,7 +1053,19 @@ async function registerReadOnlySubagent(
     description: options.description,
     prompt,
     model: options.model,
-    permission: { edit: "deny", bash: "deny", task: "deny", ...LEAF_DISPATCH_DENY, ...(options.extraPermissions ?? {}) },
+    // `"*": "deny"` first: a non-interactive sub-session must never hang on an
+    // unanswered external-directory ask — un-whitelisted external access fails
+    // immediately (DeniedError) and the leaf self-corrects. The host
+    // re-appends the truncated-tool-output allow automatically, so truncated
+    // reads still work.
+    permission: {
+      edit: "deny",
+      bash: "deny",
+      task: "deny",
+      ...LEAF_DISPATCH_DENY,
+      external_directory: { "*": "deny" },
+      ...(options.extraPermissions ?? {}),
+    },
   }
 
   if (!config.agent) config.agent = {}
@@ -1102,7 +1120,8 @@ export async function registerConsultantCritic(
  * read-only leaf permission it gains read access to the design state
  * directory so background review sessions can open `design.md` and
  * `plan.md` without tripping the host's external-directory permission
- * prompt (which would hang an unattended dispatch).
+ * prompt (which would hang an unattended dispatch); every other external
+ * directory denies outright.
  */
 export async function registerCoderReviewer(
   config: MutableConfig,
@@ -1116,7 +1135,9 @@ export async function registerCoderReviewer(
     model: resolveRoleModel(pluginConfig, "coder-reviewer"),
     pluginConfig,
     extraFragments: [ENGINEERING_PRINCIPLES_ASSET],
-    extraPermissions: { external_directory: { [`${resolveDesignStateDir(env)}/**`]: "allow" } },
+    extraPermissions: {
+      external_directory: { "*": "deny", [`${resolveDesignStateDir(env)}/**`]: "allow" },
+    },
   })
 }
 
@@ -1127,7 +1148,7 @@ export async function registerCoderReviewer(
  * permission it gains read access to the design state directory so background
  * review sessions can open `design.md` and `plan.md` without tripping the
  * host's external-directory permission prompt (which would hang an
- * unattended dispatch).
+ * unattended dispatch); every other external directory denies outright.
  */
 export async function registerSolutionReviewer(
   config: MutableConfig,
@@ -1141,7 +1162,9 @@ export async function registerSolutionReviewer(
     model: resolveRoleModel(pluginConfig, "solution-reviewer"),
     pluginConfig,
     extraFragments: [ENGINEERING_PRINCIPLES_ASSET],
-    extraPermissions: { external_directory: { [`${resolveDesignStateDir(env)}/**`]: "allow" } },
+    extraPermissions: {
+      external_directory: { "*": "deny", [`${resolveDesignStateDir(env)}/**`]: "allow" },
+    },
   })
 }
 
@@ -1162,10 +1185,13 @@ export async function registerConsultantAuditor(
  * author-writer's permissions. With roots: edit is denied everywhere except
  * the configured writer roots (`"*": "deny"` first, allow rules after — last
  * matching rule wins), bash and every dispatch tool are denied, web lookups
- * are allowed, and `external_directory` grants access to the fixed author
- * state dir so the writer can read the brief (writes there still hit
- * `edit: "*" -> deny`). With `roots: []` (read-only fallback) edit is denied
- * outright and the writer returns prose for the author to publish.
+ * are allowed, and `external_directory` denies every external directory
+ * except the fixed author state dir so the writer can read the brief
+ * (writes there still hit `edit: "*" -> deny`). With `roots: []`
+ * (read-only fallback) edit is denied outright and the writer returns prose
+ * for the author to publish; the same `external_directory` shape carries
+ * over so reading the brief at the supplied path never hangs the
+ * non-interactive session on an ask.
  *
  * Root allow rules are emitted both project-relative (`userdoc/**`) and, when
  * the project `directory` is known, anchored to it in absolute form (the
@@ -1187,6 +1213,7 @@ export function buildAuthorWriterPermission(
       task: "deny",
       webfetch: "allow",
       websearch: "allow",
+      external_directory: { "*": "deny", [`${authorStateDir}/**`]: "allow" },
       ...LEAF_DISPATCH_DENY,
     }
   }
@@ -1204,7 +1231,7 @@ export function buildAuthorWriterPermission(
     task: "deny",
     webfetch: "allow",
     websearch: "allow",
-    external_directory: { [`${authorStateDir}/**`]: "allow" },
+    external_directory: { "*": "deny", [`${authorStateDir}/**`]: "allow" },
     ...LEAF_DISPATCH_DENY,
   }
 }
@@ -1270,7 +1297,8 @@ export function buildAuthorWriterRuntimeBindings(
 }
 
 /**
- * Register the `author-writer` executor: mode "subagent", a step cap of 80,
+ * Register the `author-writer` executor: mode "subagent", the configurable
+ * `subagent_steps` step cap,
  * the layered prompt (role asset + common base/write + author-writer runtime
  * bindings), scoped-write permissions over the configured writer roots
  * (anchored to the project `directory` when supplied), and the fixed author
@@ -1308,7 +1336,7 @@ export async function registerAuthorWriter(
     description: AUTHOR_WRITER_DESCRIPTION,
     prompt: assembledPrompt,
     model: resolveRoleModel(pluginConfig, "author-writer"),
-    steps: 80,
+    steps: pluginConfig.subagent_steps,
     permission: buildAuthorWriterPermission(roots, authorStateDir, directory),
   }
 
@@ -1330,10 +1358,11 @@ function twoTierModelList(pluginConfig: JanusPluginConfig, role: "author-writer"
  * author-reviewer's permissions: it never changes files. Edit, bash, and
  * task are denied; `webfetch` and `websearch` are allowed so the reviewer can
  * re-verify claims already in the text, within the stage budget its prompt
- * sets; `external_directory` grants read access to the fixed author state dir
- * (briefs) and design state dir (architecture reference records) so the
- * reviewer can open the materials it audits; every dispatch tool is denied at
- * the permission layer (leaf node).
+ * sets; `external_directory` denies every external directory except the
+ * fixed author state dir (briefs) and design state dir (architecture
+ * reference records) so the reviewer can open the materials it audits
+ * without ever hanging the non-interactive session on an ask; every
+ * dispatch tool is denied at the permission layer (leaf node).
  */
 export function buildAuthorReviewerPermission(
   authorStateDir: string,
@@ -1346,6 +1375,7 @@ export function buildAuthorReviewerPermission(
     webfetch: "allow",
     websearch: "allow",
     external_directory: {
+      "*": "deny",
       [`${authorStateDir}/**`]: "allow",
       [`${designStateDir}/**`]: "allow",
     },
@@ -1355,12 +1385,19 @@ export function buildAuthorReviewerPermission(
 
 /**
  * Build the runtime bindings block injected into the author-reviewer prompt:
- * its resolved model per tier and the leaf rule.
+ * its resolved model per tier, the read-only state-dir references that
+ * pre-position the input paths a dispatch must supply, and the leaf rule.
  */
-export function buildAuthorReviewerRuntimeBindings(pluginConfig: JanusPluginConfig): string {
+export function buildAuthorReviewerRuntimeBindings(
+  pluginConfig: JanusPluginConfig,
+  authorStateDir: string = resolveAuthorStateDir(),
+  designStateDir: string = resolveDesignStateDir(),
+): string {
   const modelLine = `- Author-reviewer models: ${twoTierModelList(pluginConfig, "author-reviewer")} — the dispatch \`tier\` picks the seat; the stage budgets apply at both tiers`
+  const authorLine = `- Author state dir (read-only reference): \`${authorStateDir}\` — document briefs live here; read only the exact brief path the dispatch supplies, never glob the directory`
+  const designLine = `- Design state dir (read-only reference): \`${designStateDir}\` — design records live here; read only the design.md path the dispatch names, never glob the directory`
   const leafLine = "- You are a leaf: no edits, no bash, no dispatch, no memory tools"
-  return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${leafLine}`
+  return `## Runtime Bindings (injected by opencode-adapter)\n${modelLine}\n${authorLine}\n${designLine}\n${leafLine}`
 }
 
 /**
@@ -1394,7 +1431,7 @@ export async function registerAuthorReviewer(
     assetFile: "agents/author-reviewer.md",
     fragments: [RESEARCH_LEAF_ASSET, USER_FACING_STYLE_ASSET],
     includeCommonWrite: false,
-    runtimeBlock: buildAuthorReviewerRuntimeBindings(pluginConfig),
+    runtimeBlock: buildAuthorReviewerRuntimeBindings(pluginConfig, authorStateDir, designStateDir),
   })
 
   const entry = {

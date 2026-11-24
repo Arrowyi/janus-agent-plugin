@@ -598,8 +598,9 @@ describe("agent prompt contracts", () => {
     // a patch over 120 KB upgrades the reviewer or splits the milestone — never truncates
     expect(prompt).toContain("120 KB")
     expect(prompt).toContain("never truncate")
-    // a coder session that hits the step cap continues in a fresh session, counted against the cap
-    expect(prompt).toContain("80-step cap")
+    // a coder session that hits the subagent_steps cap continues in a fresh session, counted against the cap
+    expect(prompt).toContain("subagent_steps")
+    expect(prompt).toContain("default 200")
     expect(prompt).toContain("counts toward the milestone's three-round cap")
     // disabled or quota-exhausted seats stop the task
     expect(prompt).toContain("fail-closed")

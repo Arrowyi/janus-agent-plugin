@@ -1,5 +1,5 @@
 import path from "node:path"
-import type { AttemptReceipt, AttemptReservation, CancelIntent, JobSpec, JournalRecord, SdkSession } from "./dispatch-contract.ts"
+import { DISPATCH_MARKER, type AttemptReceipt, type AttemptReservation, type CancelIntent, type JobSpec, type JournalRecord, type SdkSession } from "./dispatch-contract.ts"
 import { DispatchJournalError, type JournalResult, type LoadedJob, type LoadJobInput } from "./dispatch-journal.ts"
 
 interface JournalSnapshot {
@@ -9,7 +9,7 @@ interface JournalSnapshot {
 }
 
 function matchesDispatchTitle(title: string, role: string): boolean {
-  return title === `[consultation-dispatch:v1] ${role}`
+  return title === `${DISPATCH_MARKER}${role}`
 }
 
 export function bindJob(snapshot: JournalSnapshot, input: LoadJobInput): JournalResult<LoadedJob> {

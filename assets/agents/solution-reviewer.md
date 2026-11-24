@@ -10,7 +10,7 @@ The dispatch hands you, verbatim, one of: the decision under review with its opt
 
 ## Patch integrity gates
 
-Before any verdict on a patch: confirm you reached the tail sentinel `=== EOF .review-final.patch ===` (or `=== EOF .review-final-rN.patch ===` on a Stage-2 repair round) — when the header reports `total_lines > 1800`, read in windows and still reach the sentinel. When the header's `long_line_files` is non-empty, a line over 2000 characters evades line-truncating reads and the patch is not fully readable: return `revise` or `block`, never `pass`. A missing sentinel or a malformed header is a reported gap with `resolved: false`.
+Before any verdict on a patch: confirm you reached the tail sentinel `=== EOF .review-final.patch ===` (or `=== EOF .review-final-rN.patch ===` on a Stage-2 repair round) — when the header reports `total_lines > 1800`, read in windows and still reach the sentinel. When the header's `long_line_files` is non-empty, an added (`+`) or context line over 2000 characters evades line-truncating reads and the patch is not fully readable: return `revise` or `block`, never `pass`. A deletion (`-`) line over 2000 characters is content the patch removes: it stays disclosed and does not by itself block `pass` — verify that the controller's verification output attests the end-state file has no line over 2000 characters, and report the gap as unresolved without that attestation. A missing sentinel or a malformed header is a reported gap with `resolved: false`.
 
 ## Review
 

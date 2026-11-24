@@ -17,7 +17,7 @@ flowchart TB
     U[用户] --> HOST[OpenCode 宿主]
     HOST -->|"加载 dist/index.js"| OA[opencode-adapter]
     OA --> AG["15 个 agent<br/>6 主入口 + 9 子 agent"]
-    OA --> TL["6 个工具<br/>janus_dispatch / _wait / _cancel / _continue<br/>janus_config / janus_provider_keys"]
+    OA --> TL["7 个工具<br/>janus_dispatch / _wait / _cancel / _continue<br/>janus_permission_reply<br/>janus_config / janus_provider_keys"]
     OA --> SK["3 个 skill + 3 条斜杠命令"]
     OA --> ST["团队状态目录<br/>design / author / ledger / lite"]
     OA -->|"stdio 拉起"| MCP["memory-mcp-server.js"]
@@ -76,7 +76,7 @@ simple      -> 无（叶节点）
 | `packages/memory-core` | 权威经验 schema、修订状态迁移、检索规划、敏感字段与提示词注入检测、导入导出契约 | 不知 OpenCode 会话、MCP 传输或 SQL |
 | `packages/memory-sqlite` | 迁移、事务与幂等、WAL（预写日志并发读写模式）与 busy timeout、FTS（全文检索索引）、派生摘要与 embedding（语义向量表征）、备份恢复与重建、维护 CLI | 不含咨询策略，不做 MCP 传输 |
 | `packages/memory-mcp` | 本地 stdio MCP 服务器，暴露 5 个工具，领域行为全部委托下层 | 不含咨询策略与模型特有推理 |
-| `packages/opencode-adapter` | agent 注册与权限、6 个工具、提示词组装与系统转换钩子、skill 与命令安装及修剪、配置读写、状态目录创建 | 不含证据、建议或持久化逻辑；不导入记忆包 |
+| `packages/opencode-adapter` | agent 注册与权限、7 个工具、提示词组装与系统转换钩子、skill 与命令安装及修剪、配置读写、状态目录创建 | 不含证据、建议或持久化逻辑；不导入记忆包 |
 | `assets/` | 角色提示词、共享原则片段、方法论卡片、模型适配块、命令文件、生成的 `SKILL.md` | 不含逻辑；`assets/skills/*/SKILL.md` 不手改 |
 | `skill-src/` | 三个 skill 的唯一事实源 | 绝不随包发布 |
 | `script/` | 构建、安装、skill 生成、集成证明与仓库级测试 | 不进入 `dist/` |
@@ -198,6 +198,7 @@ janus-agent-plugin/
 | `janus_dispatch_wait` | 用同一 `job_id` 恢复观察（含协调者重启后），不重复发起 |
 | `janus_dispatch_cancel` | 显式取消并对账；确认前可返回 `cancelling`；完成与取消竞速时完成方胜出 |
 | `janus_dispatch_continue` | 向既有派发会话发送新提示以复用其上下文；继承原 job 的 `agent_name` 与 `model_chain`，绝不切换模型 |
+| `janus_permission_reply` | 顶层调用方在用户的下一条消息后代子会话回答宿主权限询问（`sessionID`、`requestID`、`reply: once\|always\|reject`、`message?`）；十个叶角色拒绝，运行时四道门校验顶层调用方身份、request 归属、向上谱系与同轮水印；非终态信封以 `pending_asks` 承载待决询问 |
 
 以下规则在 `janus_dispatch` 边界、创建任何 job 之前强制；错误文本与各情形细节见 [deployment.md](deployment.md) 的「审查席守卫」与「上下文水位与 coder 硬顶」两节。
 
@@ -214,9 +215,9 @@ janus-agent-plugin/
 
 ### 4.3 权限与团队状态产物
 
-- **叶节点**：`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`、`solution-reviewer`、`coder`、`coder-reviewer`、`author-writer`、`author-reviewer`、`simple` 都有 `task: "deny"` 并拒绝全部 `janus_dispatch*`、`janus_config`、`janus_provider_keys`；只读专家同时禁 `edit` 与 `bash`。
+- **叶节点**：`common-explorer`、`consultant-analyst`、`consultant-critic`、`consultant-auditor`、`solution-reviewer`、`coder`、`coder-reviewer`、`author-writer`、`author-reviewer`、`simple` 都有 `task: "deny"` 并拒绝全部 `janus_dispatch*`、`janus_permission_reply`、`janus_config`、`janus_provider_keys`；只读专家同时禁 `edit` 与 `bash`。九个 `mode: "subagent"` 角色的 `external_directory` 均以 `"*": "deny"` 领头：未列入白名单的外部路径直接拒绝而非挂起等待——`coder` 只放行共享临时目录，`solution-reviewer` 与 `coder-reviewer` 另放行 design 状态目录，`author-writer` 另放行 author 状态目录，`author-reviewer` 放行 author 与 design 两目录。
 - **`tech-lead`**：`edit` 以 `{"*": "deny"}` 打头，只放行设计状态目录；`bash` 全放（快照与补丁构建等控制器动作）；它是唯一持有派发 `coder` 车道的角色，不写业务代码。
-- **`coder`**：工作区内编辑免确认、工作区外编辑先询问，`bash` 全允许但拒绝 `CODER_BASH_DENY_RULES` 清单（27 条 VCS 写与还原、`rm -rf`、`sudo`、`janus-keys`）。该清单是防误操作的护栏而非沙箱，拦不住子 shell 或脚本重定向；工作区完整性由 `tech-lead` 的基线对账兜底。注册时整项替换用户配置里的同名 `agent.coder` 条目。
+- **`coder`**：工作区内编辑免确认，工作区外编辑直接拒绝（edit 对 `../*` 与 `/*` deny、临时目录 allow 孪生殿后；`external_directory` 以 `"*": "deny"` 领头、仅放行共享临时目录），`bash` 全允许但拒绝 `CODER_BASH_DENY_RULES` 清单（27 条 VCS 写与还原、`rm -rf`、`sudo`、`janus-keys`）。该清单是防误操作的护栏而非沙箱，拦不住子 shell 或脚本重定向；工作区完整性由 `tech-lead` 的基线对账兜底。注册时整项替换用户配置里的同名 `agent.coder` 条目。
 - **`author-writer`**：`edit` 仅允许在 `writer_docs_roots` 可写根之下（默认 `["userdoc"]`），空数组转为只读；位于 `writer_docs_roots` 可写根之外的文件（如项目内的 `README.md`、`docs/**`）由它只读返回正文，`author` 不执笔写正文，只把返回的正文原样落盘。
 - **`edit` 权限孪生**：宿主按 `path.relative(worktree, file)` 求值 edit 权限，位于工作区之外的状态目录会以 `../..` 形态的相对路径提交，单条绝对路径规则永远匹配不上；`agent-registration.ts` 的 `resolveEditBases` 取项目 `directory` 与宿主 `worktree`（缺省回落到 `directory`），各取 resolve 与 realpath 两种形态作为基目录；`editAllowTwins` 据此为每条 allow 补上按各基目录计算的相对孪生（另含绝对、去前导斜杠与 realpath 形态），且在目标等于基目录或其祖先时跳过，以免 `../**` 吞掉兜底拒绝。
 

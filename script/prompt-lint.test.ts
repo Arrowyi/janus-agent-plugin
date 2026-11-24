@@ -47,7 +47,12 @@ const SKILL_MODULE_BUDGET = 3000
 const SKILL_TOTAL_BUDGETS: Record<string, number> = {
   consultation: 8500,
   "consultation-design": 2500,
-  "consultation-doc": 4500,
+  // consultation-doc: raised for the author-dispatch path rule — every
+  // author-reviewer dispatch carries the exact brief.md / design.md /
+  // sourceLedger paths, never a bare writer job_id (the generated body sat at
+  // exactly the old budget and the module prose is dense single-source policy
+  // where compression would cut a distinct rule).
+  "consultation-doc": 4525,
 }
 
 /**

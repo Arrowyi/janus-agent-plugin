@@ -512,19 +512,52 @@ async function main(): Promise<void> {
             "/tmp/opencode",
             "/private/tmp/opencode",
           ]
-          const coderTmpScopes = new Set(tmpScopeDirs.map((scopeDir) => `${scopeDir}/**`))
+          // Mirror tmpdirScopeDirs' Set dedupe so a collapsed alias keeps the
+          // expected key count aligned with the registration.
+          const tmpScopeList = [...new Set(tmpScopeDirs)]
+          const coderExternalKeys = coderExternal === undefined ? [] : Object.keys(coderExternal)
           const coderTmpScoped =
             coderExternal !== undefined &&
-            Object.keys(coderExternal).length === 4 &&
-            Object.keys(coderExternal).every((key) => coderTmpScopes.has(key)) &&
+            coderExternalKeys[0] === "*" &&
+            coderExternal["*"] === "deny" &&
+            coderExternalKeys.length === tmpScopeList.length + 1 &&
+            coderExternalKeys.slice(1).join("\n") === tmpScopeList.map((scopeDir) => `${scopeDir}/**`).join("\n") &&
             coderExternal[`${designStateDir}/**`] === undefined
           assertions.push({
-            name: "coder external access is limited to the shared tmp scopes (no design state dir)",
+            name: "coder external access denies unlisted roots first and allows only the shared tmp scopes",
             pass: coderTmpScoped,
             detail: coderTmpScoped
-              ? "exactly the four tmpdir opencode scopes"
+              ? `"*" deny first, then the ${tmpScopeList.length} tmpdir opencode scopes (no design state dir)`
               : `unexpected coder external_directory: ${JSON.stringify(coderExternal)}`,
           })
+
+          // Static subagent hardening (B1): every mode:"subagent" role leads
+          // its external_directory with the "*" deny so an un-whitelisted
+          // external probe fails closed instead of hanging on a host ask.
+          const subagentRoles = [
+            "common-explorer",
+            "consultant-analyst",
+            "consultant-critic",
+            "consultant-auditor",
+            "solution-reviewer",
+            "coder",
+            "coder-reviewer",
+            "author-writer",
+            "author-reviewer",
+          ] as const
+          for (const role of subagentRoles) {
+            const ext = readAgentPermission(json, role)?.["external_directory"] as
+              | Record<string, string>
+              | undefined
+            const denyFirst = ext !== undefined && Object.keys(ext)[0] === "*" && ext["*"] === "deny"
+            assertions.push({
+              name: `${role} external_directory leads with the "*" deny`,
+              pass: denyFirst,
+              detail: denyFirst
+                ? `"*" deny first, ${Object.keys(ext ?? {}).length - 1} allow entries`
+                : `unexpected ${role} external_directory: ${JSON.stringify(ext)}`,
+            })
+          }
 
           // Edit-rule twins: host edit permissions evaluate
           // path.relative(worktree, file) submissions, so each sanctioned
@@ -555,22 +588,29 @@ async function main(): Promise<void> {
           const coderEdit = readAgentPermission(json, "coder")?.["edit"] as
             | Record<string, string>
             | undefined
+          // Recompute the tmp allow twins exactly the way buildCoderPermission
+          // does (same scope order, same editAllowTwins call) so the
+          // last-position guarantee is checked against the real expected set.
+          const expectedCoderTmpTwins: Record<string, "allow"> = {}
+          for (const scopeDir of tmpScopeList) {
+            Object.assign(expectedCoderTmpTwins, editAllowTwins([sandboxProj], scopeDir))
+          }
+          const expectedTwinKeys = Object.keys(expectedCoderTmpTwins)
+          const coderEditKeys = coderEdit === undefined ? [] : Object.keys(coderEdit)
           const coderEditShaped =
             coderEdit !== undefined &&
-            Object.keys(coderEdit)[0] === "*" &&
+            coderEditKeys[0] === "*" &&
             coderEdit["*"] === "allow" &&
-            coderEdit["../*"] === "ask" &&
-            coderEdit["/*"] === "ask" &&
-            tmpScopeDirs.every((scopeDir) => coderEdit[`${scopeDir}/**`] === "allow") &&
-            tmpScopeDirs.every(
-              (scopeDir) => coderEdit[`${relative(sandboxProj, scopeDir)}/**`] === "allow",
-            ) &&
-            coderEdit[`${relative(sandboxProj, designStateDir)}/**`] === undefined
+            coderEdit["../*"] === "deny" &&
+            coderEdit["/*"] === "deny" &&
+            coderEditKeys.length === expectedTwinKeys.length + 3 &&
+            coderEditKeys.slice(3).join("\n") === expectedTwinKeys.join("\n") &&
+            expectedTwinKeys.every((key) => coderEdit[key] === "allow")
           assertions.push({
-            name: "coder edit asks for external edits under both shapes and allows the tmp-scope twins",
+            name: "coder edit denies external edits under both shapes and keeps the tmp-scope allow twins last",
             pass: coderEditShaped,
             detail: coderEditShaped
-              ? "allow catch-all first, ../* and /* asks, tmp twins last"
+              ? "allow catch-all first, ../* and /* denies, tmp twins last"
               : `unexpected coder edit: ${JSON.stringify(coderEdit)}`,
           })
 
@@ -591,8 +631,11 @@ async function main(): Promise<void> {
               : `unexpected simple edit: ${JSON.stringify(liteEdit)}`,
           })
           assertions.push({
-            name: "author-reviewer grants read-only external access to both state dirs plus budgeted web lookups",
+            name: "author-reviewer denies unlisted external roots first and grants read-only state-dir access plus budgeted web lookups",
             pass:
+              reviewerExternal !== undefined &&
+              Object.keys(reviewerExternal)[0] === "*" &&
+              reviewerExternal["*"] === "deny" &&
               reviewerExternal?.[`${authorStateDir}/**`] === "allow" &&
               reviewerExternal?.[`${designStateDir}/**`] === "allow" &&
               reviewerPermission?.["edit"] === "deny" &&
@@ -600,20 +643,23 @@ async function main(): Promise<void> {
               reviewerPermission?.["task"] === "deny" &&
               reviewerPermission?.["webfetch"] === "allow" &&
               reviewerPermission?.["websearch"] === "allow",
-            detail: `author=${reviewerExternal?.[`${authorStateDir}/**`]} design=${reviewerExternal?.[`${designStateDir}/**`]} edit=${reviewerPermission?.["edit"]} bash=${reviewerPermission?.["bash"]} task=${reviewerPermission?.["task"]} webfetch=${reviewerPermission?.["webfetch"]} websearch=${reviewerPermission?.["websearch"]}`,
+            detail: `"*" deny first, author=${reviewerExternal?.[`${authorStateDir}/**`]} design=${reviewerExternal?.[`${designStateDir}/**`]} edit=${reviewerPermission?.["edit"]} bash=${reviewerPermission?.["bash"]} task=${reviewerPermission?.["task"]} webfetch=${reviewerPermission?.["webfetch"]} websearch=${reviewerPermission?.["websearch"]}`,
           })
           const coderReviewerExternal = readAgentPermission(json, "coder-reviewer")?.["external_directory"] as
             | Record<string, string>
             | undefined
           const coderReviewerPermission = readAgentPermission(json, "coder-reviewer")
           assertions.push({
-            name: "coder-reviewer grants read-only external access to the design state dir",
+            name: "coder-reviewer denies unlisted external roots first and grants read-only access to the design state dir",
             pass:
+              coderReviewerExternal !== undefined &&
+              Object.keys(coderReviewerExternal)[0] === "*" &&
+              coderReviewerExternal["*"] === "deny" &&
               coderReviewerExternal?.[`${designStateDir}/**`] === "allow" &&
               coderReviewerPermission?.["edit"] === "deny" &&
               coderReviewerPermission?.["bash"] === "deny" &&
               coderReviewerPermission?.["task"] === "deny",
-            detail: `design=${coderReviewerExternal?.[`${designStateDir}/**`]} edit=${coderReviewerPermission?.["edit"]} bash=${coderReviewerPermission?.["bash"]} task=${coderReviewerPermission?.["task"]}`,
+            detail: `"*" deny first, design=${coderReviewerExternal?.[`${designStateDir}/**`]} edit=${coderReviewerPermission?.["edit"]} bash=${coderReviewerPermission?.["bash"]} task=${coderReviewerPermission?.["task"]}`,
           })
           assertions.push({
             name: "design state directory created",

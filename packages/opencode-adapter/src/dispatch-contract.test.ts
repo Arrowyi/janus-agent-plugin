@@ -5,6 +5,9 @@ import {
   DISPATCH_ROLES,
   DISPATCH_TIERS,
   DEFAULT_WAIT_MS,
+  DispatchEnvelopeSchema,
+  PendingAskSchema,
+  PermissionReplyArgsSchema,
   PRODUCTION_WAIT_BUDGET_MS,
   parseContinueArgs,
   parseDispatchRole,
@@ -13,6 +16,7 @@ import {
   parseOutcomeEnvelope,
   serializeOutcome,
   createKeyedMutex,
+  type DispatchEnvelope,
 } from "./dispatch-contract.ts"
 import {
   FAKE_DIRECTORY,
@@ -516,5 +520,93 @@ describe("health envelope fields", () => {
   it("does not add health fields to cancelled or completed envelope forms", () => {
     expect(parseOutcomeEnvelope(JSON.stringify({ ...makeCancelledEnvelope(), session_status: "busy" })).ok).toBe(false)
     expect(parseOutcomeEnvelope(JSON.stringify({ ...makeCompletedEnvelope(), running_tool: "grep" })).ok).toBe(false)
+  })
+})
+
+function sampleAsk(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    requestID: "req-1",
+    sessionID: "ses_child",
+    permission: "bash",
+    patterns: ["ls"],
+    age_ms: 0,
+    job_chain: [{ job_id: "ses_job", role: "coder", session_id: "ses_child" }],
+    ...overrides,
+  }
+}
+
+describe("permission reply args and pending-ask schemas", () => {
+  it("strips extra keys from the non-strict PermissionReplyArgsSchema", () => {
+    const parsed = PermissionReplyArgsSchema.parse({
+      sessionID: "ses_parent",
+      requestID: "req-1",
+      reply: "once",
+      message: "ok",
+      extra: "x",
+    })
+    expect(parsed).toEqual({ sessionID: "ses_parent", requestID: "req-1", reply: "once", message: "ok" })
+    expect("extra" in parsed).toBe(false)
+    expect(PermissionReplyArgsSchema.safeParse({ sessionID: "s", requestID: "r", reply: "once" }).success).toBe(true)
+  })
+
+  it("rejects an invalid decision or missing identity in the reply args", () => {
+    for (const bad of [
+      { sessionID: "s", requestID: "r", reply: "maybe" },
+      { sessionID: "", requestID: "r", reply: "once" },
+      { sessionID: "s", requestID: "", reply: "once" },
+      {},
+    ]) {
+      expect(PermissionReplyArgsSchema.safeParse(bad).success).toBe(false)
+    }
+  })
+
+  it("rejects unknown keys on the strict PendingAskSchema", () => {
+    expect(PendingAskSchema.safeParse(sampleAsk()).success).toBe(true)
+    expect(PendingAskSchema.safeParse(sampleAsk({ extra: 1 })).success).toBe(false)
+    expect(
+      PendingAskSchema.safeParse(sampleAsk({ job_chain: [{ job_id: "j", role: "coder", session_id: "s", extra: 1 }] })).success,
+    ).toBe(false)
+  })
+
+  it("rejects malformed pending asks", () => {
+    for (const bad of [
+      sampleAsk({ requestID: "" }),
+      sampleAsk({ patterns: [] }),
+      sampleAsk({ age_ms: -1 }),
+      sampleAsk({ age_ms: 1.5 }),
+      sampleAsk({ job_chain: [] }),
+      sampleAsk({ job_chain: [{ job_id: "j", role: "nope", session_id: "s" }] }),
+    ]) {
+      expect(PendingAskSchema.safeParse(bad).success).toBe(false)
+    }
+  })
+})
+
+describe("pending_asks envelope field", () => {
+  it("round-trips pending asks through serialize -> parse", () => {
+    const ask = PendingAskSchema.parse(sampleAsk())
+    const envelope: DispatchEnvelope = { ...makeEnvelope("pending"), pending_asks: [ask] }
+    expect(DispatchEnvelopeSchema.safeParse(envelope).success).toBe(true)
+    const parsed = parseOutcomeEnvelope(serializeOutcome({ kind: "nonterminal", envelope }))
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok && parsed.value.status === "pending") {
+      expect(parsed.value.pending_asks).toHaveLength(1)
+      expect(parsed.value.pending_asks?.[0]?.requestID).toBe("req-1")
+      expect(parsed.value.pending_asks?.[0]?.job_chain[0]?.role).toBe("coder")
+    } else {
+      throw new Error("expected a pending envelope")
+    }
+  })
+
+  it("rejects an empty pending_asks list and does not add it to cancelled or completed forms", () => {
+    expect(parseOutcomeEnvelope(JSON.stringify({ ...makeEnvelope("pending"), pending_asks: [] })).ok).toBe(false)
+    expect(parseOutcomeEnvelope(JSON.stringify({ ...makeCancelledEnvelope(), pending_asks: [sampleAsk()] })).ok).toBe(false)
+    expect(parseOutcomeEnvelope(JSON.stringify({ ...makeCompletedEnvelope(), pending_asks: [sampleAsk()] })).ok).toBe(false)
+  })
+
+  it("keeps envelopes without pending asks valid and undecorated", () => {
+    const parsed = assertOk(parseOutcomeEnvelope(JSON.stringify(makeEnvelope("unknown"))))
+    if (parsed.status !== "unknown") throw new Error("expected unknown envelope")
+    expect("pending_asks" in parsed).toBe(false)
   })
 })

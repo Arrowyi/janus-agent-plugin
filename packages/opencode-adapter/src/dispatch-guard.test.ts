@@ -1,9 +1,20 @@
 import { describe, expect, it } from "bun:test"
 
 import { JanusPluginConfigSchema, MODEL_DEFAULTS, resolveRoleModelChain, type ModelRole } from "./plugin-config.ts"
-import { resolveModelFamily, readCallerContextTokens, enforceDispatchReviewGuard, enforceContinueReviewGuard, CONTEXT_WATERMARK_TOKENS, CODER_HARD_CEILING_TOKENS, CALLER_CONTEXT_MESSAGES_LIMIT } from "./dispatch-guard.ts"
+import { resolveModelFamily, readCallerContextTokens, enforceDispatchReviewGuard, enforceContinueReviewGuard, enforcePermissionReplyGuard, CONTEXT_WATERMARK_TOKENS, CODER_HARD_CEILING_TOKENS, CALLER_CONTEXT_MESSAGES_LIMIT, type PermissionReplyGuardInput } from "./dispatch-guard.ts"
 import { FAKE_DIRECTORY, createFakeSdk, makeJobSpec, type FakeSdk } from "./dispatch-test-fixtures.ts"
-import type { DispatchSdk, DispatchTier, SdkAssistantMessage, SdkMessageWithParts } from "./dispatch-contract.ts"
+import { PermissionAskRegistry, resolvePermissionSdk } from "./permission-ask.ts"
+import { LEAF_DISPATCH_DENY } from "./agent-registration.ts"
+import {
+  DISPATCH_MARKER,
+  type DispatchPermissionSdk,
+  type DispatchSdk,
+  type DispatchTier,
+  type SdkAssistantMessage,
+  type SdkMessageWithParts,
+  type SdkPart,
+  type SdkSession,
+} from "./dispatch-contract.ts"
 
 describe("resolveModelFamily", () => {
   it("maps normalized model keys to their vendor families", () => {
@@ -573,5 +584,379 @@ describe("author-reviewer guard", () => {
     expect(await continueGuard(fake, { reviewsJobIDs: [jobID], targetTier: "fast", targetStage: "reader" })).toEqual({ ok: true })
     const noStage = await continueGuard(fake, { reviewsJobIDs: [jobID], targetStage: undefined })
     expect(noStage.ok).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// janus_permission_reply guard (Gates 1–4)
+// ---------------------------------------------------------------------------
+
+const TARGET_SESSION = "ses_target"
+
+function makeSession(id: string, parentID: string | undefined, title: string, directory = CALLER_DIRECTORY): SdkSession {
+  return { id, ...(parentID !== undefined ? { parentID } : {}), directory, title, time: { created: 0, updated: 0 } }
+}
+
+function humanMessage(id: string, sessionID = CALLER_SESSION, text = "please allow"): SdkMessageWithParts {
+  return { info: { role: "user", id, sessionID }, parts: [{ type: "text", text }] }
+}
+
+interface GuardOpts {
+  readonly caller?: string
+  readonly target?: string
+  readonly requestID?: string
+  readonly now?: number
+  readonly reply?: "once" | "always" | "reject"
+}
+
+function guardInput(fake: FakeSdk, registry: PermissionAskRegistry, opts: GuardOpts = {}): PermissionReplyGuardInput {
+  return {
+    sessionID: opts.caller ?? CALLER_SESSION,
+    directory: FAKE_DIRECTORY,
+    args: { sessionID: opts.target ?? TARGET_SESSION, requestID: opts.requestID ?? "req-1", reply: opts.reply ?? "once" },
+    askRegistry: registry,
+    permissionSdk: resolvePermissionSdk(fake),
+    now: opts.now ?? 0,
+  }
+}
+
+function replyCalls(fake: FakeSdk): number {
+  return (fake.permission?.calls ?? []).filter((call) => call.method === "reply").length
+}
+
+function totalPermissionCalls(fake: FakeSdk): number {
+  // The fake shares one call array across session and permission surfaces;
+  // count only the permission surface methods.
+  return (fake.permission?.calls ?? []).filter(
+    (call) => call.method === "list" || call.method === "listForSession" || call.method === "reply",
+  ).length
+}
+
+function happyFake(callerMessages: ReadonlyArray<SdkMessageWithParts> = []): FakeSdk {
+  return createFakeSdk({
+    seedPermission: true,
+    sessions: [makeSession(CALLER_SESSION, undefined, "human"), makeSession(TARGET_SESSION, CALLER_SESSION, "job")],
+    messages: { [CALLER_SESSION]: [...callerMessages] },
+  })
+}
+
+function seedSurfaced(
+  fake: FakeSdk,
+  registry: PermissionAskRegistry,
+  watermark: string | undefined,
+  now = 0,
+  surfacedTo = CALLER_SESSION,
+): void {
+  const ask = { id: "req-1", sessionID: TARGET_SESSION, permission: "bash", patterns: ["ls"] }
+  fake.permission!.seedAsks([ask])
+  fake.v2!.session.permission.seedAsks([ask])
+  registry.onAsked(
+    { requestID: "req-1", sessionID: TARGET_SESSION, directory: FAKE_DIRECTORY, permission: "bash", patterns: ["ls"] },
+    now,
+  )
+  registry.markSurfaced("req-1", { callerSessionID: surfacedTo, surfacedAtUserMessageID: watermark, surfacedAt: now })
+}
+
+describe("janus_permission_reply three-way resolution", () => {
+  it("rejects a valid descendant args whose requestID belongs to a foreign session", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [makeSession(CALLER_SESSION, undefined, "human"), makeSession(TARGET_SESSION, CALLER_SESSION, "job")],
+    })
+    fake.permission!.seedAsks([{ id: "req-1", sessionID: "ses_foreign", permission: "bash", patterns: ["ls"] }])
+    const registry = new PermissionAskRegistry()
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) {
+      expect(outcome.message).toBe("Error: permission request req-1 belongs to session ses_foreign, not ses_target")
+    }
+  })
+
+  it("returns already-resolved with zero reply calls only on a successful pull", async () => {
+    const fake = happyFake()
+    fake.permission!.seedAsks([])
+    fake.v2!.session.permission.seedAsks([])
+    const registry = new PermissionAskRegistry()
+    registry.onAsked(
+      { requestID: "req-1", sessionID: TARGET_SESSION, directory: FAKE_DIRECTORY, permission: "bash", patterns: ["ls"] },
+      1000,
+    )
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry, { now: 2000 }))
+
+    expect(outcome).toEqual({
+      ok: true,
+      action: "already-resolved",
+      message: "Permission request req-1 on session ses_target was already resolved (no longer pending).",
+    })
+    expect(replyCalls(fake)).toBe(0)
+  })
+
+  it("fails closed on a dual pull outage and never claims already-resolved, pinning the grace boundary on both sides", async () => {
+    const fake = happyFake([humanMessage("msg-h1")])
+    fake.permission!.setListResult({ error: "down" })
+    fake.v2!.session.permission.setListResult({ error: "down" })
+    const registry = new PermissionAskRegistry()
+    seedSurfaced(fake, registry, undefined, 1000)
+
+    // now - lastSeenAt === 60_000 → proceed on the registry record (all later gates pass)
+    const within = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry, { now: 61_000 }))
+    expect(within).toEqual({ ok: true, action: "reply" })
+
+    // now - lastSeenAt === 60_001 → fail closed, never "already resolved"
+    const beyond = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry, { now: 61_001 }))
+    expect(beyond.ok).toBe(false)
+    if (!beyond.ok) {
+      expect(beyond.message).toContain("could not verify permission request")
+      expect(beyond.message).not.toContain("already resolved")
+    }
+    expect(replyCalls(fake)).toBe(0)
+  })
+
+  it("fails closed on an outage when the registry record was already replied", async () => {
+    const fake = happyFake([humanMessage("msg-h1")])
+    fake.permission!.setListResult({ error: "down" })
+    fake.v2!.session.permission.setListResult({ error: "down" })
+    const registry = new PermissionAskRegistry()
+    seedSurfaced(fake, registry, undefined, 1000)
+    registry.onReplied("req-1", 1050)
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry, { now: 61_000 }))
+
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("could not verify permission request")
+  })
+})
+
+describe("janus_permission_reply watermark gate", () => {
+  it("permits the reply only after a newer real human message", async () => {
+    const fake = happyFake([humanMessage("msg-h1")])
+    const registry = new PermissionAskRegistry()
+    seedSurfaced(fake, registry, "msg-h1")
+
+    const blocked = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+    expect(blocked.ok).toBe(false)
+    if (!blocked.ok) expect(blocked.message).toContain("no new human message")
+
+    fake.seedMessages(CALLER_SESSION, [humanMessage("msg-h2")])
+    expect(await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))).toEqual({
+      ok: true,
+      action: "reply",
+    })
+  })
+
+  it("does not advance past synthetic, compaction, subtask, or plugin-injected messages", async () => {
+    const fake = happyFake([humanMessage("msg-h1")])
+    const registry = new PermissionAskRegistry()
+    seedSurfaced(fake, registry, "msg-h1")
+    registry.pluginInjectedMessageIDs.add("msg-injected")
+    fake.seedMessages(CALLER_SESSION, [
+      { info: { role: "user", id: "msg-injected", sessionID: CALLER_SESSION }, parts: [{ type: "text", text: "x" }] },
+      { info: { role: "user", id: "msg-synth", sessionID: CALLER_SESSION }, parts: [{ type: "text", text: "x", synthetic: true }] },
+      { info: { role: "user", id: "msg-comp", sessionID: CALLER_SESSION }, parts: [{ type: "compaction" } as unknown as SdkPart] },
+      { info: { role: "user", id: "msg-sub", sessionID: CALLER_SESSION }, parts: [{ type: "subtask" } as unknown as SdkPart] },
+    ])
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("no new human message")
+  })
+
+  it("advances on a human message with a synthetic @file part plus real text", async () => {
+    const fake = happyFake([humanMessage("msg-h1")])
+    const registry = new PermissionAskRegistry()
+    seedSurfaced(fake, registry, "msg-h1")
+    fake.seedMessages(CALLER_SESSION, [
+      {
+        info: { role: "user", id: "msg-h2", sessionID: CALLER_SESSION },
+        parts: [{ type: "text", text: "@file src/x.ts", synthetic: true }, { type: "text", text: "allow it" }],
+      },
+    ])
+
+    expect(await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))).toEqual({
+      ok: true,
+      action: "reply",
+    })
+  })
+
+  it("fails closed when the request was never surfaced to this caller", async () => {
+    const fake = happyFake([humanMessage("msg-h1")])
+    const registry = new PermissionAskRegistry()
+    const ask = { id: "req-1", sessionID: TARGET_SESSION, permission: "bash", patterns: ["ls"] }
+    fake.permission!.seedAsks([ask])
+    registry.onAsked(
+      { requestID: "req-1", sessionID: TARGET_SESSION, directory: FAKE_DIRECTORY, permission: "bash", patterns: ["ls"] },
+      0,
+    )
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("was not surfaced to this caller")
+  })
+
+  it("fails closed when the request was surfaced to a different caller", async () => {
+    const fake = happyFake([humanMessage("msg-h1")])
+    const registry = new PermissionAskRegistry()
+    seedSurfaced(fake, registry, "msg-h1", 0, "ses_other_caller")
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("was not surfaced to this caller")
+  })
+
+  it("fails closed when the caller conversation cannot be read", async () => {
+    const fake = happyFake([humanMessage("msg-h1")])
+    const registry = new PermissionAskRegistry()
+    seedSurfaced(fake, registry, undefined)
+    const base = fake as unknown as DispatchSdk
+    const sdk = {
+      session: { ...base.session, messages: async () => ({ error: "boom" }) },
+    } as unknown as DispatchSdk
+
+    const outcome = await enforcePermissionReplyGuard(sdk, {
+      sessionID: CALLER_SESSION,
+      directory: FAKE_DIRECTORY,
+      args: { sessionID: TARGET_SESSION, requestID: "req-1", reply: "once" },
+      askRegistry: registry,
+      permissionSdk: resolvePermissionSdk(fake),
+      now: 0,
+    })
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("failed to read the caller conversation")
+  })
+})
+
+describe("janus_permission_reply Gate 3 lineage", () => {
+  it("fails closed past MAX_LINEAGE_DEPTH", async () => {
+    const sessions = [makeSession(CALLER_SESSION, undefined, "human")]
+    let parent = CALLER_SESSION
+    for (let i = 1; i <= 10; i++) {
+      const id = `ses_hop${i}`
+      sessions.push(makeSession(id, parent, "hop"))
+      parent = id
+    }
+    sessions.push(makeSession(TARGET_SESSION, parent, "target"))
+    const fake = createFakeSdk({ seedPermission: true, sessions })
+    fake.permission!.seedAsks([{ id: "req-1", sessionID: TARGET_SESSION, permission: "bash", patterns: ["ls"] }])
+    const registry = new PermissionAskRegistry()
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("lineage exceeds 10 hops")
+  })
+
+  it("rejects a cross-workspace ancestor", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        makeSession(CALLER_SESSION, undefined, "human"),
+        makeSession("ses_foreign", undefined, "foreign", "/tmp/other-workspace"),
+        makeSession(TARGET_SESSION, "ses_foreign", "job"),
+      ],
+    })
+    fake.permission!.seedAsks([{ id: "req-1", sessionID: TARGET_SESSION, permission: "bash", patterns: ["ls"] }])
+    const registry = new PermissionAskRegistry()
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("outside the caller workspace")
+  })
+
+  it("fails closed when a lineage hop cannot be read", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [makeSession(CALLER_SESSION, undefined, "human"), makeSession(TARGET_SESSION, "ses_bad", "job")],
+    })
+    fake.permission!.seedAsks([{ id: "req-1", sessionID: TARGET_SESSION, permission: "bash", patterns: ["ls"] }])
+    const base = fake as unknown as DispatchSdk
+    const sdk = {
+      session: {
+        ...base.session,
+        async get(input: { path: { id: string } }) {
+          if (input.path.id === "ses_bad") throw new Error("transport")
+          return base.session.get(input)
+        },
+      },
+    } as unknown as DispatchSdk
+    const registry = new PermissionAskRegistry()
+
+    const outcome = await enforcePermissionReplyGuard(sdk, {
+      sessionID: CALLER_SESSION,
+      directory: FAKE_DIRECTORY,
+      args: { sessionID: TARGET_SESSION, requestID: "req-1", reply: "once" },
+      askRegistry: registry,
+      permissionSdk: resolvePermissionSdk(fake),
+      now: 0,
+    })
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("could not read the session lineage")
+  })
+})
+
+describe("janus_permission_reply QS2 zero reply calls", () => {
+  const dispatchedMessage =
+    "Error: dispatched sub-session cannot call janus_permission_reply; surface pending_asks to the top-level user-facing caller"
+
+  it("rejects a caller in the seeded dispatched set before any permission call", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [makeSession(CALLER_SESSION, undefined, "human"), makeSession(TARGET_SESSION, CALLER_SESSION, "job")],
+    })
+    const registry = new PermissionAskRegistry()
+    registry.dispatchedSessionIDs.add(CALLER_SESSION)
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+    expect(outcome).toEqual({ ok: false, message: dispatchedMessage })
+    expect(totalPermissionCalls(fake)).toBe(0)
+  })
+
+  it("rejects a DISPATCH_MARKER caller title before any permission call", async () => {
+    const marker = makeSession(CALLER_SESSION, undefined, `${DISPATCH_MARKER}coder`)
+    const fake = createFakeSdk({ seedPermission: true, sessions: [marker, makeSession(TARGET_SESSION, CALLER_SESSION, "job")] })
+    const registry = new PermissionAskRegistry()
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+    expect(outcome).toEqual({ ok: false, message: dispatchedMessage })
+    expect(totalPermissionCalls(fake)).toBe(0)
+  })
+
+  it("rejects a caller with a defined parentID before any permission call", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        makeSession("ses_grand", undefined, "human"),
+        makeSession(CALLER_SESSION, "ses_grand", "sub"),
+        makeSession(TARGET_SESSION, CALLER_SESSION, "job"),
+      ],
+    })
+    const registry = new PermissionAskRegistry()
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+    expect(outcome).toEqual({ ok: false, message: dispatchedMessage })
+    expect(totalPermissionCalls(fake)).toBe(0)
+  })
+
+  it("rejects a lineage mismatch with zero reply calls", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        makeSession(CALLER_SESSION, undefined, "human"),
+        makeSession("ses_other_parent", undefined, "other"),
+        makeSession(TARGET_SESSION, "ses_other_parent", "job"),
+      ],
+    })
+    fake.permission!.seedAsks([{ id: "req-1", sessionID: TARGET_SESSION, permission: "bash", patterns: ["ls"] }])
+    const registry = new PermissionAskRegistry()
+
+    const outcome = await enforcePermissionReplyGuard(fake as unknown as DispatchSdk, guardInput(fake, registry))
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.message).toContain("is not a descendant of the caller session")
+    expect(replyCalls(fake)).toBe(0)
+  })
+
+  it("pins the seventh leaf-deny key that keeps a dispatched leaf from ever reaching the guard", () => {
+    expect(LEAF_DISPATCH_DENY.janus_permission_reply).toBe("deny")
   })
 })

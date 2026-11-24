@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execSync } from "node:child_process"
 import { readFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { join, relative } from "node:path"
 import {
   registerConsultantAgent,
@@ -47,7 +47,7 @@ import {
   LEAF_DISPATCH_DENY,
 } from "./agent-registration.ts"
 import { resolveAsset } from "./asset-paths.ts"
-import type { JanusPluginConfig } from "./plugin-config.ts"
+import { JanusPluginConfigSchema, type JanusPluginConfig } from "./plugin-config.ts"
 
 function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConfig {
   return {
@@ -84,6 +84,7 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     author_reviewer_agent: "author-reviewer",
     author_reviewer_enabled: true,
     writer_docs_roots: ["userdoc"],
+    subagent_steps: 200,
     ...overrides,
   }
 }
@@ -1060,12 +1061,12 @@ describe("registerCoderReviewer", () => {
         edit: "deny", bash: "deny", task: "deny",
         janus_dispatch: "deny", janus_dispatch_wait: "deny",
         janus_dispatch_cancel: "deny", janus_dispatch_continue: "deny",
-        external_directory: { "/home/test-user/.local/share/janus-agent/design/**": "allow" },
+        external_directory: { "*": "deny", "/home/test-user/.local/share/janus-agent/design/**": "allow" },
       },
     })
   })
 
-  it("keeps the other read-only subagents free of external_directory grants", async () => {
+  it("gives the other read-only subagents a deny-only external_directory catch-all", async () => {
     const config: { agent?: Record<string, unknown> } = {}
     await registerCommonExplorer(config, makeConfig())
     await registerConsultantAnalyst(config, makeConfig())
@@ -1073,7 +1074,7 @@ describe("registerCoderReviewer", () => {
     await registerConsultantAuditor(config, makeConfig())
     for (const name of ["common-explorer", "consultant-analyst", "consultant-critic", "consultant-auditor"]) {
       const permission = (config.agent?.[name] as { permission: Record<string, unknown> }).permission
-      expect(permission.external_directory).toBeUndefined()
+      expect(permission.external_directory).toEqual({ "*": "deny" })
       expect(permission.edit).toBe("deny")
     }
   })
@@ -1117,7 +1118,9 @@ describe("buildAuthorWriterPermission", () => {
     // The catch-all must be first so later specific rules win.
     expect(Object.keys(edit)[0]).toBe("*")
     const external = permission.external_directory as Record<string, string>
+    expect(external["*"]).toBe("deny")
     expect(external[`${authorDir}/**`]).toBe("allow")
+    expect(Object.keys(external)[0]).toBe("*")
   })
 
   it("falls back to a flat edit deny when the roots array is empty", () => {
@@ -1131,10 +1134,12 @@ describe("buildAuthorWriterPermission", () => {
       task: "deny",
       webfetch: "allow",
       websearch: "allow",
+      external_directory: { "*": "deny", "/xdg/data/janus-agent/author/**": "allow" },
       janus_dispatch: "deny",
       janus_dispatch_wait: "deny",
       janus_dispatch_cancel: "deny",
       janus_dispatch_continue: "deny",
+      janus_permission_reply: "deny",
       janus_config: "deny",
       janus_provider_keys: "deny",
     })
@@ -1233,7 +1238,7 @@ describe("registerAuthorWriter", () => {
     }
   }
 
-  it("registers the scoped-write author executor with steps 80 and root-scoped edit permission", async () => {
+  it("registers the scoped-write author executor with the subagent_steps default and root-scoped edit permission", async () => {
     // given
     const { env, authorDir, cleanup } = tempAuthorEnv()
     const config: { agent?: Record<string, unknown> } = {}
@@ -1254,7 +1259,7 @@ describe("registerAuthorWriter", () => {
       }
       expect(writer.mode).toBe("subagent")
       expect(writer.model).toBe("opencode/claude-sonnet-5-5")
-      expect(writer.steps).toBe(80)
+      expect(writer.steps).toBe(200)
       expect(writer.description).toContain("sole author of reader-facing prose")
       expect(writer.description).toContain("scoped-write author executor")
       expect(writer.permission.bash).toBe("deny")
@@ -1269,6 +1274,8 @@ describe("registerAuthorWriter", () => {
       expect(edit["*"]).toBe("deny")
       expect(edit["userdoc/**"]).toBe("allow")
       const external = writer.permission.external_directory as Record<string, string>
+      expect(external["*"]).toBe("deny")
+      expect(Object.keys(external)[0]).toBe("*")
       expect(external[`${authorDir}/**`]).toBe("allow")
       expect(writer.prompt).toContain("# Author-Writer")
       expect(writer.prompt).toContain("## Runtime Bindings (injected by opencode-adapter)")
@@ -1301,7 +1308,7 @@ describe("registerAuthorWriter", () => {
 
   it("registers a read-only writer when writer_docs_roots is empty", async () => {
     // given
-    const { env, cleanup } = tempAuthorEnv()
+    const { env, authorDir, cleanup } = tempAuthorEnv()
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig({ writer_docs_roots: [] })
 
@@ -1320,10 +1327,12 @@ describe("registerAuthorWriter", () => {
         task: "deny",
         webfetch: "allow",
         websearch: "allow",
+        external_directory: { "*": "deny", [`${authorDir}/**`]: "allow" },
         janus_dispatch: "deny",
         janus_dispatch_wait: "deny",
         janus_dispatch_cancel: "deny",
         janus_dispatch_continue: "deny",
+        janus_permission_reply: "deny",
         janus_config: "deny",
         janus_provider_keys: "deny",
       })
@@ -1373,17 +1382,45 @@ describe("registerAuthorWriter", () => {
 })
 
 describe("buildAuthorReviewerRuntimeBindings", () => {
-  it("lists the per-tier reviewer models and the leaf rule", () => {
+  it("lists the per-tier reviewer models, the read-only state-dir references, and the leaf rule", () => {
     // given
     const config = makeConfig({ tier_models: { standard: { "author-reviewer": "provider/reviewer-standard" } } })
 
     // when
-    const block = buildAuthorReviewerRuntimeBindings(config)
+    const block = buildAuthorReviewerRuntimeBindings(config, "/xdg/data/janus-agent/author", "/xdg/data/janus-agent/design")
 
     // then
     expect(block).toContain("## Runtime Bindings (injected by opencode-adapter)")
     expect(block).toContain("Author-reviewer models: fast `opencode-go/deepseek-v4.1-flash`, standard `provider/reviewer-standard`")
+    expect(block).toContain("Author state dir (read-only reference): `/xdg/data/janus-agent/author`")
+    expect(block).toContain("Design state dir (read-only reference): `/xdg/data/janus-agent/design`")
+    expect(block).toContain("read only the exact brief path the dispatch supplies")
+    expect(block).toContain("never glob the directory")
     expect(block).toContain("You are a leaf: no edits, no bash, no dispatch, no memory tools")
+  })
+
+  it("defaults the state dirs to the resolved XDG paths when called with one argument", () => {
+    // given — the one-argument call resolves the default parameters against
+    // process.env; stub HOME/XDG_DATA_HOME around the call and restore after.
+    const config = makeConfig()
+    const savedHome = process.env.HOME
+    const savedXdgDataHome = process.env.XDG_DATA_HOME
+    try {
+      process.env.HOME = "/home/test-user"
+      process.env.XDG_DATA_HOME = "/xdg/data"
+
+      // when
+      const block = buildAuthorReviewerRuntimeBindings(config)
+
+      // then — the pre-positioned reference lines name the env-resolved dirs
+      expect(block).toContain("Author state dir (read-only reference): `/xdg/data/janus-agent/author`")
+      expect(block).toContain("Design state dir (read-only reference): `/xdg/data/janus-agent/design`")
+    } finally {
+      if (savedHome === undefined) delete process.env.HOME
+      else process.env.HOME = savedHome
+      if (savedXdgDataHome === undefined) delete process.env.XDG_DATA_HOME
+      else process.env.XDG_DATA_HOME = savedXdgDataHome
+    }
   })
 })
 
@@ -1407,9 +1444,11 @@ describe("buildAuthorReviewerPermission", () => {
     expect(permission.janus_dispatch_cancel).toBe("deny")
     expect(permission.janus_dispatch_continue).toBe("deny")
     const external = permission.external_directory as Record<string, string>
+    expect(external["*"]).toBe("deny")
     expect(external[`${authorDir}/**`]).toBe("allow")
     expect(external[`${designDir}/**`]).toBe("allow")
-    expect(Object.keys(external)).toHaveLength(2)
+    expect(Object.keys(external)[0]).toBe("*")
+    expect(Object.keys(external)).toHaveLength(3)
   })
 })
 
@@ -1842,7 +1881,7 @@ describe("registerSimple", () => {
 })
 
 describe("registerCoder", () => {
-  it("registers the dual-tier leaf with steps 80, the static prompt, and the leaf permission shape", async () => {
+  it("registers the dual-tier leaf with the subagent_steps default, the static prompt, and the leaf permission shape", async () => {
     // given
     const config: { agent?: Record<string, unknown> } = {}
     const pluginConfig = makeConfig()
@@ -1860,7 +1899,7 @@ describe("registerCoder", () => {
       permission: Record<string, unknown>
     }
     expect(coder.mode).toBe("subagent")
-    expect(coder.steps).toBe(80)
+    expect(coder.steps).toBe(200)
     expect(coder.model).toBe("opencode-go/glm-5.3")
     expect(coder.description).toContain("Dual-tier coding execution leaf")
     expect(coder.description).toContain("Senior Coder")
@@ -1884,18 +1923,23 @@ describe("registerCoder", () => {
     const external = permission.external_directory as Record<string, string>
     const tmp = tmpdir()
     const expectedScopes = new Set([
+      "*",
       `${tmp}/opencode/**`,
       `${realpathSync(tmp)}/opencode/**`,
       "/tmp/opencode/**",
       "/private/tmp/opencode/**",
     ])
     expect(Object.keys(external).sort()).toEqual([...expectedScopes].sort())
+    // deny catch-all first so an un-whitelisted external probe fails closed
+    expect(Object.keys(external)[0]).toBe("*")
+    expect(external["*"]).toBe("deny")
     expect(external[`${tmp}/opencode/**`]).toBe("allow")
     for (const key of Object.keys(external)) {
       expect(key).not.toContain("janus-agent/design")
     }
     expect(permission.task).toBe("deny")
-    expect(Object.keys(LEAF_DISPATCH_DENY)).toHaveLength(6)
+    expect(Object.keys(LEAF_DISPATCH_DENY)).toHaveLength(7)
+    expect(permission).toMatchObject({ janus_permission_reply: "deny" })
     for (const tool of Object.keys(LEAF_DISPATCH_DENY)) {
       expect(permission[tool]).toBe("deny")
     }
@@ -1923,7 +1967,7 @@ describe("registerCoder", () => {
       permission: Record<string, unknown>
     }
     expect(coder.mode).toBe("subagent")
-    expect(coder.steps).toBe(80)
+    expect(coder.steps).toBe(200)
     expect(coder.prompt).not.toBe("user prompt")
     expect(coder.prompt).toContain("# Coder")
     expect(coder.model).toBe("test/coder-model")
@@ -1963,6 +2007,55 @@ describe("registerCoder", () => {
     expect(coder.prompt.split(principles).length - 1).toBe(1)
     expect(asset).not.toContain(principles)
     expect(asset).toContain("name a principle only when it changes a choice")
+  })
+})
+
+describe("subagent_steps", () => {
+  function tempHomeForWriter(): { env: NodeJS.ProcessEnv; cleanup: () => void } {
+    const parent = mkdtempSync(join(tmpdir(), "writer-steps-"))
+    return { env: { HOME: parent } as NodeJS.ProcessEnv, cleanup: () => rmSync(parent, { recursive: true, force: true }) }
+  }
+
+  it("overrides the registered step cap of both coder and author-writer", async () => {
+    // given
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig({ subagent_steps: 137 })
+    const { env, cleanup } = tempHomeForWriter()
+
+    try {
+      // when
+      await registerCoder(config, pluginConfig)
+      await registerAuthorWriter(config, pluginConfig, env)
+
+      // then
+      const coder = config.agent?.["coder"] as { steps: number }
+      const writer = config.agent?.["author-writer"] as { steps: number }
+      expect(coder.steps).toBe(137)
+      expect(writer.steps).toBe(137)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("registers the schema default 200 on both leaves when subagent_steps is unset", async () => {
+    // given — an unparsed config: the schema default must supply the cap
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = JanusPluginConfigSchema.parse({})
+    const { env, cleanup } = tempHomeForWriter()
+
+    try {
+      // when
+      await registerCoder(config, pluginConfig)
+      await registerAuthorWriter(config, pluginConfig, env)
+
+      // then
+      const coder = config.agent?.["coder"] as { steps: number }
+      const writer = config.agent?.["author-writer"] as { steps: number }
+      expect(coder.steps).toBe(200)
+      expect(writer.steps).toBe(200)
+    } finally {
+      cleanup()
+    }
   })
 })
 
@@ -2026,15 +2119,19 @@ describe("buildCoderPermission", () => {
     expect(permission.webfetch).toBe("allow")
     expect(permission.websearch).toBe("allow")
     expect(permission.task).toBe("deny")
-    expect(Object.keys(LEAF_DISPATCH_DENY)).toHaveLength(6)
+    expect(Object.keys(LEAF_DISPATCH_DENY)).toHaveLength(7)
+    expect(permission).toMatchObject({ janus_permission_reply: "deny" })
     for (const tool of Object.keys(LEAF_DISPATCH_DENY)) {
       expect(permission[tool]).toBe("deny")
     }
     // External reads stop at the shared temp directory: the design state dir
-    // belongs to the primary seats.
+    // belongs to the primary seats. The deny catch-all sits first so an
+    // un-whitelisted external probe fails closed instead of asking.
     const external = permission.external_directory as Record<string, string>
     const tmp = tmpdir()
-    expect(Object.keys(external).sort()).toEqual(
+    expect(external["*"]).toBe("deny")
+    expect(Object.keys(external)[0]).toBe("*")
+    expect(Object.keys(external).slice(1).sort()).toEqual(
       [
         `${tmp}/opencode/**`,
         `${realpathSync(tmp)}/opencode/**`,
@@ -2114,7 +2211,7 @@ describe("edit permissions under host worktree-relative submission", () => {
     }
   })
 
-  it("coder: workspace edits allow, external edits ask, every shared tmp scope allows", () => {
+  it("coder: workspace edits allow, external edits deny, every shared tmp scope allows", () => {
     // given
     const workspaceParent = mkdtempSync(join(tmpdir(), "coder-edit-bases-"))
     const projectDir = join(workspaceParent, "proj")
@@ -2127,11 +2224,11 @@ describe("edit permissions under host worktree-relative submission", () => {
 
       // then — in-workspace files submit as plain relative paths
       expect(hostEvaluate(edit, "packages/opencode-adapter/src/index.ts")).toBe("allow")
-      // outside-workspace files submit as `..`-prefixed relative paths and ask
-      expect(hostEvaluate(edit, relative(projectDir, "/etc/hosts"))).toBe("ask")
-      expect(hostEvaluate(edit, relative(projectDir, join(workspaceParent, "elsewhere", "x.ts")))).toBe("ask")
-      // absolute-shape submissions keep the "/*" ask hedge
-      expect(hostEvaluate(edit, "/etc/hosts")).toBe("ask")
+      // outside-workspace files submit as `..`-prefixed relative paths and deny
+      expect(hostEvaluate(edit, relative(projectDir, "/etc/hosts"))).toBe("deny")
+      expect(hostEvaluate(edit, relative(projectDir, join(workspaceParent, "elsewhere", "x.ts")))).toBe("deny")
+      // absolute-shape submissions keep the "/*" deny hedge
+      expect(hostEvaluate(edit, "/etc/hosts")).toBe("deny")
       // each shared tmp scope allows under relative submission
       const scopeDirs = [
         `${tmp}/opencode`,
@@ -2143,10 +2240,10 @@ describe("edit permissions under host worktree-relative submission", () => {
         const artifact = join(scopeDir, "x", "artifact.txt")
         expect(hostEvaluate(edit, relative(projectDir, artifact))).toBe("allow")
       }
-      // the catch-all allow stays first, the two asks after it
+      // the catch-all allow stays first, the two denies after it
       expect(Object.keys(edit)[0]).toBe("*")
-      expect(edit["../*"]).toBe("ask")
-      expect(edit["/*"]).toBe("ask")
+      expect(edit["../*"]).toBe("deny")
+      expect(edit["/*"]).toBe("deny")
     } finally {
       rmSync(workspaceParent, { recursive: true, force: true })
     }
@@ -2254,6 +2351,92 @@ describe("edit permissions under host worktree-relative submission", () => {
       expect(buildSimplePermission("/ws/lite").edit).toEqual({ "*": "ask", "/ws/lite/**": "allow" })
     } finally {
       rmSync(workspaceParent, { recursive: true, force: true })
+    }
+  })
+
+  it("QS4: all 9 subagent roles fail closed outside their whitelist under the host-merged ruleset", async () => {
+    // Host merge (verified against the OpenCode 1.18.32 binary): an agent's
+    // external_directory rules are merged after the global defaults and the
+    // user's top-level rules, and the host re-appends
+    // `external_directory: { [Truncate.GLOB]: "allow" }` — the data-dir
+    // tool-output glob — to every agent that does not literally deny
+    // Truncate.GLOB (the plugin's agents never do). The evaluator is
+    // findLast: the last matching rule wins, unmatched defaults to "ask".
+    const TRUNCATE_GLOB = join(homedir(), ".local", "share", "opencode", "tool-output", "*")
+    // Neither the host defaults nor a typical user config carries an
+    // external_directory rule, so an un-ruled external path evaluates "ask" —
+    // the hang B1's deny catch-all removes for non-interactive sub-sessions.
+    const g_default: Record<string, string> = {}
+    const l_user: Record<string, string> = {}
+
+    function hostEvaluateMerged(rulesets: Array<Record<string, string>>, submitted: string): string {
+      let action: string | undefined
+      for (const rules of rulesets) {
+        for (const [pattern, value] of Object.entries(rules)) {
+          if (wildcardToRegExp(pattern).test(submitted)) action = value
+        }
+      }
+      return action ?? "ask"
+    }
+
+    // given — a temp HOME so the author/author-reviewer state mkdirs stay isolated
+    const envParent = mkdtempSync(join(tmpdir(), "qs4-home-"))
+    const projectDir = join(envParent, "proj")
+    const env = { HOME: envParent } as NodeJS.ProcessEnv
+    const authorDir = join(envParent, ".local", "share", "janus-agent", "author")
+    const designDir = join(envParent, ".local", "share", "janus-agent", "design")
+    const config: { agent?: Record<string, unknown> } = {}
+
+    try {
+      // when
+      await registerCommonExplorer(config, makeConfig())
+      await registerConsultantAnalyst(config, makeConfig())
+      await registerConsultantCritic(config, makeConfig())
+      await registerConsultantAuditor(config, makeConfig())
+      await registerCoderReviewer(config, makeConfig(), env)
+      await registerSolutionReviewer(config, makeConfig(), env)
+      await registerAuthorWriter(config, makeConfig(), env, projectDir)
+      await registerAuthorReviewer(config, makeConfig(), env)
+      await registerCoder(config, makeConfig(), env, [projectDir])
+
+      // then
+      const tmp = tmpdir()
+      const roles = [
+        "common-explorer", "consultant-analyst", "consultant-critic", "consultant-auditor",
+        "coder-reviewer", "solution-reviewer", "author-writer", "author-reviewer", "coder",
+      ] as const
+      for (const role of roles) {
+        const permission = (config.agent?.[role] as { permission: Record<string, unknown> }).permission
+        const agentExternal = permission.external_directory as Record<string, string>
+        // every mode:"subagent" role leads with the deny catch-all
+        expect(Object.keys(agentExternal)[0]).toBe("*")
+        expect(agentExternal["*"]).toBe("deny")
+        const merged = [g_default, l_user, agentExternal, { [TRUNCATE_GLOB]: "allow" }]
+
+        // never-whitelisted data-root probes deny (fail closed, never ask)
+        expect(hostEvaluateMerged(merged, join(envParent, ".local", "share", "janus-agent", "provider-keys.json"))).toBe("deny")
+        expect(hostEvaluateMerged(merged, join(envParent, ".local", "share", "janus-agent", "ledger", "p-x", "l.md"))).toBe("deny")
+        // arbitrary external paths deny
+        expect(hostEvaluateMerged(merged, "/etc/hosts")).toBe("deny")
+        // truncated tool-output reads stay allowed
+        expect(hostEvaluateMerged(merged, TRUNCATE_GLOB)).toBe("allow")
+
+        // role-specific whitelists still allow
+        if (role === "coder-reviewer" || role === "solution-reviewer") {
+          expect(hostEvaluateMerged(merged, join(designDir, "p-x", "design.md"))).toBe("allow")
+          expect(hostEvaluateMerged(merged, join(authorDir, "p-x", "brief.md"))).toBe("deny")
+        } else if (role === "author-writer") {
+          expect(hostEvaluateMerged(merged, join(authorDir, "p-x", "brief.md"))).toBe("allow")
+          expect(hostEvaluateMerged(merged, join(designDir, "p-x", "design.md"))).toBe("deny")
+        } else if (role === "author-reviewer") {
+          expect(hostEvaluateMerged(merged, join(authorDir, "p-x", "brief.md"))).toBe("allow")
+          expect(hostEvaluateMerged(merged, join(designDir, "p-x", "design.md"))).toBe("allow")
+        } else if (role === "coder") {
+          expect(hostEvaluateMerged(merged, join(tmp, "opencode", "x", "a.txt"))).toBe("allow")
+        }
+      }
+    } finally {
+      rmSync(envParent, { recursive: true, force: true })
     }
   })
 })
@@ -2612,6 +2795,55 @@ describe("buildJanusRuntimeBindings", () => {
     expect(withDesign).toContain(
       "- Design state dir: `/xdg/data/janus-agent/design/my-project-a1b2c3d4` — read-only reference for checking `plan.md` on a `tech-lead` checkpoint relay; never edit `design.md` or `plan.md`",
     )
+  })
+})
+
+describe("leaf permission denies janus_permission_reply", () => {
+  it("carries the literal 7th deny key on every leaf role", async () => {
+    // given — a shared agent map plus temp homes for the FS-touching leaves
+    const config: { agent?: Record<string, unknown> } = {}
+    const pluginConfig = makeConfig()
+    const workspaceParent = mkdtempSync(join(tmpdir(), "leaf-deny-ws-"))
+    const envParent = mkdtempSync(join(tmpdir(), "leaf-deny-env-"))
+    const env = { HOME: envParent } as NodeJS.ProcessEnv
+
+    try {
+      await registerCommonExplorer(config, pluginConfig)
+      await registerConsultantAnalyst(config, pluginConfig)
+      await registerConsultantCritic(config, pluginConfig)
+      await registerConsultantAuditor(config, pluginConfig)
+      await registerCoderReviewer(config, pluginConfig, env)
+      await registerSolutionReviewer(config, pluginConfig, env)
+      await registerSimple(config, pluginConfig, "oc-leaf-ns", [join(workspaceParent, "ws")])
+      await registerCoder(config, pluginConfig)
+      await registerAuthorWriter(config, pluginConfig, env)
+      await registerAuthorReviewer(config, pluginConfig, env)
+
+      // then — the literal key is pinned per role, independent of the
+      // exported-constant loop (which would pass vacuously if the key were
+      // dropped from both the constant and every role).
+      expect(LEAF_DISPATCH_DENY).toMatchObject({ janus_permission_reply: "deny" })
+      const roles = [
+        "common-explorer",
+        "consultant-analyst",
+        "consultant-critic",
+        "consultant-auditor",
+        "coder-reviewer",
+        "solution-reviewer",
+        "simple",
+        "coder",
+        "author-writer",
+        "author-reviewer",
+      ]
+      for (const role of roles) {
+        const entry = config.agent?.[role] as { permission: Record<string, unknown> } | undefined
+        expect(entry).toBeDefined()
+        expect(entry?.permission).toMatchObject({ janus_permission_reply: "deny" })
+      }
+    } finally {
+      rmSync(workspaceParent, { recursive: true, force: true })
+      rmSync(envParent, { recursive: true, force: true })
+    }
   })
 })
 

@@ -1,5 +1,6 @@
-import type { DispatchEnvelope, DispatchOutcome, DispatchRole, DispatchSessionStatus } from "./dispatch-contract.ts"
+import type { DispatchEnvelope, DispatchOutcome, DispatchRole, DispatchSessionStatus, PendingAsk } from "./dispatch-contract.ts"
 import type { ObservationDiagnostics, ObservationOutcome } from "./dispatch-observer.ts"
+import type { PermissionAskRegistry } from "./permission-ask.ts"
 
 export const RETRYABLE_MODEL_ERROR_CODES = ["402", "429", "500", "502", "503", "504"] as const
 
@@ -112,6 +113,7 @@ function healthEnvelopeFields(diagnostics: ObservationDiagnostics | undefined): 
   running_tool_ms?: number
   session_status?: DispatchSessionStatus
   stalled_suspect?: true
+  pending_asks?: NonNullable<DispatchEnvelope["pending_asks"]>
 } {
   const fields: {
     last_activity_ms?: number
@@ -119,6 +121,7 @@ function healthEnvelopeFields(diagnostics: ObservationDiagnostics | undefined): 
     running_tool_ms?: number
     session_status?: DispatchSessionStatus
     stalled_suspect?: true
+    pending_asks?: NonNullable<DispatchEnvelope["pending_asks"]>
   } = {}
   if (diagnostics === undefined) return fields
   if (diagnostics.last_activity_ms !== undefined && Number.isInteger(diagnostics.last_activity_ms) && diagnostics.last_activity_ms >= 0) {
@@ -133,7 +136,84 @@ function healthEnvelopeFields(diagnostics: ObservationDiagnostics | undefined): 
     fields.session_status = diagnostics.session_status
   }
   if (diagnostics.stalled_suspect === true) fields.stalled_suspect = true
+  // The asks reached the observer already sanitized by permission-ask.ts (the
+  // single owner of D3 sanitization); attach them verbatim, never re-sanitize.
+  if (diagnostics.pending_asks !== undefined && diagnostics.pending_asks.length > 0) {
+    fields.pending_asks = [...diagnostics.pending_asks] as NonNullable<DispatchEnvelope["pending_asks"]>
+  }
   return fields
+}
+
+const UNTRUSTED_ASK_TAG = "[untrusted-child-request]"
+/** Single-line cap for the patterns preview carried in a reason string. */
+const MAX_ASK_PREVIEW_CHARS = 120
+
+function askPreview(ask: PendingAsk): string {
+  const permissions = ask.patterns.join(", ").slice(0, MAX_ASK_PREVIEW_CHARS)
+  const patternText = permissions.length > 0 ? ` (${permissions})` : ""
+  return `${UNTRUSTED_ASK_TAG} ${ask.permission}${patternText} on session ${ask.sessionID}`
+}
+
+function coordinatorRecoveryReason(
+  preview: string,
+  jobID: string,
+  marker: { readonly coordinatorSessionID: string; readonly descendantJobIDs: ReadonlyArray<string> },
+): string {
+  // Step 2 waits on the dispatch JOB-ROOT id (what `janus_dispatch_wait`
+  // resolves), while step 3 continues the coordinator SESSION (what
+  // `janus_dispatch_continue` reuses). They differ on retry attempts and
+  // continuations, so never collapse them onto one identifier.
+  const step3 = marker.descendantJobIDs.length > 0
+    ? `(3) janus_dispatch_continue(${marker.coordinatorSessionID}) and have it collect the result of the listed descendant job ids: ${marker.descendantJobIDs.join(", ")}`
+    : `(3) janus_dispatch_continue(${marker.coordinatorSessionID}) and have it collect the descendant child session's result`
+  return `coordinator turn ended early while a descendant sub-session still holds a pending permission ask. ${preview}. Recovery: (1) janus_permission_reply for the ask, (2) janus_dispatch_wait(${jobID}) to observe the coordinator job, ${step3}.`
+}
+
+/**
+ * Self-describing reason for a non-terminal result that carries pending asks,
+ * taking precedence over {@link stalledSuspectReason} (except for a locally
+ * aborted observation, which never gets extra reason text). Returns undefined
+ * when no ask is attached.
+ */
+export function pendingAskReason(diagnostics: ObservationDiagnostics | undefined): string | undefined {
+  if (diagnostics === undefined || diagnostics.aborted === true) return undefined
+  const asks = diagnostics.pending_asks
+  if (asks === undefined || asks.length === 0) return undefined
+  const preview = asks.map(askPreview).join("; ")
+  const ended = diagnostics.coordinator_turn_ended
+  if (ended !== undefined) {
+    // Hop 0 of a surfaced ask is always the observed dispatch job root.
+    const jobID = asks[0]?.job_chain[0]?.job_id ?? ended.coordinatorSessionID
+    return coordinatorRecoveryReason(preview, jobID, ended)
+  }
+  if (diagnostics.is_dispatched_subsession_caller === true) {
+    return `${preview}. This ask belongs to a descendant sub-session: call janus_dispatch_wait immediately and never finish its turn or cancel the child job while it is pending; the top-level caller answers it with janus_permission_reply.`
+  }
+  if (diagnostics.same_turn_re_yield === true) {
+    return `STOP WAITING: ${preview}. This ask was already surfaced this turn; answer it with janus_permission_reply, then janus_dispatch_wait again.`
+  }
+  return `${preview}. Answer it with janus_permission_reply (once, always, or reject), then janus_dispatch_wait to keep observing.`
+}
+
+/** Marker appended to a coordinator completion that ended its turn early. */
+export const COORDINATOR_TURN_ENDED_MARKER = "[coordinator-turn-ended-early:"
+
+/**
+ * The single marker-append helper. Peek-then-consume so exactly one completed
+ * construction surfaces the terminal guard's marker; later constructions find
+ * nothing, and an aborted call (which never builds a completed outcome) never
+ * consumes it.
+ */
+export function appendCoordinatorTurnEndedMarker(
+  registry: PermissionAskRegistry | undefined,
+  jobID: string | undefined,
+  text: string,
+): string {
+  if (registry === undefined || jobID === undefined) return text
+  if (registry.peekCoordinatorTurnEnded(jobID) === undefined) return text
+  const marker = registry.consumeCoordinatorTurnEnded(jobID)
+  if (marker === undefined) return text
+  return `${text}\n[coordinator-turn-ended-early: coordinatorSessionID=${marker.coordinatorSessionID}, descendantJobIDs=[${marker.descendantJobIDs.join(", ")}]]`
 }
 
 /**
@@ -189,10 +269,11 @@ export function observationToOutcome(
   role: DispatchRole,
   attempt: { index: number; model: string | null; sessionID: string },
   waitedMs: number,
+  askRegistry?: PermissionAskRegistry,
 ): DispatchOutcome {
   switch (observation.kind) {
     case "completed":
-      return { kind: "success", text: observation.text }
+      return { kind: "success", text: appendCoordinatorTurnEndedMarker(askRegistry, jobID, observation.text) }
     case "cancelled":
       return {
         kind: "cancelled",
@@ -223,7 +304,8 @@ export function observationToOutcome(
         attempt,
         attempt.sessionID,
         waitedMs,
-        stalledSuspectReason(observation.diagnostics) ??
+        pendingAskReason(observation.diagnostics) ??
+          stalledSuspectReason(observation.diagnostics) ??
           (observation.diagnostics?.aborted ? "observation aborted" : observation.diagnostics?.reason ??
             (observation.diagnostics?.status === "retry" ? "specialist is retrying" : observation.diagnostics?.status === "busy" ? "specialist is busy" : "waiting for specialist")),
         observation.diagnostics,
@@ -236,7 +318,7 @@ export function observationToOutcome(
         attempt,
         attempt.sessionID,
         waitedMs,
-        stalledSuspectReason(observation.diagnostics) ?? observation.reason,
+        pendingAskReason(observation.diagnostics) ?? stalledSuspectReason(observation.diagnostics) ?? observation.reason,
         observation.diagnostics,
       )
   }

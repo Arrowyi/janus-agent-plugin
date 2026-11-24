@@ -1144,9 +1144,9 @@
   {
     "id": "C97",
     "title": "Three failed rounds stop the milestone for the user, never an inline takeover",
-    "given": "A single milestone reaches its third revise round without a pass, or any reviewer returns a block; separately, a coder session exhausts its 80-step cap mid-milestone.",
+    "given": "A single milestone reaches its third revise round without a pass, or any reviewer returns a block; separately, a coder session exhausts its subagent_steps cap (default 200) mid-milestone.",
     "when": "The tech-lead applies the circuit breaker",
-    "then": "It stops immediately, preserves .baseline-mK/ and the current tree, and reports the failure details to the user for a model upgrade or human intervention — never taking the milestone over inline and never self-approving the review. An 80-step-capped coder session is never taken over inline: the tech-lead opens a new coder session continuing the remaining checklist, the capped session counts toward the milestone's three-round cap, and its job id is appended to reviews_job_ids. A hop written on such a stop names the user-facing caller as its 建议下一跳 and states the pending decision in the 默认接力任务, so the caller surfaces it — never re-dispatches over it.",
+    "then": "It stops immediately, preserves .baseline-mK/ and the current tree, and reports the failure details to the user for a model upgrade or human intervention — never taking the milestone over inline and never self-approving the review. A coder session that hits its subagent_steps cap (default 200) is never taken over inline: the tech-lead opens a new coder session continuing the remaining checklist, the capped session counts toward the milestone's three-round cap, and its job id is appended to reviews_job_ids. A hop written on such a stop names the user-facing caller as its 建议下一跳 and states the pending decision in the 默认接力任务, so the caller surfaces it — never re-dispatches over it.",
     "grading": "model",
     "modes": [],
     "notes": "Rubric: Reject inline implementation after the cap, a self-review pass, a discarded baseline directory, or a silent fourth round; require the stop-and-report behavior and the capped-session continuation with the appended job id. Deterministic backstop: the circuit-breaker, step-cap, and relay rules live in assets/agents/tech-lead.md (prompt-contracts.test.ts)."

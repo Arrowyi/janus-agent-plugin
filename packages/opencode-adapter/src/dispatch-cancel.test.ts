@@ -4,7 +4,8 @@ import { abortAndReconcile, createDispatchCancel, createSessionStatusProbe, crea
 import { createKeyedMutex, parseOutcomeEnvelope, type DispatchSdk, type SdkAssistantMessage, type SdkMessageWithParts, type SdkResult } from "./dispatch-contract.ts"
 import { appendRecord, createAttemptSession, createJob, loadJob } from "./dispatch-journal.ts"
 import { createDispatchLifecycle } from "./dispatch-lifecycle.ts"
-import { createFakeClock, createFakeSdk, FAKE_DIRECTORY, FAKE_PARENT_ID, makeJobSpec, validRoleSpecs } from "./dispatch-test-fixtures.ts"
+import { createFakeClock, createFakePendingAsksProbe, createFakeSdk, FAKE_DIRECTORY, FAKE_PARENT_ID, makeJobSpec, seedLivePermissionAsk, validRoleSpecs } from "./dispatch-test-fixtures.ts"
+import { PermissionAskRegistry, resolvePermissionSdk } from "./permission-ask.ts"
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => { throw new Error("deferred not initialized") }
@@ -433,4 +434,72 @@ test("abortAndReconcile forwards after-snapshot health diagnostics on the cancel
   expect(outcome.envelope.running_tool_ms).toBe(20_000)
   expect(outcome.envelope.session_status).toBe("busy")
   expect(f.aborts).toEqual([f.active.sessionID])
+})
+
+// --- P5 M2 cancel-epoch T2 and the cancel path's T1-off snapshot ---
+
+async function askCancelFixture(role: "coder" | "consultant" = "consultant") {
+  const host = createFakeSdk({ seedPermission: true })
+  const clock = createFakeClock(0)
+  const mutex = createKeyedMutex()
+  const registry = new PermissionAskRegistry()
+  const probe = createFakePendingAsksProbe(host, registry, clock)
+  const permissionSdk = resolvePermissionSdk(host)
+  if (permissionSdk === undefined) throw new Error("expected a fake permission surface")
+  const sdk = host as DispatchSdk
+  host.seedSession({ id: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, title: "human", time: { created: 0, updated: 0 } })
+  const created = await createJob(sdk, { parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role, agentName: role, modelChain: ["opencode-go/glm-5.3"], prompt: "work", clock })
+  if (!created.ok) throw created.error
+  const jobID = created.value.jobID
+  const child = await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role })
+  if (!child.ok) throw child.error
+  const sessionID = child.value.sessionID
+  const messageID = "msg-ask-cancel-request"
+  const reservation = await appendRecord(sdk, { jobID, directory: FAKE_DIRECTORY, messageID, record: { v: 1, kind: "attempt-reservation", job_id: jobID, attempt_index: 0, model: "opencode-go/glm-5.3", message_id: messageID, reserved_at: clock.now() } })
+  if (!reservation.ok) throw reservation.error
+  const receipt = await appendRecord(sdk, { jobID, directory: FAKE_DIRECTORY, record: { v: 1, kind: "attempt-receipt", job_id: jobID, attempt_index: 0, session_id: sessionID, message_id: messageID, received_at: clock.now() } })
+  if (!receipt.ok) throw receipt.error
+  const cancel = createDispatchCancel({ sdk, clock, mutex, askRegistry: registry, pendingAsksProbe: probe, permissionSdk })
+  const lifecycle = createDispatchLifecycle({ sdk, clock, mutex, askRegistry: registry, pendingAsksProbe: probe, permissionSdk })
+  const input = { jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY }
+  return { host, sdk, clock, registry, probe, permissionSdk, cancel, lifecycle, input, jobID, sessionID, messageID }
+}
+
+test("Probe 3 + T2 — cancel rejects a live ask via a fresh pull and a continuation re-escalates a newer ask", async () => {
+  const f = await askCancelFixture("consultant")
+  seedLivePermissionAsk(f.host, f.registry, { id: "req-old", sessionID: f.sessionID, permission: "bash", patterns: ["rm -rf build"] }, f.clock.now())
+  const result = status(await f.cancel.cancel(f.input))
+  expect(result.status).toBe("cancelling")
+  const replies = f.host.permission!.calls.filter((call) => call.method === "reply")
+  expect(replies).toHaveLength(1)
+  expect(replies[0]?.input).toMatchObject({ requestID: "req-old", reply: "reject", message: "dispatch job cancelled" })
+
+  // A continuation of the cancelled session arrives and immediately hits a new ask.
+  f.clock.advance(1_000)
+  f.registry.onAsked({ requestID: "req-new", sessionID: f.sessionID, directory: FAKE_DIRECTORY, permission: "edit", patterns: ["x"] }, f.clock.now())
+  f.host.permission!.seedAsks([{ id: "req-new", sessionID: f.sessionID, permission: "edit", patterns: ["x"] }])
+  const continued = status(await f.lifecycle.continue({
+    role: "consultant", prompt: "continue the work", agentName: "consultant",
+    modelChain: ["opencode-go/glm-5.3"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+    sessionID: f.sessionID, continuedFrom: f.jobID, waitMs: 0,
+  }))
+  expect(continued.status).toBe("pending")
+  if (continued.status !== "pending") throw new Error("expected pending envelope")
+  expect(continued.pending_asks?.map((ask) => ask.requestID)).toEqual(["req-new"])
+})
+
+test("decision — the cancel snapshot keeps T1 off: a completed coordinator with a pending descendant ask is returned, not intercepted", async () => {
+  const f = await askCancelFixture("consultant")
+  const completed: SdkMessageWithParts = {
+    info: { id: "msg-coordinator-done", sessionID: f.sessionID, role: "assistant", parentID: f.messageID, time: { created: 0, completed: 0 }, finish: "stop", modelID: "m", providerID: "p" },
+    parts: [{ type: "text", text: "coordinator report" }],
+  }
+  f.host.seedMessages(f.sessionID, [completed])
+  seedLivePermissionAsk(f.host, f.registry, { id: "req-l2", sessionID: f.sessionID, permission: "bash", patterns: ["rm -rf build"] }, 0)
+  const result = await f.cancel.cancel(f.input)
+  // T1 would have rewritten this to a pending envelope; the cancel path returns
+  // the completed report and never reaches the T1 intercept.
+  expect(result).toBe("coordinator report")
+  expect(f.host.calls.filter((call) => (call as { method: string }).method === "abort")).toHaveLength(0)
+  expect(f.host.permission!.calls.filter((call) => call.method === "reply")).toHaveLength(0)
 })

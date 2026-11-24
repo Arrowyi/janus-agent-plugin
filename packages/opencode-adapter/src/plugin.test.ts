@@ -121,17 +121,20 @@ describe("createJanusConfigHook", () => {
       expect(techLeadEdit[`${relative(projectDir, designDir)}/**`]).toBe("allow")
 
       // The coder is a leaf execution seat: no design state dir, only the
-      // shared temporary directory.
+      // shared temporary directory, behind a deny catch-all so an
+      // un-whitelisted external probe fails closed instead of asking.
       const coderExternal = coder.permission.external_directory as Record<string, string>
+      expect(Object.keys(coderExternal)[0]).toBe("*")
+      expect(coderExternal["*"]).toBe("deny")
       expect(coderExternal[`${designDir}/**`]).toBeUndefined()
       expect(coder.prompt).not.toContain("Design record:")
       // coder edit: workspace allow, relative-shape and absolute-shape
-      // external asks, and the tmp-scope allow twins last.
+      // external denies, and the tmp-scope allow twins last.
       const coderEdit = coder.permission.edit as Record<string, string>
       expect(coderEdit["*"]).toBe("allow")
       expect(Object.keys(coderEdit)[0]).toBe("*")
-      expect(coderEdit["../*"]).toBe("ask")
-      expect(coderEdit["/*"]).toBe("ask")
+      expect(coderEdit["../*"]).toBe("deny")
+      expect(coderEdit["/*"]).toBe("deny")
       const tmp = tmpdir()
       for (const scopeDir of [
         `${tmp}/opencode`,
@@ -190,7 +193,7 @@ describe("createJanusConfigHook", () => {
       expect(config.agent?.["coder-reviewer"]).toMatchObject({ mode: "subagent", model: "opencode-go/kimi-k3.1-pro" })
       expect(config.agent?.["consultant-auditor"]).toMatchObject({ mode: "subagent", model: "opencode-go/grok-4.7" })
       expect(config.agent?.["solution-reviewer"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
-      expect(config.agent?.["coder"]).toMatchObject({ mode: "subagent", steps: 80, model: "opencode-go/glm-5.3" })
+      expect(config.agent?.["coder"]).toMatchObject({ mode: "subagent", steps: 200, model: "opencode-go/glm-5.3" })
       expect(config.agent?.["author-writer"]).toMatchObject({ mode: "subagent", model: "opencode/claude-sonnet-5-5" })
       expect(config.agent?.["author-reviewer"]).toMatchObject({ mode: "subagent", model: "opencode-go/kimi-k3.1-pro" })
     } finally {
@@ -222,7 +225,7 @@ describe("createJanusConfigHook", () => {
         prompt: string
       }
       expect(writer.mode).toBe("subagent")
-      expect(writer.steps).toBe(80)
+      expect(writer.steps).toBe(200)
       expect(writer.description).toContain("sole author of reader-facing prose")
       expect(writer.permission.bash).toBe("deny")
       expect(writer.permission.task).toBe("deny")
@@ -237,6 +240,8 @@ describe("createJanusConfigHook", () => {
       expect(edit["userdoc/**"]).toBe("allow")
       const authorDir = join(tmpHome, ".local", "share", "janus-agent", "author")
       const external = writer.permission.external_directory as Record<string, string>
+      expect(external["*"]).toBe("deny")
+      expect(Object.keys(external)[0]).toBe("*")
       expect(external[`${authorDir}/**`]).toBe("allow")
       expect(writer.prompt).toContain("Write mode: `scoped`")
       // the author state dir is created at registration
@@ -285,6 +290,8 @@ describe("createJanusConfigHook", () => {
       const authorDir = join(tmpHome, ".local", "share", "janus-agent", "author")
       const designDir = join(tmpHome, ".local", "share", "janus-agent", "design")
       const external = reviewer.permission.external_directory as Record<string, string>
+      expect(external["*"]).toBe("deny")
+      expect(Object.keys(external)[0]).toBe("*")
       expect(external[`${authorDir}/**`]).toBe("allow")
       expect(external[`${designDir}/**`]).toBe("allow")
       expect(reviewer.prompt).toContain("# Author-Reviewer")
@@ -326,6 +333,8 @@ describe("createJanusConfigHook", () => {
       expect(reviewer.permission.janus_dispatch).toBe("deny")
       const designDir = join(tmpHome, ".local", "share", "janus-agent", "design")
       const external = reviewer.permission.external_directory as Record<string, string>
+      expect(external["*"]).toBe("deny")
+      expect(Object.keys(external)[0]).toBe("*")
       expect(external[`${designDir}/**`]).toBe("allow")
     } finally {
       delete process.env.XDG_DATA_HOME
@@ -398,10 +407,12 @@ describe("createJanusConfigHook", () => {
         task: "deny",
         webfetch: "allow",
         websearch: "allow",
+        external_directory: { "*": "deny", [`${join(tmpHome, ".local", "share", "janus-agent", "author")}/**`]: "allow" },
         janus_dispatch: "deny",
         janus_dispatch_wait: "deny",
         janus_dispatch_cancel: "deny",
         janus_dispatch_continue: "deny",
+        janus_permission_reply: "deny",
         janus_config: "deny",
         janus_provider_keys: "deny",
       })
@@ -979,6 +990,28 @@ describe("createJanusConfigHook", () => {
       rmSync(tmpConfigDir, { recursive: true, force: true })
     }
   })
+
+  it("rejects a non-positive or non-integer subagent_steps", async () => {
+    // given
+    const tmpConfigDir = mkdtempSync(join(tmpdir(), "plugin-cfg-steps-"))
+    process.env.HOME = makeTempHome()
+    delete process.env.XDG_CONFIG_HOME
+    const config: Config = {}
+    const hook = createJanusConfigHook({ id: "proj-123" }, "/tmp/project")
+
+    try {
+      for (const [name, value] of [["zero", 0], ["fraction", 2.5]] as const) {
+        const configPath = join(tmpConfigDir, `${name}.jsonc`)
+        writeFileSync(configPath, JSON.stringify({ subagent_steps: value }))
+        process.env.JANUS_CONFIG = configPath
+
+        // when / then
+        await expect(hook(config)).rejects.toThrow(/subagent_steps/)
+      }
+    } finally {
+      rmSync(tmpConfigDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("JanusAgentPlugin", () => {
@@ -1001,7 +1034,7 @@ describe("JanusAgentPlugin", () => {
     expect(typeof hooks.config).toBe("function")
   })
 
-  it("registers exactly the four dispatch tools plus the config and provider-key tools", async () => {
+  it("registers exactly the four dispatch tools plus the permission-reply, config, and provider-key tools", async () => {
     // given
     const input: PluginInput = {
       project: { id: "wiring-test", worktree: "/wt", time: { created: 0 } },
@@ -1023,11 +1056,13 @@ describe("JanusAgentPlugin", () => {
       "janus_dispatch_wait",
       "janus_dispatch_cancel",
       "janus_dispatch_continue",
+      "janus_permission_reply",
       "janus_config",
       "janus_provider_keys",
     ])
     expect(hooks.tool?.["janus_dispatch"]).toBeDefined()
     expect(hooks.tool?.["janus_dispatch_continue"]).toBeDefined()
+    expect(hooks.tool?.["janus_permission_reply"]).toBeDefined()
     expect(hooks.tool?.["janus_config"]).toBeDefined()
   })
 

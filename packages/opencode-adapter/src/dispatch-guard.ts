@@ -3,17 +3,29 @@ import { resolveRoleModel, type JanusPluginConfig } from "./plugin-config.ts"
 import { loadJobModelForGuard } from "./dispatch-journal.ts"
 import {
   AUTHOR_REVIEWER_STAGES,
+  DISPATCH_MARKER,
   SOLUTION_REVIEWER_STAGES,
   type AuthorReviewerStage,
+  type DispatchPermissionSdk,
   type DispatchProtocol,
   type DispatchRole,
   type DispatchSdk,
   type DispatchStage,
   type DispatchTier,
+  type PermissionReplyArgs,
   type SdkAssistantMessage,
   type SdkMessageWithParts,
+  type SdkPendingPermission,
   type SdkTokenUsage,
 } from "./dispatch-contract.ts"
+import {
+  MAX_LINEAGE_DEPTH,
+  REGISTRY_OUTAGE_GRACE_MS,
+  canonicalizeDirectory,
+  findLastHumanUserMessageID,
+  walkParentLineage,
+  type PermissionAskRegistry,
+} from "./permission-ask.ts"
 
 /**
  * Runtime author-≠-reviewer guard for the dispatch boundary: a review seat
@@ -582,4 +594,228 @@ export async function enforceContinueReviewGuard(
     }
   }
   return pass()
+}
+
+// ---------------------------------------------------------------------------
+// janus_permission_reply guard (Gates 1–4)
+// ---------------------------------------------------------------------------
+
+const DISPATCHED_CALLER_MESSAGE =
+  "Error: dispatched sub-session cannot call janus_permission_reply; surface pending_asks to the top-level user-facing caller"
+
+export type PermissionReplyGuardOutcome =
+  | { readonly ok: true; readonly action: "reply" }
+  | { readonly ok: true; readonly action: "already-resolved"; readonly message: string }
+  | { readonly ok: false; readonly message: string }
+
+export interface PermissionReplyGuardInput {
+  /** The calling (top-level) session id. */
+  readonly sessionID: string
+  readonly directory: string
+  readonly args: PermissionReplyArgs
+  readonly askRegistry: PermissionAskRegistry
+  readonly permissionSdk: DispatchPermissionSdk | undefined
+  readonly now: number
+}
+
+interface PullOutcome {
+  readonly succeeded: boolean
+  readonly asks: ReadonlyArray<SdkPendingPermission>
+}
+
+async function pullPendingAsks(
+  permissionSdk: DispatchPermissionSdk | undefined,
+  directory: string,
+  sessionID: string,
+): Promise<PullOutcome> {
+  if (permissionSdk !== undefined) {
+    try {
+      const global = await permissionSdk.list({ query: { directory } })
+      if (global.error === undefined && global.data !== undefined) {
+        return { succeeded: true, asks: global.data }
+      }
+    } catch {
+      // fall through to the per-session tier
+    }
+    if (permissionSdk.listForSession !== undefined) {
+      try {
+        const scoped = await permissionSdk.listForSession({ path: { sessionID }, query: { directory } })
+        if (scoped.error === undefined && scoped.data !== undefined) {
+          return { succeeded: true, asks: scoped.data }
+        }
+      } catch {
+        // both tiers unavailable
+      }
+    }
+  }
+  return { succeeded: false, asks: [] }
+}
+
+type RequestResolution =
+  | { readonly kind: "proceed" }
+  | { readonly kind: "resolved"; readonly message: string }
+  | { readonly kind: "fail"; readonly message: string }
+
+/**
+ * Gate 2: three-tier requestID→sessionID resolution. POST
+ * /permission/{requestID}/reply is keyed by requestID alone, so the request
+ * must be pinned to a session before lineage is trusted.
+ */
+async function resolvePermissionRequest(
+  input: PermissionReplyGuardInput,
+  pullStartedAt: number,
+): Promise<RequestResolution> {
+  const requestID = input.args.requestID
+  const expectedSessionID = input.args.sessionID
+  const now = input.now
+  const pull = await pullPendingAsks(input.permissionSdk, input.directory, expectedSessionID)
+
+  if (pull.succeeded) {
+    input.askRegistry.reconcileWithPull(input.directory, pull.asks, pullStartedAt, now)
+    const pulled = pull.asks.find((ask) => ask.id === requestID)
+    const active = pulled ?? input.askRegistry
+      .getActive(input.directory)
+      .find((entry) => entry.requestID === requestID && entry.firstSeenAt >= pullStartedAt)
+    if (active !== undefined) {
+      if (active.sessionID !== expectedSessionID) {
+        return {
+          kind: "fail",
+          message: `Error: permission request ${requestID} belongs to session ${active.sessionID}, not ${expectedSessionID}`,
+        }
+      }
+      return { kind: "proceed" }
+    }
+    // Outcome B: authoritative-absent. Only a session-matching history entry
+    // proves the request was already resolved; anything else is a hard fail.
+    const history = input.askRegistry.getHistory(requestID)
+    if (history !== undefined && history.sessionID === expectedSessionID) {
+      input.askRegistry.evictActive(input.directory, requestID)
+      return {
+        kind: "resolved",
+        message: `Permission request ${requestID} on session ${expectedSessionID} was already resolved (no longer pending).`,
+      }
+    }
+    return {
+      kind: "fail",
+      message: `Error: permission request ${requestID} was not found in active pending requests`,
+    }
+  }
+
+  // Outcome C: pull outage. Never claim "already resolved" here; only a
+  // recently-seen, unanswered, session-matching history entry may proceed.
+  const history = input.askRegistry.getHistory(requestID)
+  if (
+    history !== undefined &&
+    history.sessionID === expectedSessionID &&
+    history.replied !== true &&
+    now - history.lastSeenAt <= REGISTRY_OUTAGE_GRACE_MS
+  ) {
+    return { kind: "proceed" }
+  }
+  return {
+    kind: "fail",
+    message: `Error: could not verify permission request ${requestID}: the host permission surface is unavailable and no recent pending record exists; retry janus_permission_reply when the permission service recovers`,
+  }
+}
+
+/** Gate 1: the caller must be the top-level user-facing session. */
+async function gateTopLevelCaller(sdk: DispatchSdk, input: PermissionReplyGuardInput): Promise<string | undefined> {
+  if (input.askRegistry.dispatchedSessionIDs.has(input.sessionID)) return DISPATCHED_CALLER_MESSAGE
+  let session
+  try {
+    const result = await sdk.session.get({ path: { id: input.sessionID }, query: { directory: input.directory } })
+    if (result.error !== undefined || result.data === undefined) {
+      return "Error: failed to verify the caller session; retry janus_permission_reply"
+    }
+    session = result.data
+  } catch {
+    return "Error: failed to verify the caller session; retry janus_permission_reply"
+  }
+  if (session.title.startsWith(DISPATCH_MARKER) || session.parentID !== undefined) return DISPATCHED_CALLER_MESSAGE
+  return undefined
+}
+
+/** Gate 3: the ask's session must descend from the caller within the workspace. */
+async function gateLineage(sdk: DispatchSdk, input: PermissionReplyGuardInput): Promise<string | undefined> {
+  const targetSessionID = input.args.sessionID
+  if (targetSessionID === input.sessionID) {
+    return `Error: permission request session ${targetSessionID} is the caller session; janus_permission_reply answers a dispatched sub-session's ask`
+  }
+  const walk = await walkParentLineage(sdk, {
+    startSessionID: targetSessionID,
+    directory: input.directory,
+    maxDepth: MAX_LINEAGE_DEPTH,
+  })
+  if (!walk.ok) {
+    if (walk.reason === "depth-exceeded") {
+      return `Error: session ${targetSessionID} lineage exceeds ${MAX_LINEAGE_DEPTH} hops; janus_permission_reply answers a direct dispatched sub-session`
+    }
+    if (walk.reason === "directory-mismatch") {
+      return `Error: session ${targetSessionID} is outside the caller workspace; janus_permission_reply is limited to the caller's workspace`
+    }
+    return `Error: could not read the session lineage for ${targetSessionID}; retry janus_permission_reply`
+  }
+  const expectedDirectory = canonicalizeDirectory(input.directory)
+  if (walk.path.some((hop) => canonicalizeDirectory(hop.directory) !== expectedDirectory)) {
+    return `Error: session ${targetSessionID} is outside the caller workspace; janus_permission_reply is limited to the caller's workspace`
+  }
+  if (!walk.path.some((hop) => hop.id === input.sessionID)) {
+    return `Error: session ${targetSessionID} is not a descendant of the caller session ${input.sessionID}; janus_permission_reply must answer a request from your own dispatched sub-session`
+  }
+  return undefined
+}
+
+/**
+ * Gate 4: the same-turn human-user-message watermark. The ask must have been
+ * surfaced to this caller, and the caller's newest real human message must be
+ * newer than the watermark recorded at surfacing time.
+ */
+async function gateSurfacedWatermark(sdk: DispatchSdk, input: PermissionReplyGuardInput): Promise<string | undefined> {
+  const requestID = input.args.requestID
+  const history = input.askRegistry.getHistory(requestID)
+  const surfaced = history?.surfaced
+  if (surfaced === undefined || surfaced.callerSessionID !== input.sessionID) {
+    return `Error: permission request ${requestID} was not surfaced to this caller; pending_asks must be surfaced to the top-level caller before it can be answered`
+  }
+  let messages: ReadonlyArray<SdkMessageWithParts>
+  try {
+    const result = await sdk.session.messages({ path: { id: input.sessionID }, query: { directory: input.directory } })
+    if (result.error !== undefined || result.data === undefined) {
+      return `Error: failed to read the caller conversation for ${requestID}; retry janus_permission_reply`
+    }
+    messages = result.data
+  } catch {
+    return `Error: failed to read the caller conversation for ${requestID}; retry janus_permission_reply`
+  }
+  const lastHuman = findLastHumanUserMessageID(messages, input.askRegistry.pluginInjectedMessageIDs)
+  if (lastHuman === undefined || lastHuman === surfaced.surfacedAtUserMessageID) {
+    return `Error: no new human message since permission request ${requestID} was surfaced; end your turn and ask the user to send a plain-text reply in the next turn, then call janus_permission_reply`
+  }
+  return undefined
+}
+
+/**
+ * Enforce the four-gate runtime guard for `janus_permission_reply` before any
+ * SDK reply call. Returns `action: "reply"` when the tool may answer, an
+ * idempotent `already-resolved` message that needs no reply, or a fail-closed
+ * error string.
+ */
+export async function enforcePermissionReplyGuard(
+  sdk: DispatchSdk,
+  input: PermissionReplyGuardInput,
+): Promise<PermissionReplyGuardOutcome> {
+  const callerError = await gateTopLevelCaller(sdk, input)
+  if (callerError !== undefined) return { ok: false, message: callerError }
+
+  const resolution = await resolvePermissionRequest(input, input.now)
+  if (resolution.kind === "fail") return { ok: false, message: resolution.message }
+  if (resolution.kind === "resolved") return { ok: true, action: "already-resolved", message: resolution.message }
+
+  const lineageError = await gateLineage(sdk, input)
+  if (lineageError !== undefined) return { ok: false, message: lineageError }
+
+  const watermarkError = await gateSurfacedWatermark(sdk, input)
+  if (watermarkError !== undefined) return { ok: false, message: watermarkError }
+
+  return { ok: true, action: "reply" }
 }

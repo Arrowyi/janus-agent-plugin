@@ -1,9 +1,10 @@
-import { DISPATCH_ROLES, PRODUCTION_WAIT_BUDGET_MS, createKeyedMutex, serializeOutcome, type Clock, type DispatchOutcome, type DispatchProtocol, type DispatchRole, type DispatchSdk, type DispatchStage, type DispatchTier, type JobSpec, type KeyedMutex } from "./dispatch-contract.ts"
+import { DISPATCH_MARKER, DISPATCH_ROLES, PRODUCTION_WAIT_BUDGET_MS, createKeyedMutex, serializeOutcome, type Clock, type DispatchOutcome, type DispatchPermissionSdk, type DispatchProtocol, type DispatchRole, type DispatchSdk, type DispatchStage, type DispatchTier, type JobSpec, type KeyedMutex } from "./dispatch-contract.ts"
 import { createJob, loadJob } from "./dispatch-journal.ts"
 import { STARTUP_GRACE_MS, type ObservationOutcome } from "./dispatch-observer.ts"
-import { buildChainFailureMessage, embedsProviderErrorText, errorText, formatModel, isProviderErrorText, makeEnvelope, modelFailureHint, observationToOutcome } from "./dispatch-helpers.ts"
+import { appendCoordinatorTurnEndedMarker, buildChainFailureMessage, embedsProviderErrorText, errorText, formatModel, isProviderErrorText, makeEnvelope, modelFailureHint, observationToOutcome } from "./dispatch-helpers.ts"
 import { abortAndReconcile, createSystemClock, findActiveAttempt, reconcileObservationOutcome, type ActiveAttempt } from "./dispatch-cancel.ts"
-import { launchAttempt, observeAttempt, LaunchError, type AttemptSubmission } from "./dispatch-attempt.ts"
+import { launchAttempt, observeAttempt, LaunchError, type AttemptContext, type AttemptSubmission } from "./dispatch-attempt.ts"
+import type { PendingAsksProbe, PermissionAskRegistry } from "./permission-ask.ts"
 export { createSystemClock } from "./dispatch-cancel.ts"
 
 export interface LaunchInput {
@@ -66,13 +67,32 @@ export interface CreateDispatchLifecycleInput {
   readonly sdk: DispatchSdk
   readonly clock?: Clock
   readonly mutex?: KeyedMutex
+  /** Shared ask registry; wires the escalation channel when present. */
+  readonly askRegistry?: PermissionAskRegistry
+  /** Per-observation pending-ask probe (bound to the observed job by the caller). */
+  readonly pendingAsksProbe?: PendingAsksProbe
+  /** Host permission surface passed through to cancel-time ask cleanup (T2). */
+  readonly permissionSdk?: DispatchPermissionSdk
 }
 
 export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): DispatchLifecycle {
   const sdk = input.sdk
   const clock = input.clock ?? createSystemClock()
   const mutex = input.mutex ?? createKeyedMutex()
-  const context = { sdk, clock }
+  const askRegistry = input.askRegistry
+  const pendingAsksProbe = input.pendingAsksProbe
+  const permissionSdk = input.permissionSdk
+  const context: AttemptContext = {
+    sdk,
+    clock,
+    ...(askRegistry !== undefined ? { askRegistry } : {}),
+    ...(pendingAsksProbe !== undefined ? { pendingAsksProbe } : {}),
+  }
+  const cancelWiring = {
+    ...(askRegistry !== undefined ? { askRegistry } : {}),
+    ...(pendingAsksProbe !== undefined ? { pendingAsksProbe } : {}),
+    ...(permissionSdk !== undefined ? { permissionSdk } : {}),
+  }
 
   async function resolveAttemptChain(request: AttemptSubmission, startTime: number, blockFallback: boolean): Promise<DispatchOutcome> {
     const { spec, jobID } = request
@@ -90,7 +110,7 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
       const { attempt, observation } = await launchAttempt(context, { ...request, index })
       const waitedMs = clock.now() - startTime
       switch (observation.kind) {
-        case "completed": return { kind: "success", text: observation.text }
+        case "completed": return { kind: "success", text: appendCoordinatorTurnEndedMarker(askRegistry, jobID, observation.text) }
         case "cancelled":
         case "pending":
         case "unknown": return reconcileObservationOutcome(observation, {
@@ -192,7 +212,7 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
             attempt: { index: handle.index, model: handle.model },
             session_id: handle.sessionID,
             waited_ms: Math.max(0, clock.now() - startTime),
-            text: outcome.text,
+            text: appendCoordinatorTurnEndedMarker(askRegistry, jobID, outcome.text),
           })
         }
         // Never lose the success text when the handle cannot be read back.
@@ -236,8 +256,8 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
           let role: DispatchRole = "consultant-analyst"
           try {
             const got = await sdk.session.get({ path: { id: request.jobID }, query: { directory: request.directory } })
-            if (got.error === undefined && got.data !== undefined && got.data.title.startsWith("[consultation-dispatch:v1] ")) {
-              const candidate = got.data.title.slice("[consultation-dispatch:v1] ".length)
+            if (got.error === undefined && got.data !== undefined && got.data.title.startsWith(DISPATCH_MARKER)) {
+              const candidate = got.data.title.slice(DISPATCH_MARKER.length)
               if ((DISPATCH_ROLES as readonly string[]).includes(candidate)) {
                 role = candidate as DispatchRole
               }
@@ -268,7 +288,8 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
       const elapsedMs = reservation === undefined ? 0 : Math.max(0, clock.now() - reservation.reserved_at)
       const effectiveGraceMs = Math.max(0, (request.startupGraceMs ?? STARTUP_GRACE_MS) - elapsedMs)
       const observationRequest = { jobID: request.jobID, directory: request.directory, active,
-        waitBudgetMs, signal: request.signal, startupGraceMs: effectiveGraceMs }
+        waitBudgetMs, signal: request.signal, startupGraceMs: effectiveGraceMs,
+        parentID: loaded.spec.parent_id, role: loaded.spec.role }
       // Host-stop short-circuit runs before the cancel-intent fallback block: a
       // persisted host-stopped intent converges on terminal `cancelled` after
       // one racing snapshot, never sdk.session.abort, even if the child session
@@ -279,6 +300,7 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
           return serializeOutcome(await reconcileObservationOutcome(snapshot, {
             sdk, clock, jobID: request.jobID, directory: loaded.spec.directory, role: loaded.spec.role,
             attempt: active, cancelIntents: loaded.cancelIntents, waitedMs: clock.now() - startTime,
+            ...(askRegistry !== undefined ? { askRegistry } : {}),
           }))
         }
         return serializeOutcome(observationToOutcome(
@@ -289,7 +311,7 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
       if (blockFallback) {
         const snapshot = await observeAttempt(context, { ...observationRequest, waitBudgetMs: 0, signal: undefined })
         if (snapshot.kind === "failed") return serializeOutcome(observationToOutcome(snapshot, request.jobID, loaded.spec.role, active, clock.now() - startTime))
-        return serializeOutcome(await abortAndReconcile({ sdk, clock, loaded, active, startupGraceMs: request.startupGraceMs }))
+        return serializeOutcome(await abortAndReconcile({ sdk, clock, loaded, active, startupGraceMs: request.startupGraceMs, ...cancelWiring }))
       }
       const observation = await observeAttempt(context, observationRequest)
       const waitedMs = clock.now() - startTime
@@ -301,6 +323,7 @@ export function createDispatchLifecycle(input: CreateDispatchLifecycleInput): Di
       return serializeOutcome(await reconcileObservationOutcome(observation, {
         sdk, clock, jobID: request.jobID, directory: loaded.spec.directory, role: loaded.spec.role,
         attempt: active, cancelIntents: loaded.cancelIntents, waitedMs,
+        ...(askRegistry !== undefined ? { askRegistry } : {}),
       }))
     }, request.signal).catch(async (error: unknown) => {
       if (error instanceof DOMException && error.name === "AbortError") {

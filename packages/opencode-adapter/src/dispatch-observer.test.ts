@@ -7,16 +7,26 @@ import {
   FAKE_DIRECTORY,
   FAKE_JOB_ID,
   createFakeClock,
+  createFakePendingAsksProbe,
+  createFakeSdk,
+  seedLivePermissionAsk,
+  seedPermissionAsk,
+  type FakeSdk,
 } from "./dispatch-test-fixtures.ts"
 import type {
   Clock,
   DispatchSdk,
+  PendingAsk,
   SdkAssistantMessage,
   SdkMessageWithParts,
   SdkSession,
   SdkTextPart,
 } from "./dispatch-contract.ts"
-import { observeDispatch, extractUsableText, POLL_INTERVAL_MS, STALLED_SUSPECT_MS } from "./dispatch-observer.ts"
+import { DISPATCH_MARKER, PendingAskSchema } from "./dispatch-contract.ts"
+import { observeDispatch, extractUsableText, POLL_INTERVAL_MS, SNAPSHOT_READ_TRANSPORT_MS, STALLED_SUSPECT_MS } from "./dispatch-observer.ts"
+import { MAX_LINEAGE_DEPTH, PermissionAskRegistry, RE_YIELD_DAMPING_MS, sanitizePendingAsk } from "./permission-ask.ts"
+import { observeAttempt } from "./dispatch-attempt.ts"
+import { observationToOutcome } from "./dispatch-helpers.ts"
 import { extractMatchingActivity } from "./dispatch-classifier.ts"
 import { PRODUCTION_WAIT_BUDGET_MS } from "./dispatch-contract.ts"
 import type { ObservationOutcome } from "./dispatch-observer.ts"
@@ -1176,5 +1186,663 @@ describe("classifier activity extraction", () => {
     }))
     expect(result.kind).toBe("pending")
     if (result.kind === "pending") expect(result.diagnostics?.session_status).toBeUndefined()
+  })
+})
+
+// --- P5 M2 permission-ask escalation acceptance harness ---
+
+const ASK_JOB_ID = "ses_ask_job"
+const ASK_CHILD_ID = "ses_ask_child"
+const ASK_REQUEST_ID = "msg-ask-request"
+const ASK_TOP_ID = "ses_ask_top"
+
+function askSession(id: string, parentID: string | undefined, title: string): SdkSession {
+  return {
+    id,
+    ...(parentID !== undefined ? { parentID } : {}),
+    directory: FAKE_DIRECTORY,
+    title,
+    time: { created: 0, updated: 0 },
+  }
+}
+
+function inFlightAskMessage(sessionID: string, requestMessageID: string): SdkMessageWithParts {
+  return {
+    info: { id: "msg-inflight", sessionID, role: "assistant", parentID: requestMessageID, time: { created: 0 }, modelID: "m", providerID: "p" },
+    parts: [{ type: "text", text: "working" }],
+  }
+}
+
+function inFlightAskToolMessage(sessionID: string, requestMessageID: string): SdkMessageWithParts {
+  const tool: ToolPart = {
+    id: "prt-ask-tool", messageID: "msg-inflight", sessionID, type: "tool", tool: "grep", callID: "call-ask-1",
+    state: { status: "running", input: {}, time: { start: 0 } },
+  }
+  return {
+    info: makeAssistant("msg-inflight", { sessionID, parentID: requestMessageID, time: { created: 0 } }),
+    parts: [makeText("working"), tool] as unknown as SdkTextPart[],
+  }
+}
+
+function completedAskMessage(sessionID: string, requestMessageID: string, text: string): SdkMessageWithParts {
+  return {
+    info: { id: "msg-completed", sessionID, role: "assistant", parentID: requestMessageID, time: { created: 1, completed: 1 }, finish: "stop", modelID: "m", providerID: "p" },
+    parts: [{ type: "text", text }],
+  }
+}
+
+function askFixture(overrides: { readonly requestID?: string; readonly sessionID?: string; readonly permission?: string; readonly patterns?: ReadonlyArray<string> } = {}): PendingAsk {
+  const sessionID = overrides.sessionID ?? ASK_CHILD_ID
+  return sanitizePendingAsk({
+    requestID: overrides.requestID ?? "req-1",
+    sessionID,
+    permission: overrides.permission ?? "bash",
+    patterns: overrides.patterns ?? ["rm -rf build"],
+    firstSeenAt: 0,
+    job_chain: [{ job_id: ASK_JOB_ID, role: "coder", session_id: sessionID }],
+  }, 0)
+}
+
+function sdkCallCount(fake: FakeSdk, method: string): number {
+  return fake.calls.filter((call) => (call as { method: string }).method === method).length
+}
+
+async function advanceUntilSettledAt(
+  clock: Clock & { advance(ms: number): void },
+  observed: Promise<unknown>,
+  stepMs = 250,
+  capMs = 60_000,
+): Promise<number> {
+  let settled = false
+  void observed.then(() => { settled = true }, () => { settled = true })
+  while (!settled && clock.now() < capMs) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    if (settled) break
+    clock.advance(stepMs)
+  }
+  return clock.now()
+}
+
+describe("P5 M2 permission-ask escalation", () => {
+  it("Probe 2 — a push during the poll sleep wakes at 0 ms clock advance and soft-yields pending_asks", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        askSession(ASK_TOP_ID, undefined, "human"),
+        askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}coder`),
+        askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt"),
+      ],
+    })
+    fake.seedMessages(ASK_CHILD_ID, [inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)])
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    const sleeping = Promise.withResolvers<void>()
+    const observed = observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 120_000, clock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+      pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, parentID: ASK_TOP_ID, role: "coder" }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => { sleeping.resolve(); return registry.waitForAskWake(FAKE_DIRECTORY, seen, signal) },
+    })
+    await sleeping.promise
+    seedLivePermissionAsk(fake, registry, { id: "req-1", sessionID: ASK_CHILD_ID, permission: "bash", patterns: ["rm -rf build"] }, clock.now())
+    const result = await observed
+    expect(clock.now()).toBe(0)
+    expect(result.kind).toBe("pending")
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.pending_asks?.map((ask) => ask.requestID)).toEqual(["req-1"])
+    expect(sdkCallCount(fake, "abort")).toBe(0)
+  })
+
+  it("Probe 2 — a push after the version snapshot but before the sleep is observed by the same poll at 0 ms", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        askSession(ASK_TOP_ID, undefined, "human"),
+        askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}coder`),
+        askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt"),
+      ],
+    })
+    fake.seedMessages(ASK_CHILD_ID, [inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)])
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    let seeded = false
+    const originalMessages = fake.session.messages.bind(fake.session)
+    fake.session.messages = async (input) => {
+      const read = await originalMessages(input)
+      if (!seeded) {
+        seeded = true
+        seedLivePermissionAsk(fake, registry, { id: "req-1", sessionID: ASK_CHILD_ID, permission: "bash", patterns: ["rm -rf build"] }, clock.now())
+      }
+      return read
+    }
+    const result = await observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 120_000, clock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+      pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, parentID: ASK_TOP_ID, role: "coder" }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    expect(clock.now()).toBe(0)
+    expect(result.kind).toBe("pending")
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.pending_asks?.map((ask) => ask.requestID)).toEqual(["req-1"])
+    expect(sdkCallCount(fake, "abort")).toBe(0)
+  })
+
+  it("QS1 — L0 soft-yields a descendant L2 ask within one poll cycle and bounds a hanging probe", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        askSession(ASK_TOP_ID, undefined, "human"),
+        askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}tech-lead`),
+        askSession("ses_l2_job", ASK_JOB_ID, `${DISPATCH_MARKER}coder`),
+      ],
+    })
+    fake.seedMessages(ASK_JOB_ID, [inFlightAskMessage(ASK_JOB_ID, ASK_REQUEST_ID)])
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    seedLivePermissionAsk(fake, registry, { id: "req-l2", sessionID: "ses_l2_job", permission: "bash", patterns: ["rm -rf build"] }, 0)
+    const result = await observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_JOB_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 120_000, clock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+      checkSubtreeAsksOnCompletion: true,
+      pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_JOB_ID, parentID: ASK_TOP_ID, role: "tech-lead" }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    expect(clock.now()).toBe(0)
+    expect(result.kind).toBe("pending")
+    if (result.kind !== "pending") throw new Error("expected pending")
+    const asks = result.diagnostics?.pending_asks ?? []
+    expect(asks.map((ask) => ask.requestID)).toEqual(["req-l2"])
+    // buildJobChain hop 0 is the observed job; outer retry-nested coordinator
+    // hops are appended upward (see the L1 hold test below for the 2-hop case).
+    expect(asks[0]?.job_chain[0]).toEqual({ job_id: ASK_JOB_ID, role: "tech-lead", session_id: ASK_JOB_ID })
+    expect(sdkCallCount(fake, "abort")).toBe(0)
+
+    // A hanging probe must be transport-bounded by the shared 5 000 ms budget.
+    expect(SNAPSHOT_READ_TRANSPORT_MS).toBe(5_000)
+    const hungClock = createFakeClock(0)
+    const hungFake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        askSession(ASK_TOP_ID, undefined, "human"),
+        askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}tech-lead`),
+      ],
+    })
+    hungFake.seedMessages(ASK_JOB_ID, [inFlightAskMessage(ASK_JOB_ID, ASK_REQUEST_ID)])
+    const hungRegistry = new PermissionAskRegistry()
+    const hungObserved = observeDispatch({
+      sdk: hungFake, jobID: ASK_JOB_ID, childSessionID: ASK_JOB_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 8_000, clock: hungClock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+      pendingAsks: () => new Promise(() => {}),
+      getAskVersion: () => hungRegistry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => hungRegistry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    await advanceUntilSettled(hungClock, hungObserved, 1_000)
+    const hungResult = await hungObserved
+    expect(hungResult.kind).toBe("pending")
+    expect(hungClock.now()).toBeGreaterThanOrEqual(8_000)
+  })
+
+  it("QS1 — a dispatched L1 holds past 300000 ms without an early stalled_suspect yield and keeps a 2-hop job_chain", async () => {
+    const OUTER_ROOT = "ses_outer_root"
+    const OUTER_ATTEMPT = "ses_outer_attempt"
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        askSession(ASK_TOP_ID, undefined, "human"),
+        askSession(OUTER_ROOT, ASK_TOP_ID, `${DISPATCH_MARKER}tech-lead`),
+        askSession(OUTER_ATTEMPT, OUTER_ROOT, `${DISPATCH_MARKER}attempt tech-lead`),
+        askSession(ASK_JOB_ID, OUTER_ATTEMPT, `${DISPATCH_MARKER}coder`),
+        askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt"),
+      ],
+    })
+    fake.seedMessages(ASK_CHILD_ID, [inFlightAskToolMessage(ASK_CHILD_ID, ASK_REQUEST_ID)])
+    const registry = new PermissionAskRegistry()
+    registry.dispatchedSessionIDs.add(OUTER_ATTEMPT)
+    const clock = createFakeClock(0)
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    seedLivePermissionAsk(fake, registry, { id: "req-1", sessionID: ASK_CHILD_ID, permission: "bash", patterns: ["rm -rf build"] }, 0)
+    const observed = observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 400_000, clock, startupGraceMs: 0, parentID: OUTER_ATTEMPT,
+      sessionStatus: async () => ({ status: "busy" }),
+      pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, parentID: OUTER_ATTEMPT, role: "coder" }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    await advanceUntilSettled(clock, observed, 10_000)
+    const result = await observed
+    expect(result.kind).toBe("pending")
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(clock.now()).toBeGreaterThan(STALLED_SUSPECT_MS)
+    expect(result.diagnostics?.is_dispatched_subsession_caller).toBe(true)
+    expect(result.diagnostics?.pending_asks?.[0]?.job_chain).toHaveLength(2)
+    expect(result.diagnostics?.pending_asks?.[0]?.job_chain.map((hop) => hop.job_id)).toEqual([ASK_JOB_ID, OUTER_ROOT])
+    expect(sdkCallCount(fake, "abort")).toBe(0)
+  })
+
+  it("QS1 — the L1 hold ends and completes on the first poll after L0 answers the ask", async () => {
+    const L1_CALLER = "ses_l1_caller"
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        askSession(ASK_TOP_ID, undefined, "human"),
+        askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}tech-lead`),
+        askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt"),
+      ],
+    })
+    fake.seedMessages(ASK_CHILD_ID, [inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)])
+    const registry = new PermissionAskRegistry()
+    registry.dispatchedSessionIDs.add(L1_CALLER)
+    const clock = createFakeClock(0)
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    seedLivePermissionAsk(fake, registry, { id: "req-1", sessionID: ASK_CHILD_ID, permission: "bash", patterns: ["rm -rf build"] }, 0)
+    const sleeping = Promise.withResolvers<void>()
+    const observed = observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 1_800_000, clock, startupGraceMs: 0, parentID: L1_CALLER,
+      checkSubtreeAsksOnCompletion: true,
+      pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, parentID: L1_CALLER, role: "tech-lead" }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => { sleeping.resolve(); return registry.waitForAskWake(FAKE_DIRECTORY, seen, signal) },
+    })
+    await sleeping.promise
+    // L0 answered via janus_permission_reply: the host broadcasts permission.replied.
+    registry.onReplied("req-1", clock.now())
+    fake.permission?.seedAsks([])
+    fake.seedMessages(ASK_CHILD_ID, [completedAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID, "coordinator done")])
+    clock.advance(POLL_INTERVAL_MS)
+    const result = await observed
+    expect(result).toEqual({ kind: "completed", text: "coordinator done" })
+    expect(clock.now()).toBeLessThanOrEqual(POLL_INTERVAL_MS)
+  })
+
+  it("T1 — a coordinator completed turn with a pending descendant ask is intercepted to pending", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        askSession(ASK_TOP_ID, undefined, "human"),
+        askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}consultant`),
+        askSession("ses_l2_job", ASK_JOB_ID, `${DISPATCH_MARKER}coder`),
+      ],
+    })
+    fake.seedMessages(ASK_JOB_ID, [completedAskMessage(ASK_JOB_ID, ASK_REQUEST_ID, "premature report")])
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    seedLivePermissionAsk(fake, registry, { id: "req-l2", sessionID: "ses_l2_job", permission: "bash", patterns: ["rm -rf build"] }, 0)
+    const result = await observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_JOB_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 0, clock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+      checkSubtreeAsksOnCompletion: true,
+      pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_JOB_ID, parentID: ASK_TOP_ID, role: "consultant" }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    expect(result.kind).toBe("pending")
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.pending_asks?.[0]?.requestID).toBe("req-l2")
+    expect(result.diagnostics?.coordinator_turn_ended).toEqual({ coordinatorSessionID: ASK_JOB_ID, descendantJobIDs: ["ses_l2_job"] })
+    const outcome = observationToOutcome(result, ASK_JOB_ID, "consultant", { index: 0, model: "m", sessionID: ASK_JOB_ID }, 0)
+    if (outcome.kind !== "nonterminal") throw new Error("expected nonterminal")
+    expect(outcome.envelope.reason).toContain("(1) janus_permission_reply")
+    expect(outcome.envelope.reason).toContain(`(2) janus_dispatch_wait(${ASK_JOB_ID})`)
+    expect(outcome.envelope.reason).toContain(`(3) janus_dispatch_continue(${ASK_JOB_ID})`)
+    expect(outcome.envelope.reason).toContain("ses_l2_job")
+  })
+
+  it("T1 — the empty descendant variant omits the id list in step 3", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        askSession(ASK_TOP_ID, undefined, "human"),
+        askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}consultant`),
+      ],
+    })
+    fake.seedMessages(ASK_JOB_ID, [completedAskMessage(ASK_JOB_ID, ASK_REQUEST_ID, "premature report")])
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    seedLivePermissionAsk(fake, registry, { id: "req-l1", sessionID: ASK_JOB_ID, permission: "bash", patterns: ["rm -rf build"] }, 0)
+    const result = await observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_JOB_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 0, clock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+      checkSubtreeAsksOnCompletion: true,
+      pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_JOB_ID, parentID: ASK_TOP_ID, role: "consultant" }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.coordinator_turn_ended).toEqual({ coordinatorSessionID: ASK_JOB_ID, descendantJobIDs: [] })
+    const outcome = observationToOutcome(result, ASK_JOB_ID, "consultant", { index: 0, model: "m", sessionID: ASK_JOB_ID }, 0)
+    if (outcome.kind !== "nonterminal") throw new Error("expected nonterminal")
+    expect(outcome.envelope.reason).toContain("collect the descendant child session's result")
+    expect(outcome.envelope.reason).not.toContain("job ids:")
+  })
+
+  it("damps a same-turn re-yield by RE_YIELD_DAMPING_MS and prefixes STOP WAITING:", async () => {
+    const fake = createFakeSdk({ sessions: [askSession(ASK_TOP_ID, undefined, "human"), askSession(ASK_JOB_ID, ASK_TOP_ID, "job"), askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt")] })
+    // Sections the newest matching message as in-flight so the observer keeps polling.
+    fake.session.messages = async () => ({ data: [inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)] })
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const observed = observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 30_000, clock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+      pendingAsks: async () => ({ asks: [askFixture()], isDispatchedSubsessionCaller: false, allAlreadySurfacedInCurrentTurn: true }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    const settledAt = await advanceUntilSettledAt(clock, observed)
+    const result = await observed
+    expect(settledAt).toBeGreaterThanOrEqual(RE_YIELD_DAMPING_MS)
+    expect(settledAt).toBeLessThan(RE_YIELD_DAMPING_MS + 1_000)
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.same_turn_re_yield).toBe(true)
+    const outcome = observationToOutcome(result, ASK_JOB_ID, "coder", { index: 0, model: null, sessionID: ASK_CHILD_ID }, 0)
+    if (outcome.kind !== "nonterminal") throw new Error("expected nonterminal")
+    expect(outcome.envelope.reason.startsWith("STOP WAITING:")).toBe(true)
+  })
+
+  it("caps the same-turn damping window at the remaining waitBudgetMs", async () => {
+    const fake = createFakeSdk({ sessions: [askSession(ASK_TOP_ID, undefined, "human"), askSession(ASK_JOB_ID, ASK_TOP_ID, "job"), askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt")] })
+    fake.session.messages = async () => ({ data: [inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)] })
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const observed = observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 5_000, clock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+      pendingAsks: async () => ({ asks: [askFixture()], isDispatchedSubsessionCaller: false, allAlreadySurfacedInCurrentTurn: true }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    const settledAt = await advanceUntilSettledAt(clock, observed)
+    const result = await observed
+    expect(settledAt).toBeGreaterThanOrEqual(5_000)
+    expect(settledAt).toBeLessThan(5_000 + 1_000)
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.same_turn_re_yield).toBe(true)
+  })
+
+  it("attaches pending_asks on a waitBudgetMs: 0 snapshot", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [askSession(ASK_TOP_ID, undefined, "human"), askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}coder`), askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt")],
+    })
+    fake.seedMessages(ASK_CHILD_ID, [inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)])
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    seedLivePermissionAsk(fake, registry, { id: "req-1", sessionID: ASK_CHILD_ID, permission: "bash", patterns: ["rm -rf build"] }, 0)
+    const result = await observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 0, clock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+      pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, parentID: ASK_TOP_ID, role: "coder" }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.pending_asks?.map((ask) => ask.requestID)).toEqual(["req-1"])
+    expect(clock.now()).toBe(0)
+  })
+
+  it("never cross-attributes asks between two parallel jobs under one caller", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        askSession(ASK_TOP_ID, undefined, "human"),
+        askSession("ses_job_a", ASK_TOP_ID, `${DISPATCH_MARKER}coder`),
+        askSession("ses_child_a", "ses_job_a", "attempt"),
+        askSession("ses_job_b", ASK_TOP_ID, `${DISPATCH_MARKER}coder`),
+        askSession("ses_child_b", "ses_job_b", "attempt"),
+      ],
+    })
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    seedPermissionAsk(registry, { requestID: "req-a", sessionID: "ses_child_a", permission: "bash", patterns: ["a"] }, 0)
+    seedPermissionAsk(registry, { requestID: "req-b", sessionID: "ses_child_b", permission: "bash", patterns: ["b"] }, 0)
+    fake.permission!.seedAsks([
+      { id: "req-a", sessionID: "ses_child_a", permission: "bash", patterns: ["a"] },
+      { id: "req-b", sessionID: "ses_child_b", permission: "bash", patterns: ["b"] },
+    ])
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    const [jobA, jobB] = await Promise.all([
+      probe({ jobID: "ses_job_a", childSessionID: "ses_child_a", parentID: ASK_TOP_ID, role: "coder" }),
+      probe({ jobID: "ses_job_b", childSessionID: "ses_child_b", parentID: ASK_TOP_ID, role: "coder" }),
+    ])
+    expect(jobA.asks.map((ask) => ask.requestID)).toEqual(["req-a"])
+    expect(jobB.asks.map((ask) => ask.requestID)).toEqual(["req-b"])
+  })
+
+  it("QS3 — a completed leaf job makes zero pendingAsks and zero sessionStatus calls", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [askSession(ASK_TOP_ID, undefined, "human"), askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}coder`), askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt")],
+    })
+    fake.seedMessages(ASK_CHILD_ID, [completedAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID, "done")])
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const base = createFakePendingAsksProbe(fake, registry, clock)
+    let probeCalls = 0
+    const observation = await observeAttempt(
+      { sdk: fake, clock, askRegistry: registry, pendingAsksProbe: (context) => { probeCalls++; return base(context) } },
+      {
+        jobID: ASK_JOB_ID, directory: FAKE_DIRECTORY, waitBudgetMs: 0, parentID: ASK_TOP_ID, role: "coder",
+        active: { index: 0, model: "m", sessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID },
+      },
+    )
+    expect(observation).toEqual({ kind: "completed", text: "done" })
+    expect(probeCalls).toBe(0)
+    expect(sdkCallCount(fake, "status")).toBe(0)
+  })
+
+  it("QS3 — ask-free polls skip the probe and never read sessions or children outside lineage walks", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [askSession(ASK_TOP_ID, undefined, "human"), askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}coder`), askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt")],
+    })
+    fake.seedMessages(ASK_CHILD_ID, [inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)])
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const base = createFakePendingAsksProbe(fake, registry, clock)
+    let probeCalls = 0
+    const observed = observeAttempt(
+      { sdk: fake, clock, askRegistry: registry, pendingAsksProbe: (context) => { probeCalls++; return base(context) } },
+      {
+        jobID: ASK_JOB_ID, directory: FAKE_DIRECTORY, waitBudgetMs: 4_500, parentID: ASK_TOP_ID, role: "coder",
+        active: { index: 0, model: "m", sessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID },
+      },
+    )
+    await advanceUntilSettled(clock, observed, 100)
+    const result = await observed
+    expect(result.kind).toBe("pending")
+    expect(probeCalls).toBe(0)
+    const pollCount = sdkCallCount(fake, "messages")
+    expect(sdkCallCount(fake, "list")).toBeLessThanOrEqual(pollCount)
+    expect(sdkCallCount(fake, "get")).toBe(0)
+    expect(sdkCallCount(fake, "children")).toBe(0)
+  })
+
+  it("D3 attach-path — the envelope carries the probe's already-sanitized ask", async () => {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [askSession(ASK_TOP_ID, undefined, "human"), askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}coder`), askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt")],
+    })
+    fake.seedMessages(ASK_CHILD_ID, [inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)])
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    seedLivePermissionAsk(fake, registry, {
+      id: "req\u0001-1",
+      sessionID: ASK_CHILD_ID,
+      permission: "bash\u0000\u0007",
+      patterns: Array.from({ length: 20 }, () => "p".repeat(600)),
+    }, 0)
+    const result = await observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 0, clock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+      pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, parentID: ASK_TOP_ID, role: "coder" }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    if (result.kind !== "pending") throw new Error("expected pending")
+    const outcome = observationToOutcome(result, ASK_JOB_ID, "coder", { index: 0, model: null, sessionID: ASK_CHILD_ID }, 0)
+    if (outcome.kind !== "nonterminal") throw new Error("expected nonterminal")
+    const ask = outcome.envelope.pending_asks?.[0]
+    if (ask === undefined) throw new Error("expected pending ask")
+    expect(PendingAskSchema.safeParse(ask).success).toBe(true)
+    expect(ask.requestID).toBe("req-1")
+    expect(ask.permission).toBe("bash")
+    expect(ask.patterns).toHaveLength(16)
+    expect(ask.patterns.every((pattern) => pattern.length <= 512)).toBe(true)
+    expect(ask.age_ms).toBeGreaterThanOrEqual(0)
+  })
+
+  it("D2.3 — a persisted cancel-intent at or after firstSeenAt excludes the ask; an earlier one does not", async () => {
+    const intentMessage = (intentAt: number): SdkMessageWithParts => ({
+      info: { role: "assistant", id: `msg-intent-${intentAt}`, sessionID: ASK_JOB_ID },
+      parts: [{ type: "text", text: JSON.stringify({ kind: "cancel-intent", intent_at: intentAt, job_id: ASK_JOB_ID }), synthetic: true, ignored: true }],
+    })
+    async function observeWithIntent(intentAt: number) {
+      const fake = createFakeSdk({
+        seedPermission: true,
+        sessions: [askSession(ASK_TOP_ID, undefined, "human"), askSession(ASK_JOB_ID, ASK_TOP_ID, `${DISPATCH_MARKER}coder`), askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt")],
+        messages: { [ASK_JOB_ID]: [intentMessage(intentAt)], [ASK_CHILD_ID]: [inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)] },
+      })
+      const registry = new PermissionAskRegistry()
+      const clock = createFakeClock(0)
+      const probe = createFakePendingAsksProbe(fake, registry, clock)
+      seedLivePermissionAsk(fake, registry, { id: "req-1", sessionID: ASK_CHILD_ID, permission: "bash", patterns: ["rm -rf build"] }, 0)
+      return observeDispatch({
+        sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+        directory: FAKE_DIRECTORY, waitBudgetMs: 0, clock, startupGraceMs: 0, parentID: ASK_TOP_ID,
+        pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, parentID: ASK_TOP_ID, role: "coder" }),
+        getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+        waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+      })
+    }
+    const excluded = await observeWithIntent(0)
+    if (excluded.kind !== "pending") throw new Error("expected pending")
+    expect(excluded.diagnostics?.pending_asks).toBeUndefined()
+    const included = await observeWithIntent(-1)
+    if (included.kind !== "pending") throw new Error("expected pending")
+    expect(included.diagnostics?.pending_asks).toHaveLength(1)
+  })
+
+  it("observer-side lineage — past the depth cap and over an unreadable hop it never attributes and never throws", async () => {
+    // Depth > MAX_LINEAGE_DEPTH between the ask session and the job root.
+    const deepSessions: SdkSession[] = [
+      askSession(ASK_TOP_ID, undefined, "human"),
+      askSession("ses_job_root", ASK_TOP_ID, `${DISPATCH_MARKER}coder`),
+    ]
+    let parent = "ses_job_root"
+    for (let i = MAX_LINEAGE_DEPTH + 2; i >= 0; i--) {
+      const id = `ses_deep_${i}`
+      deepSessions.push(askSession(id, parent, "deep"))
+      parent = id
+    }
+    const deepFake = createFakeSdk({ seedPermission: true, sessions: deepSessions })
+    const deepRegistry = new PermissionAskRegistry()
+    const deepClock = createFakeClock(0)
+    seedPermissionAsk(deepRegistry, { requestID: "req-deep", sessionID: "ses_deep_0", permission: "bash", patterns: ["x"] }, 0)
+    deepFake.permission!.seedAsks([{ id: "req-deep", sessionID: "ses_deep_0", permission: "bash", patterns: ["x"] }])
+    const deepProbe = createFakePendingAsksProbe(deepFake, deepRegistry, deepClock)
+    const deep = await deepProbe({ jobID: "ses_job_root", childSessionID: "ses_child_other", parentID: ASK_TOP_ID, role: "coder" })
+    expect(deep.asks).toEqual([])
+
+    // One unreadable hop midway fails closed to non-attribution.
+    const brokenFake = createFakeSdk({
+      seedPermission: true,
+      sessions: [
+        askSession(ASK_TOP_ID, undefined, "human"),
+        askSession("ses_job_root", ASK_TOP_ID, `${DISPATCH_MARKER}coder`),
+        askSession("ses_broken_0", "ses_broken_1", "deep"),
+        askSession("ses_broken_1", "ses_job_root", "deep"),
+      ],
+    })
+    const originalGet = brokenFake.session.get.bind(brokenFake.session)
+    brokenFake.session.get = async (input) => input.path.id === "ses_broken_1" ? { data: undefined } : originalGet(input)
+    const brokenRegistry = new PermissionAskRegistry()
+    const brokenClock = createFakeClock(0)
+    seedPermissionAsk(brokenRegistry, { requestID: "req-broken", sessionID: "ses_broken_0", permission: "bash", patterns: ["x"] }, 0)
+    brokenFake.permission!.seedAsks([{ id: "req-broken", sessionID: "ses_broken_0", permission: "bash", patterns: ["x"] }])
+    const brokenProbe = createFakePendingAsksProbe(brokenFake, brokenRegistry, brokenClock)
+    const broken = await brokenProbe({ jobID: "ses_job_root", childSessionID: "ses_child_other", parentID: ASK_TOP_ID, role: "coder" })
+    expect(broken.asks).toEqual([])
+  })
+
+  it("decision — an unknown caller status holds with is_dispatched_subsession_caller: true and never early-yields", async () => {
+    const missingCaller = "ses_missing_caller"
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [askSession(ASK_JOB_ID, undefined, `${DISPATCH_MARKER}coder`), askSession(ASK_CHILD_ID, ASK_JOB_ID, "attempt")],
+    })
+    fake.seedMessages(ASK_CHILD_ID, [inFlightAskToolMessage(ASK_CHILD_ID, ASK_REQUEST_ID)])
+    const registry = new PermissionAskRegistry()
+    const clock = createFakeClock(0)
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    seedLivePermissionAsk(fake, registry, { id: "req-1", sessionID: ASK_CHILD_ID, permission: "bash", patterns: ["rm -rf build"] }, 0)
+    const observed = observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 400_000, clock, startupGraceMs: 0, parentID: missingCaller,
+      pendingAsks: () => probe({ jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, parentID: missingCaller, role: "coder" }),
+      getAskVersion: () => registry.getVersion(FAKE_DIRECTORY),
+      waitForAskWake: (seen, signal) => registry.waitForAskWake(FAKE_DIRECTORY, seen, signal),
+    })
+    await advanceUntilSettled(clock, observed, 10_000)
+    const result = await observed
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.is_dispatched_subsession_caller).toBe(true)
+    expect(result.diagnostics?.pending_asks).toHaveLength(1)
+    expect(clock.now()).toBeGreaterThan(STALLED_SUSPECT_MS)
+    const outcome = observationToOutcome(result, ASK_JOB_ID, "coder", { index: 0, model: null, sessionID: ASK_CHILD_ID }, 0)
+    if (outcome.kind !== "nonterminal") throw new Error("expected nonterminal")
+    expect(outcome.envelope.reason).toContain("never finish its turn")
+  })
+
+  it("T1 regression — a terminal idle-confirmation re-read is intercepted on a snapshot, never returned as completed", async () => {
+    const fake = createFakeSdk()
+    let reads = 0
+    const inFlight = inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)
+    const completed = completedAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID, "done")
+    fake.session.messages = async () => ({ data: ++reads === 1 ? [inFlight] : [completed] })
+    const result = await observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 0, clock: createFakeClock(20_000), startupGraceMs: 0, parentID: ASK_TOP_ID,
+      checkSubtreeAsksOnCompletion: true,
+      sessionStatus: async () => ({ status: "idle" }),
+      pendingAsks: async () => ({ asks: [askFixture()], isDispatchedSubsessionCaller: false, allAlreadySurfacedInCurrentTurn: false }),
+    })
+    expect(reads).toBe(2)
+    expect(result.kind).toBe("pending")
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.pending_asks?.map((ask) => ask.requestID)).toEqual(["req-1"])
+    expect(result.diagnostics?.coordinator_turn_ended).toEqual({ coordinatorSessionID: ASK_CHILD_ID, descendantJobIDs: [] })
+  })
+
+  it("T1 regression — the terminal idle-confirmation re-read is intercepted during an L1 hold too", async () => {
+    const fake = createFakeSdk()
+    let reads = 0
+    const inFlight = inFlightAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID)
+    const completed = completedAskMessage(ASK_CHILD_ID, ASK_REQUEST_ID, "done")
+    fake.session.messages = async () => ({ data: ++reads === 1 ? [inFlight] : [completed] })
+    const result = await observeDispatch({
+      sdk: fake, jobID: ASK_JOB_ID, childSessionID: ASK_CHILD_ID, requestMessageID: ASK_REQUEST_ID,
+      directory: FAKE_DIRECTORY, waitBudgetMs: 1_800_000, clock: createFakeClock(20_000), startupGraceMs: 0, parentID: ASK_TOP_ID,
+      checkSubtreeAsksOnCompletion: true,
+      sessionStatus: async () => ({ status: "idle" }),
+      pendingAsks: async () => ({ asks: [askFixture()], isDispatchedSubsessionCaller: true, allAlreadySurfacedInCurrentTurn: false }),
+    })
+    expect(reads).toBe(2)
+    expect(result.kind).toBe("pending")
+    if (result.kind !== "pending") throw new Error("expected pending")
+    expect(result.diagnostics?.pending_asks).toHaveLength(1)
+    expect(result.diagnostics?.coordinator_turn_ended?.coordinatorSessionID).toBe(ASK_CHILD_ID)
   })
 })

@@ -30,5 +30,5 @@ Style preferences never gate the verdict.
 Patch integrity gates — every `.review-mK.patch`, `.review-mK-rN.patch`, and `.review-final.patch` review:
 
 9. Confirm the tail sentinel (`=== EOF .review-mK.patch ===`, `=== EOF .review-mK-rN.patch ===`, `=== EOF .review-final.patch ===`, or `=== EOF .review-final-rN.patch ===`) was reached; when the header reports `total_lines > 1800`, read in windows until the sentinel.
-10. When `long_line_files` in the header is non-empty, lines longer than 2000 characters evade line-truncating reads: return `revise` or `block`, never `pass`.
+10. When `long_line_files` in the header is non-empty, only added (`+`) or context lines longer than 2000 characters evade line-truncating reads and leave the patch not fully readable: return `revise` or `block`, never `pass`. An overlong deletion (`-`) line is content the patch removes: it stays disclosed in `long_line_files` and does not by itself block `pass` — verify instead that the controller's verification output attests the end-state file contains no line over 2000 characters, and without that attestation report the gap as unresolved.
 11. A missing sentinel or a malformed header is a reported gap with `resolved: false`.

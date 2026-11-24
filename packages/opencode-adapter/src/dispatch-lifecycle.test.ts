@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
 import {
+  DISPATCH_MARKER,
   PRODUCTION_WAIT_BUDGET_MS,
   parseOutcomeEnvelope,
   type Clock,
@@ -12,14 +13,17 @@ import {
 } from "./dispatch-contract.ts"
 import {
   createFakeClock,
+  createFakePendingAsksProbe,
   createFakeSdk,
   FAKE_DIRECTORY,
   FAKE_PARENT_ID,
+  seedLivePermissionAsk,
   validRoleSpecs,
   type FakeSdk,
 } from "./dispatch-test-fixtures.ts"
+import { PermissionAskRegistry } from "./permission-ask.ts"
 import { createDispatchLifecycle, createSystemClock } from "./dispatch-lifecycle.ts"
-import { appendRecord, createJob, loadJob } from "./dispatch-journal.ts"
+import { appendRecord, createAttemptSession, createJob, loadJob } from "./dispatch-journal.ts"
 import { createDispatchCancel } from "./dispatch-cancel.ts"
 import { createKeyedMutex } from "./dispatch-contract.ts"
 
@@ -1747,5 +1751,176 @@ describe("O3 host-stop convergence through launch and wait", () => {
     const result = await lifecycle.wait({ jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })
     expect(result.startsWith("Error:")).toBe(true)
     expect(abortCount(fake)).toBe(0)
+  })
+})
+
+// --- P5 M2 Subtree-Ask Terminal Guard (T1) recovery ---
+
+async function coordinatorAskFixture(
+  role: "consultant" | "tech-lead" | "author",
+  options: { readonly withDescendant?: boolean } = {},
+) {
+  const fake = createFakeSdk({ seedPermission: true })
+  const clock = createFakeClock(0)
+  const registry = new PermissionAskRegistry()
+  const probe = createFakePendingAsksProbe(fake, registry, clock)
+  const mutex = createKeyedMutex()
+  const lifecycle = createDispatchLifecycle({ sdk: fake, clock, mutex, askRegistry: registry, pendingAsksProbe: probe })
+  fake.seedSession({ id: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, title: "human", time: { created: 0, updated: 0 } })
+  const created = await createJob(fake, {
+    parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role, agentName: role,
+    modelChain: ["opencode-go/glm-5.3"], prompt: "coordinate", clock,
+  })
+  if (!created.ok) throw created.error
+  const jobID = created.value.jobID
+  const requestMessageID = "msg-coordinator-request"
+  const reservation = await appendRecord(fake, {
+    jobID, directory: FAKE_DIRECTORY, messageID: requestMessageID,
+    record: { v: 1, kind: "attempt-reservation", job_id: jobID, attempt_index: 0, model: "opencode-go/glm-5.3", message_id: requestMessageID, reserved_at: clock.now() },
+  })
+  if (!reservation.ok) throw reservation.error
+  const receipt = await appendRecord(fake, {
+    jobID, directory: FAKE_DIRECTORY,
+    record: { v: 1, kind: "attempt-receipt", job_id: jobID, attempt_index: 0, session_id: jobID, message_id: requestMessageID, received_at: clock.now() },
+  })
+  if (!receipt.ok) throw receipt.error
+  // The coordinator finishes its turn prematurely while a descendant ask is pending.
+  fake.seedMessages(jobID, [completedAssistantMessage(requestMessageID, "coordinator report", { sessionID: jobID, id: "msg-coordinator-done" })])
+  let l2JobID: string | undefined
+  let askSessionID = jobID
+  if (options.withDescendant !== false) {
+    l2JobID = "ses_l2_job"
+    fake.seedSession({ id: l2JobID, parentID: jobID, directory: FAKE_DIRECTORY, title: `${DISPATCH_MARKER}coder`, time: { created: 0, updated: 0 } })
+    askSessionID = l2JobID
+  }
+  seedLivePermissionAsk(fake, registry, { id: "req-l2", sessionID: askSessionID, permission: "bash", patterns: ["rm -rf build"] }, clock.now())
+  return { fake, clock, registry, probe, lifecycle, jobID, requestMessageID, l2JobID, askSessionID }
+}
+
+describe("P5 M2 Subtree-Ask Terminal Guard (T1)", () => {
+  it("recovers a premature coordinator completion in the four graded steps with a once-only marker", async () => {
+    const f = await coordinatorAskFixture("consultant")
+    // (a) observeDispatch intercepts the premature completion.
+    const intercepted = parseEnvelope(await f.lifecycle.wait({ jobID: f.jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 }))
+    expect(intercepted.status).toBe("pending")
+    expect(intercepted.pending_asks?.[0]?.requestID).toBe("req-l2")
+    expect(intercepted.reason).toContain("(1) janus_permission_reply")
+    expect(intercepted.reason).toContain(`(2) janus_dispatch_wait(${f.jobID})`)
+    expect(intercepted.reason).toContain(`(3) janus_dispatch_continue(${f.jobID})`)
+    expect(intercepted.reason).toContain(f.l2JobID!)
+    // (b) the top-level caller answers the L2 ask.
+    f.registry.onReplied("req-l2", f.clock.now())
+    f.fake.permission!.seedAsks([])
+    // (c) the coordinator wait completes with the terminal-guard marker.
+    const completed = await f.lifecycle.wait({ jobID: f.jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })
+    expect(completed).toContain("coordinator report")
+    expect(completed).toContain("[coordinator-turn-ended-early:")
+    expect(completed).toContain(`coordinatorSessionID=${f.jobID}`)
+    expect(completed).toContain(`descendantJobIDs=[${f.l2JobID}]`)
+    // The marker is consumed exactly once: a second completed wait has none.
+    const repeat = await f.lifecycle.wait({ jobID: f.jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })
+    expect(repeat).toBe("coordinator report")
+    // (d) the continuation collects the descendant result.
+    const basePromptAsync = f.fake.session.promptAsync.bind(f.fake.session)
+    f.fake.session.promptAsync = async (input) => {
+      const result = await basePromptAsync(input)
+      f.fake.seedMessages(input.path.id, [completedAssistantMessage(input.body.messageID!, "collected coder result", { sessionID: input.path.id, id: "msg-continued", time: { created: 2, completed: 2 } })])
+      return result
+    }
+    const continued = await f.lifecycle.continue({
+      role: "consultant", prompt: "collect the coder result", agentName: "consultant",
+      modelChain: ["opencode-go/glm-5.3"], parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY,
+      sessionID: f.jobID, continuedFrom: f.jobID, waitMs: 0,
+    })
+    expect(continued).toContain("collected coder result")
+    expect(continued).not.toContain("[coordinator-turn-ended-early:")
+  })
+
+  it("regression — a retry attempt's directive waits on the job root and continues the attempt session", async () => {
+    const fake = createFakeSdk({ seedPermission: true })
+    const clock = createFakeClock(0)
+    const registry = new PermissionAskRegistry()
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    const lifecycle = createDispatchLifecycle({ sdk: fake, clock, mutex: createKeyedMutex(), askRegistry: registry, pendingAsksProbe: probe })
+    fake.seedSession({ id: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, title: "human", time: { created: 0, updated: 0 } })
+    const created = await createJob(fake, {
+      parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "tech-lead", agentName: "tech-lead",
+      modelChain: ["opencode-go/glm-5.3", "opencode-go/glm-5.3-retry"], prompt: "coordinate", clock,
+    })
+    if (!created.ok) throw created.error
+    const jobID = created.value.jobID
+    const attempt = await createAttemptSession(fake, { jobID, directory: FAKE_DIRECTORY, role: "tech-lead" })
+    if (!attempt.ok) throw attempt.error
+    const attemptSessionID = attempt.value.sessionID
+    const requestMessageID = "msg-retry-request"
+    const reservation = await appendRecord(fake, {
+      jobID, directory: FAKE_DIRECTORY, messageID: requestMessageID,
+      record: { v: 1, kind: "attempt-reservation", job_id: jobID, attempt_index: 1, model: "opencode-go/glm-5.3-retry", message_id: requestMessageID, reserved_at: clock.now() },
+    })
+    if (!reservation.ok) throw reservation.error
+    const receipt = await appendRecord(fake, {
+      jobID, directory: FAKE_DIRECTORY,
+      record: { v: 1, kind: "attempt-receipt", job_id: jobID, attempt_index: 1, session_id: attemptSessionID, message_id: requestMessageID, received_at: clock.now() },
+    })
+    if (!receipt.ok) throw receipt.error
+    fake.seedMessages(attemptSessionID, [completedAssistantMessage(requestMessageID, "retry coordinator report", { sessionID: attemptSessionID, id: "msg-retry-done" })])
+    const l2JobID = "ses_l2_job"
+    fake.seedSession({ id: l2JobID, parentID: attemptSessionID, directory: FAKE_DIRECTORY, title: `${DISPATCH_MARKER}coder`, time: { created: 0, updated: 0 } })
+    seedLivePermissionAsk(fake, registry, { id: "req-l2", sessionID: l2JobID, permission: "bash", patterns: ["rm -rf build"] }, clock.now())
+
+    const intercepted = parseEnvelope(await lifecycle.wait({ jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 }))
+    expect(intercepted.status).toBe("pending")
+    expect(jobID).not.toBe(attemptSessionID)
+    expect(intercepted.reason).toContain(`(2) janus_dispatch_wait(${jobID})`)
+    expect(intercepted.reason).toContain(`(3) janus_dispatch_continue(${attemptSessionID})`)
+    expect(intercepted.reason).not.toContain(`(2) janus_dispatch_wait(${attemptSessionID})`)
+    expect(intercepted.reason).not.toContain(`(3) janus_dispatch_continue(${jobID})`)
+  })
+
+  it("keeps the marker across an aborted wait and consumes it only on the completed return", async () => {
+    const f = await coordinatorAskFixture("tech-lead")
+    const intercepted = parseEnvelope(await f.lifecycle.wait({ jobID: f.jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 }))
+    expect(intercepted.status).toBe("pending")
+    f.registry.onReplied("req-l2", f.clock.now())
+    f.fake.permission!.seedAsks([])
+    const controller = new AbortController()
+    controller.abort()
+    const aborted = await f.lifecycle.wait({ jobID: f.jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0, signal: controller.signal })
+    expect(aborted).not.toContain("[coordinator-turn-ended-early:")
+    const completed = await f.lifecycle.wait({ jobID: f.jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })
+    expect(completed).toContain("[coordinator-turn-ended-early:")
+    expect(completed).toContain(`descendantJobIDs=[${f.l2JobID}]`)
+  })
+
+  it("records an empty descendant list and omits the step-3 id list", async () => {
+    const f = await coordinatorAskFixture("author", { withDescendant: false })
+    const intercepted = parseEnvelope(await f.lifecycle.wait({ jobID: f.jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 }))
+    expect(intercepted.status).toBe("pending")
+    expect(intercepted.reason).toContain("collect the descendant child session's result")
+    expect(intercepted.reason).not.toContain("job ids:")
+    f.registry.onReplied("req-l2", f.clock.now())
+    f.fake.permission!.seedAsks([])
+    const completed = await f.lifecycle.wait({ jobID: f.jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })
+    expect(completed).toContain("[coordinator-turn-ended-early:")
+    expect(completed).toContain("descendantJobIDs=[]")
+  })
+
+  it("only coordinator roles run the terminal guard; leaves complete normally with a pending subtree ask", async () => {
+    // Reuse the same registry wiring but observe a coder (leaf) completion.
+    const leafFake = createFakeSdk({ seedPermission: true })
+    const leafClock = createFakeClock(0)
+    const leafRegistry = new PermissionAskRegistry()
+    const leafProbe = createFakePendingAsksProbe(leafFake, leafRegistry, leafClock)
+    const leafLifecycle = createDispatchLifecycle({ sdk: leafFake, clock: leafClock, askRegistry: leafRegistry, pendingAsksProbe: leafProbe })
+    leafFake.seedSession({ id: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, title: "human", time: { created: 0, updated: 0 } })
+    const created = await createJob(leafFake, { parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, role: "coder", agentName: "coder", modelChain: ["opencode-go/glm-5.3"], prompt: "code", clock: leafClock })
+    if (!created.ok) throw created.error
+    const jobID = created.value.jobID
+    const requestMessageID = "msg-leaf-request"
+    await appendRecord(leafFake, { jobID, directory: FAKE_DIRECTORY, messageID: requestMessageID, record: { v: 1, kind: "attempt-reservation", job_id: jobID, attempt_index: 0, model: "opencode-go/glm-5.3", message_id: requestMessageID, reserved_at: 0 } })
+    await appendRecord(leafFake, { jobID, directory: FAKE_DIRECTORY, record: { v: 1, kind: "attempt-receipt", job_id: jobID, attempt_index: 0, session_id: jobID, message_id: requestMessageID, received_at: 0 } })
+    leafFake.seedMessages(jobID, [completedAssistantMessage(requestMessageID, "leaf report", { sessionID: jobID, id: "msg-leaf-done" })])
+    seedLivePermissionAsk(leafFake, leafRegistry, { id: "req-child", sessionID: jobID, permission: "bash", patterns: ["rm -rf build"] }, 0)
+    expect(await leafLifecycle.wait({ jobID, parentID: FAKE_PARENT_ID, directory: FAKE_DIRECTORY, waitMs: 0 })).toBe("leaf report")
   })
 })

@@ -44,6 +44,7 @@ function makeConfig(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConf
     author_reviewer_agent: "author-reviewer",
     author_reviewer_enabled: true,
     writer_docs_roots: ["userdoc"],
+    subagent_steps: 200,
     ...overrides,
   }
 }

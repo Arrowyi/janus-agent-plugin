@@ -19,7 +19,9 @@ import {
   resolveEditBases,
   resolveModelPrompt,
 } from "./agent-registration.ts"
-import { createJanusDispatchTools } from "./dispatch-tool.ts"
+import { createJanusDispatchTools, createPermissionReplyTool } from "./dispatch-tool.ts"
+import { createSystemClock } from "./dispatch-lifecycle.ts"
+import { PermissionAskRegistry, createPermissionEventHook } from "./permission-ask.ts"
 import { CONFIG_TOOL_NAME, createJanusConfigTool } from "./config-tool.ts"
 import { PROVIDER_KEYS_TOOL_NAME, createProviderKeysTool } from "./provider-keys-tool.ts"
 import { registerMemoryMcp } from "./mcp-registration.ts"
@@ -163,12 +165,20 @@ export function createSystemTransformHook(env: NodeJS.ProcessEnv = process.env) 
  * server, the three skills, and the model-adaptation system hook.
  * Contains no evidence, recommendation, or persistence logic.
  */
-export const JanusAgentPlugin: Plugin = async (input) => ({
-  config: createJanusConfigHook(input.project, input.directory, input.worktree),
-  tool: {
-    ...createJanusDispatchTools(input.client),
-    [CONFIG_TOOL_NAME]: createJanusConfigTool(),
-    [PROVIDER_KEYS_TOOL_NAME]: createProviderKeysTool(),
-  },
-  "experimental.chat.system.transform": createSystemTransformHook(),
-})
+export const JanusAgentPlugin: Plugin = async (input) => {
+  // One permission-ask registry and clock per plugin process, shared by the
+  // event hook, the dispatch tools, and the permission-reply tool.
+  const askRegistry = new PermissionAskRegistry()
+  const clock = createSystemClock()
+  return {
+    config: createJanusConfigHook(input.project, input.directory, input.worktree),
+    event: createPermissionEventHook(askRegistry, input.client, clock),
+    tool: {
+      ...createJanusDispatchTools(input.client, { askRegistry, clock }),
+      ...createPermissionReplyTool(input.client, { askRegistry, clock }),
+      [CONFIG_TOOL_NAME]: createJanusConfigTool(),
+      [PROVIDER_KEYS_TOOL_NAME]: createProviderKeysTool(),
+    },
+    "experimental.chat.system.transform": createSystemTransformHook(),
+  }
+}

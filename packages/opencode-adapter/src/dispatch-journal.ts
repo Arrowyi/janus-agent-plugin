@@ -1,6 +1,7 @@
 import path from "node:path"
 
 import {
+  DISPATCH_MARKER,
   type AttemptReceipt,
   type AttemptReservation,
   type CancelIntent,
@@ -148,7 +149,7 @@ export async function loadJobModelForGuard(
       message: `job ${input.jobID} belongs to a different workspace; reviews_job_ids must reference ${input.expectedRole} jobs in the current workspace`,
     }
   }
-  if (!root.title.startsWith(MARKER)) {
+  if (!root.title.startsWith(DISPATCH_MARKER)) {
     return {
       ok: false,
       reason: "not-found",
@@ -198,7 +199,7 @@ export async function loadJobModelForGuard(
       message: `job ${input.jobID} records a different workspace; reviews_job_ids must reference ${input.expectedRole} jobs in the current workspace`,
     }
   }
-  if (root.title !== `${MARKER}${spec.role}`) {
+  if (root.title !== `${DISPATCH_MARKER}${spec.role}`) {
     return { ok: false, reason: "invalid-job", message: `job ${input.jobID} root title does not match its recorded role` }
   }
   if (spec.continued_from !== undefined) {
@@ -218,7 +219,6 @@ export async function loadJobModelForGuard(
   return { ok: true, model: spec.model_chain[0] ?? null, tier: spec.tier }
 }
 
-const MARKER = "[consultation-dispatch:v1] "
 let messageCounter = 0
 function makeMessageID(): string {
   messageCounter++
@@ -233,7 +233,7 @@ export async function createJob(
   input: CreateJobInput,
 ): Promise<JournalResult<CreateJobResult>> {
   const directory = path.normalize(input.directory)
-  const title = `${MARKER}${input.role}`
+  const title = `${DISPATCH_MARKER}${input.role}`
   const createResult = await sdk.session.create({
     body: { parentID: input.parentID, title },
     query: { directory },
@@ -314,7 +314,7 @@ export async function createAttemptSession(
   input: CreateAttemptSessionInput,
 ): Promise<JournalResult<CreateAttemptSessionResult>> {
   const directory = path.normalize(input.directory)
-  const title = `${MARKER}attempt ${input.role}`
+  const title = `${DISPATCH_MARKER}attempt ${input.role}`
   const result = await sdk.session.create({
     body: { parentID: input.jobID, title },
     query: { directory },
@@ -347,7 +347,7 @@ export async function loadJob(
   if (path.normalize(root.directory) !== directory) {
     return fail("job-unavailable", "job root workspace mismatch")
   }
-  if (!root.title.startsWith(MARKER)) {
+  if (!root.title.startsWith(DISPATCH_MARKER)) {
     return fail("job-unavailable", "job root marker mismatch")
   }
 

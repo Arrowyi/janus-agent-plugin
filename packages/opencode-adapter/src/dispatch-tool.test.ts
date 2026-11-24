@@ -5,13 +5,14 @@ import { tmpdir } from "node:os"
 import { setImmediate } from "node:timers/promises"
 import type { PluginInput, ToolContext } from "@opencode-ai/plugin"
 
-import { createJanusDispatchTool, createJanusDispatchTools, resolveRoleTarget, splitModel } from "./dispatch-tool.ts"
+import { createJanusDispatchTool, createJanusDispatchTools, createPermissionReplyTool, recordSurfacedTurnWatermark, resolveRoleTarget, splitModel } from "./dispatch-tool.ts"
 import { appendRecord, createAttemptSession, createJob, loadJob } from "./dispatch-journal.ts"
 import { JanusPluginConfigSchema, type JanusPluginConfig } from "./plugin-config.ts"
 import { CODER_HARD_CEILING_TOKENS, CONTEXT_WATERMARK_TOKENS } from "./dispatch-guard.ts"
-import { createFakeClock, createFakeSdk, makeCancelledEnvelope, makeCompletedEnvelope, makeEnvelope, makeJobSpec, type FakeSdk } from "./dispatch-test-fixtures.ts"
-import { createKeyedMutex, parseOutcomeEnvelope, PRODUCTION_WAIT_BUDGET_MS, type DispatchEnvelope, type JobSpec, type KeyedMutex, type SdkAssistantMessage, type SdkMessageWithParts, type SdkTokenUsage, type SdkTextPart } from "./dispatch-contract.ts"
+import { FAKE_DIRECTORY, createFakeClock, createFakePendingAsksProbe, createFakeSdk, makeCancelledEnvelope, makeCompletedEnvelope, makeEnvelope, makeJobSpec, seedLivePermissionAsk, type FakeSdk } from "./dispatch-test-fixtures.ts"
+import { DISPATCH_MARKER, createKeyedMutex, parseOutcomeEnvelope, PERMISSION_REPLY_TOOL_NAME, PRODUCTION_WAIT_BUDGET_MS, type Clock, type DispatchEnvelope, type DispatchSdk, type JobSpec, type KeyedMutex, type SdkAssistantMessage, type SdkMessageWithParts, type SdkSession, type SdkTokenUsage, type SdkTextPart } from "./dispatch-contract.ts"
 import type { DispatchLifecycle, LaunchInput } from "./dispatch-lifecycle.ts"
+import { PermissionAskRegistry, allAlreadySurfacedInCurrentTurn, resolvePermissionSdk } from "./permission-ask.ts"
 
 function config(overrides: Partial<JanusPluginConfig> = {}): JanusPluginConfig {
   return JanusPluginConfigSchema.parse(overrides)
@@ -2338,5 +2339,440 @@ describe("review seat continuation guards", () => {
     expect(rejected).toContain("tier floor")
     expect(rejected).toContain("start a fresh review dispatch")
     expect(promptAsyncCount(fake)).toBe(before)
+  })
+})
+
+describe("janus_permission_reply handler", () => {
+  const CALLER = "ses_parent"
+  const TARGET = "ses_child"
+
+  function makeSession(id: string, parentID: string | undefined, title: string): SdkSession {
+    return { id, ...(parentID !== undefined ? { parentID } : {}), directory: FAKE_DIRECTORY, title, time: { created: 0, updated: 0 } }
+  }
+
+  function seededFake(messages: Record<string, ReadonlyArray<SdkMessageWithParts>> = {}): FakeSdk {
+    return createFakeSdk({
+      seedPermission: true,
+      sessions: [makeSession(CALLER, undefined, "human"), makeSession(TARGET, CALLER, "job")],
+      messages,
+    })
+  }
+
+  function humanMessage(id: string): SdkMessageWithParts {
+    return { info: { role: "user", id, sessionID: CALLER }, parts: [{ type: "text", text: "allow it" }] }
+  }
+
+  function replyInputs(fake: FakeSdk): ReadonlyArray<unknown> {
+    return (fake.permission?.calls ?? []).filter((call) => call.method === "reply").map((call) => call.input)
+  }
+
+  function listInputs(fake: FakeSdk): number {
+    return (fake.permission?.calls ?? []).filter((call) => call.method === "list" || call.method === "listForSession").length
+  }
+
+  function replyTool(fake: FakeSdk, registry: PermissionAskRegistry, clock = createFakeClock(0)) {
+    const built = createPermissionReplyTool(fake as unknown as PluginInput["client"], { askRegistry: registry, clock })[
+      PERMISSION_REPLY_TOOL_NAME
+    ]
+    if (built === undefined) throw new Error("expected the permission reply tool to be registered")
+    return built
+  }
+
+  const seededAsk = { id: "req-1", sessionID: TARGET, permission: "bash", patterns: ["ls"] }
+
+  it("runs the guard before any SDK permission call", async () => {
+    const fake = seededFake()
+    const registry = new PermissionAskRegistry()
+    registry.dispatchedSessionIDs.add(CALLER)
+
+    const result = await replyTool(fake, registry).execute(
+      { sessionID: TARGET, requestID: "req-1", reply: "once" },
+      fakeContext(),
+    )
+
+    expect(result).toBe(
+      "Error: dispatched sub-session cannot call janus_permission_reply; surface pending_asks to the top-level user-facing caller",
+    )
+    expect(replyInputs(fake)).toHaveLength(0)
+    expect(listInputs(fake)).toBe(0)
+  })
+
+  it("passes the message through and replies exactly once the guard passes", async () => {
+    const fake = seededFake({ [CALLER]: [humanMessage("msg-h1")] })
+    fake.permission!.seedAsks([seededAsk])
+    const registry = new PermissionAskRegistry()
+    registry.onAsked(
+      { requestID: "req-1", sessionID: TARGET, directory: FAKE_DIRECTORY, permission: "bash", patterns: ["ls"] },
+      0,
+    )
+    registry.markSurfaced("req-1", { callerSessionID: CALLER, surfacedAtUserMessageID: undefined, surfacedAt: 0 })
+
+    const result = await replyTool(fake, registry).execute(
+      { sessionID: TARGET, requestID: "req-1", reply: "once", message: "allow once please" },
+      fakeContext(),
+    )
+
+    expect(result).toBe("Permission request req-1 on session ses_child replied: once")
+    expect(replyInputs(fake)).toEqual([
+      { requestID: "req-1", directory: FAKE_DIRECTORY, reply: "once", message: "allow once please" },
+    ])
+  })
+
+  it("omits the message key when no message is supplied", async () => {
+    const fake = seededFake({ [CALLER]: [humanMessage("msg-h1")] })
+    fake.permission!.seedAsks([seededAsk])
+    const registry = new PermissionAskRegistry()
+    registry.onAsked(
+      { requestID: "req-1", sessionID: TARGET, directory: FAKE_DIRECTORY, permission: "bash", patterns: ["ls"] },
+      0,
+    )
+    registry.markSurfaced("req-1", { callerSessionID: CALLER, surfacedAtUserMessageID: undefined, surfacedAt: 0 })
+
+    const result = await replyTool(fake, registry).execute(
+      { sessionID: TARGET, requestID: "req-1", reply: "reject" },
+      fakeContext(),
+    )
+
+    expect(result).toBe("Permission request req-1 on session ses_child replied: reject")
+    expect(replyInputs(fake)).toEqual([{ requestID: "req-1", directory: FAKE_DIRECTORY, reply: "reject" }])
+  })
+
+  it("returns the idempotent already-resolved message without a reply call", async () => {
+    const fake = seededFake()
+    fake.permission!.seedAsks([])
+    const registry = new PermissionAskRegistry()
+    registry.onAsked(
+      { requestID: "req-1", sessionID: TARGET, directory: FAKE_DIRECTORY, permission: "bash", patterns: ["ls"] },
+      1000,
+    )
+
+    const result = await replyTool(fake, registry, createFakeClock(2000)).execute(
+      { sessionID: TARGET, requestID: "req-1", reply: "once" },
+      fakeContext(),
+    )
+
+    expect(result).toBe("Permission request req-1 on session ses_child was already resolved (no longer pending).")
+    expect(replyInputs(fake)).toHaveLength(0)
+  })
+
+  it("writes the surfaced watermark once and never overwrites it", async () => {
+    const fake = seededFake({ [CALLER]: [humanMessage("msg-h1")] })
+    const registry = new PermissionAskRegistry()
+    registry.onAsked(
+      { requestID: "req-1", sessionID: TARGET, directory: FAKE_DIRECTORY, permission: "bash", patterns: ["ls"] },
+      1000,
+    )
+    const envelope = JSON.stringify({ pending_asks: [{ requestID: "req-1" }] })
+    const sdk = fake as unknown as DispatchSdk
+
+    await recordSurfacedTurnWatermark(sdk, registry, {
+      text: envelope,
+      callerSessionID: CALLER,
+      directory: FAKE_DIRECTORY,
+      now: 1000,
+    })
+    expect(registry.getHistory("req-1")?.surfaced).toEqual({
+      callerSessionID: CALLER,
+      surfacedAtUserMessageID: "msg-h1",
+      surfacedAt: 1000,
+    })
+
+    fake.seedMessages(CALLER, [humanMessage("msg-h2")])
+    await recordSurfacedTurnWatermark(sdk, registry, {
+      text: envelope,
+      callerSessionID: CALLER,
+      directory: FAKE_DIRECTORY,
+      now: 2000,
+    })
+    expect(registry.getHistory("req-1")?.surfaced).toEqual({
+      callerSessionID: CALLER,
+      surfacedAtUserMessageID: "msg-h1",
+      surfacedAt: 1000,
+    })
+  })
+
+  it("does not mark a watermark when the return carries no pending asks", async () => {
+    const fake = seededFake({ [CALLER]: [humanMessage("msg-h1")] })
+    const registry = new PermissionAskRegistry()
+    registry.onAsked(
+      { requestID: "req-1", sessionID: TARGET, directory: FAKE_DIRECTORY, permission: "bash", patterns: ["ls"] },
+      1000,
+    )
+    const sdk = fake as unknown as DispatchSdk
+
+    await recordSurfacedTurnWatermark(sdk, registry, {
+      text: "plain specialist report",
+      callerSessionID: CALLER,
+      directory: FAKE_DIRECTORY,
+      now: 1000,
+    })
+    await recordSurfacedTurnWatermark(sdk, registry, {
+      text: JSON.stringify({ job_id: "ses_job", status: "pending" }),
+      callerSessionID: CALLER,
+      directory: FAKE_DIRECTORY,
+      now: 1000,
+    })
+
+    expect(registry.getHistory("req-1")?.surfaced).toBeUndefined()
+  })
+})
+
+describe("surfacing watermark on dispatch/continue/cancel returns", () => {
+  const CALLER = "ses_parent"
+  const TARGET = "ses_child"
+  const REQ = "req-1"
+
+  function testSession(id: string, parentID: string | undefined, title: string): SdkSession {
+    return {
+      id,
+      ...(parentID !== undefined ? { parentID } : {}),
+      directory: FAKE_DIRECTORY,
+      title,
+      time: { created: 0, updated: 0 },
+    }
+  }
+
+  function humanMessage(id: string): SdkMessageWithParts {
+    return { info: { role: "user", id, sessionID: CALLER }, parts: [{ type: "text", text: "allow it" }] }
+  }
+
+  function inFlightAssistant(sessionID: string, requestMessageID: string): SdkMessageWithParts {
+    return {
+      info: {
+        id: "msg-inflight",
+        sessionID,
+        role: "assistant",
+        parentID: requestMessageID,
+        time: { created: 0 },
+        modelID: "m",
+        providerID: "p",
+      },
+      parts: [{ type: "text", text: "working" }],
+    }
+  }
+
+  function pendingEnvelope(sessionID: string): string {
+    return JSON.stringify({
+      v: 1,
+      status: "pending",
+      job_id: "ses_job",
+      role: "coder",
+      attempt: { index: 0, model: null },
+      session_id: sessionID,
+      waited_ms: 0,
+      reason: "waiting for specialist",
+      next: "janus_dispatch_wait",
+      pending_asks: [
+        {
+          requestID: REQ,
+          sessionID,
+          permission: "bash",
+          patterns: ["ls"],
+          age_ms: 0,
+          job_chain: [{ job_id: "ses_job", role: "coder", session_id: sessionID }],
+        },
+      ],
+    })
+  }
+
+  function replyTool(fake: FakeSdk, registry: PermissionAskRegistry, clock: Clock) {
+    const built = createPermissionReplyTool(fake as unknown as PluginInput["client"], { askRegistry: registry, clock })[
+      PERMISSION_REPLY_TOOL_NAME
+    ]
+    if (built === undefined) throw new Error("expected the permission reply tool to be registered")
+    return built
+  }
+
+  async function dispatchFixture(clock: Clock): Promise<{ fake: FakeSdk; registry: PermissionAskRegistry; tools: ReturnType<typeof createJanusDispatchTools> }> {
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [testSession(CALLER, undefined, "human"), testSession(TARGET, CALLER, `${DISPATCH_MARKER}coder`)],
+      messages: { [CALLER]: [humanMessage("msg-h1")] },
+    })
+    const registry = new PermissionAskRegistry()
+    seedLivePermissionAsk(fake, registry, { id: REQ, sessionID: TARGET, permission: "bash", patterns: ["ls"] }, clock.now())
+    const stubLifecycle: DispatchLifecycle = {
+      launch: async () => pendingEnvelope(TARGET),
+      wait: async () => "never called",
+      continue: async () => "never called",
+    }
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], {
+      clock,
+      lifecycle: stubLifecycle,
+      askRegistry: registry,
+    })
+    return { fake, registry, tools }
+  }
+
+  it("marks the ask surfaced on a janus_dispatch return so a reply after a new human message succeeds", async () => {
+    const clock = createFakeClock(0)
+    const { fake, registry, tools } = await dispatchFixture(clock)
+
+    const dispatched = String(await tools.janus_dispatch.execute({ role: "coder", prompt: "do the work" }, fakeContext()))
+    expect(JSON.parse(dispatched)).toMatchObject({ status: "pending", session_id: TARGET })
+    expect(registry.getHistory(REQ)?.surfaced).toEqual({
+      callerSessionID: CALLER,
+      surfacedAtUserMessageID: "msg-h1",
+      surfacedAt: 0,
+    })
+
+    fake.seedMessages(CALLER, [humanMessage("msg-h2")])
+    const result = await replyTool(fake, registry, clock).execute(
+      { sessionID: TARGET, requestID: REQ, reply: "once" },
+      fakeContext(),
+    )
+
+    expect(result).toBe(`Permission request ${REQ} on session ${TARGET} replied: once`)
+  })
+
+  it("still fails closed when the reply arrives in the same turn as the dispatch surfacing", async () => {
+    const clock = createFakeClock(0)
+    const { fake, registry, tools } = await dispatchFixture(clock)
+
+    await tools.janus_dispatch.execute({ role: "coder", prompt: "do the work" }, fakeContext())
+
+    const result = await replyTool(fake, registry, clock).execute(
+      { sessionID: TARGET, requestID: REQ, reply: "once" },
+      fakeContext(),
+    )
+
+    expect(String(result)).toContain(`no new human message since permission request ${REQ} was surfaced`)
+  })
+
+  it("satisfies the same-turn re-yield damper input for an ask first surfaced by dispatch", async () => {
+    const clock = createFakeClock(0)
+    const { fake, registry, tools } = await dispatchFixture(clock)
+
+    await tools.janus_dispatch.execute({ role: "coder", prompt: "do the work" }, fakeContext())
+
+    // The damper consumes exactly this predicate: every active ask already
+    // carries this caller's watermark at the current last human message.
+    expect(allAlreadySurfacedInCurrentTurn(registry.getActive(FAKE_DIRECTORY), "msg-h1", CALLER)).toBe(true)
+
+    fake.seedMessages(CALLER, [humanMessage("msg-h2")])
+    expect(allAlreadySurfacedInCurrentTurn(registry.getActive(FAKE_DIRECTORY), "msg-h2", CALLER)).toBe(false)
+  })
+
+  it("marks the ask surfaced on a janus_dispatch_continue return so a reply after a new human message succeeds", async () => {
+    const clock = createFakeClock(0)
+    const fake = createFakeSdk({
+      seedPermission: true,
+      sessions: [testSession(CALLER, undefined, "human")],
+    })
+    const registry = new PermissionAskRegistry()
+    const created = await createJob(fake as unknown as DispatchSdk, {
+      parentID: CALLER,
+      directory: FAKE_DIRECTORY,
+      role: "coder",
+      agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"],
+      prompt: "work",
+      clock,
+    })
+    if (!created.ok) throw created.error
+    const target = created.value.jobID
+    seedLivePermissionAsk(fake, registry, { id: REQ, sessionID: target, permission: "bash", patterns: ["ls"] }, clock.now())
+    fake.seedMessages(CALLER, [humanMessage("msg-h1")])
+
+    const stubLifecycle: DispatchLifecycle = {
+      launch: async () => "never called",
+      wait: async () => "never called",
+      continue: async () => pendingEnvelope(target),
+    }
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], {
+      clock,
+      lifecycle: stubLifecycle,
+      askRegistry: registry,
+    })
+
+    const continued = String(
+      await tools.janus_dispatch_continue.execute({ session_id: target, prompt: "keep going" }, fakeContext()),
+    )
+    expect(JSON.parse(continued)).toMatchObject({ status: "pending", session_id: target })
+    expect(registry.getHistory(REQ)?.surfaced?.surfacedAtUserMessageID).toBe("msg-h1")
+
+    fake.seedMessages(CALLER, [humanMessage("msg-h2")])
+    const result = await replyTool(fake, registry, clock).execute(
+      { sessionID: target, requestID: REQ, reply: "once" },
+      fakeContext(),
+    )
+
+    expect(result).toBe(`Permission request ${REQ} on session ${target} replied: once`)
+  })
+
+  it("leaves the cancel return without a surfacing watermark because the cancel epoch filters every ask", async () => {
+    const clock = createFakeClock(0)
+    const fake = createFakeSdk({ seedPermission: true, sessions: [testSession(CALLER, undefined, "human")] })
+    const registry = new PermissionAskRegistry()
+    const mutex = createKeyedMutex()
+    const probe = createFakePendingAsksProbe(fake, registry, clock)
+    const permissionSdk = resolvePermissionSdk(fake)
+    if (permissionSdk === undefined) throw new Error("expected a fake permission surface")
+    const sdk = fake as unknown as DispatchSdk
+
+    const created = await createJob(sdk, {
+      parentID: CALLER,
+      directory: FAKE_DIRECTORY,
+      role: "coder",
+      agentName: "coder",
+      modelChain: ["opencode-go/glm-5.3"],
+      prompt: "work",
+      clock,
+    })
+    if (!created.ok) throw created.error
+    const jobID = created.value.jobID
+    const child = await createAttemptSession(sdk, { jobID, directory: FAKE_DIRECTORY, role: "coder" })
+    if (!child.ok) throw child.error
+    const sessionID = child.value.sessionID
+    const requestMessageID = "msg-ask-cancel-request"
+    const reservation = await appendRecord(sdk, {
+      jobID,
+      directory: FAKE_DIRECTORY,
+      messageID: requestMessageID,
+      record: {
+        v: 1,
+        kind: "attempt-reservation",
+        job_id: jobID,
+        attempt_index: 0,
+        model: "opencode-go/glm-5.3",
+        message_id: requestMessageID,
+        reserved_at: clock.now(),
+      },
+    })
+    if (!reservation.ok) throw reservation.error
+    const receipt = await appendRecord(sdk, {
+      jobID,
+      directory: FAKE_DIRECTORY,
+      record: {
+        v: 1,
+        kind: "attempt-receipt",
+        job_id: jobID,
+        attempt_index: 0,
+        session_id: sessionID,
+        message_id: requestMessageID,
+        received_at: clock.now(),
+      },
+    })
+    if (!receipt.ok) throw receipt.error
+    fake.seedMessages(sessionID, [inFlightAssistant(sessionID, requestMessageID)])
+    seedLivePermissionAsk(fake, registry, { id: REQ, sessionID, permission: "bash", patterns: ["ls"] }, clock.now())
+
+    const tools = createJanusDispatchTools(fake as unknown as PluginInput["client"], {
+      clock,
+      mutex,
+      askRegistry: registry,
+      pendingAsksProbe: probe,
+      permissionSdk,
+    })
+
+    const cancelled = String(await tools.janus_dispatch_cancel.execute({ job_id: jobID }, fakeContext()))
+    const parsed = JSON.parse(cancelled) as { readonly status?: string; readonly pending_asks?: unknown }
+
+    expect(parsed.status).toBe("cancelling")
+    // The cancel path marks its epoch before every snapshot, and askIsCancelled
+    // drops any ask first seen at or before the epoch — so a cancel return never
+    // carries pending_asks and the surfacing helper stays a consistent no-op.
+    expect(parsed.pending_asks).toBeUndefined()
+    expect(registry.getHistory(REQ)?.surfaced).toBeUndefined()
   })
 })

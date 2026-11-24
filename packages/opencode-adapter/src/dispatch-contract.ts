@@ -58,6 +58,13 @@ export type DispatchTier = (typeof DISPATCH_TIERS)[number]
 export const PRODUCTION_WAIT_BUDGET_MS = 1_800_000
 export const DEFAULT_WAIT_MS = PRODUCTION_WAIT_BUDGET_MS
 
+/**
+ * Session-title prefix that marks a session as a plugin-created dispatch job
+ * root (or attempt child). The single owner of the marker literal; the
+ * journal, cancel, lifecycle, and tool modules all compare against it.
+ */
+export const DISPATCH_MARKER = "[consultation-dispatch:v1] "
+
 export function normalizeDispatchRole(value: string): DispatchRole | undefined {
   return (DISPATCH_ROLES as readonly string[]).includes(value) ? (value as DispatchRole) : undefined
 }
@@ -179,6 +186,45 @@ export function parseJournalRecord(input: unknown): DispatchResult<JournalRecord
     : { ok: false, error: fromZodError("invalid journal record", result.error) }
 }
 
+export const PERMISSION_REPLY_TOOL_NAME = "janus_permission_reply" as const
+export const PERMISSION_REPLY_DECISIONS = ["once", "always", "reject"] as const
+export type PermissionReplyDecision = (typeof PERMISSION_REPLY_DECISIONS)[number]
+
+// Non-strict so future optional tool arguments remain backward-compatible.
+export const PermissionReplyArgsSchema = z.object({
+  sessionID: sessionIdSchema,
+  requestID: z.string().min(1, { message: "expected non-empty requestID" }),
+  reply: z.enum(PERMISSION_REPLY_DECISIONS),
+  message: z.string().optional(),
+})
+export type PermissionReplyArgs = z.infer<typeof PermissionReplyArgsSchema>
+
+/**
+ * One hop of the job nesting chain attached to a surfaced pending ask: the
+ * job root, its role, and the attempt session the ask was observed in.
+ */
+export const PendingAskJobHopSchema = z
+  .object({ job_id: sessionIdSchema, role: roleSchema, session_id: sessionIdSchema })
+  .strict()
+export type PendingAskJobHop = z.infer<typeof PendingAskJobHopSchema>
+
+/**
+ * One pending permission ask surfaced to a top-level caller in a dispatch
+ * envelope. Sanitized by permission-ask.ts (the single owner of D3
+ * sanitization) before it reaches this schema.
+ */
+export const PendingAskSchema = z
+  .object({
+    requestID: z.string().min(1),
+    sessionID: sessionIdSchema,
+    permission: z.string().min(1),
+    patterns: z.array(z.string().min(1)).nonempty(),
+    age_ms: z.number().int().nonnegative(),
+    job_chain: z.array(PendingAskJobHopSchema).nonempty(),
+  })
+  .strict()
+export type PendingAsk = z.infer<typeof PendingAskSchema>
+
 const attemptSchema = z.object({
   index: z.number().int().nonnegative(),
   model: z.string().nullable(),
@@ -224,6 +270,10 @@ export const DispatchEnvelopeSchema = envelopeBaseSchema.extend({
   running_tool_ms: z.number().int().nonnegative().optional(),
   session_status: DispatchSessionStatusSchema.optional(),
   stalled_suspect: z.literal(true).optional(),
+  // Pending permission asks escalated from a dispatched sub-session to the
+  // top-level caller. Surfaced only on non-terminal envelopes; the caller
+  // answers them with `janus_permission_reply`.
+  pending_asks: z.array(PendingAskSchema).nonempty().optional(),
 })
 
 export type DispatchEnvelope = z.infer<typeof DispatchEnvelopeSchema>
@@ -422,6 +472,41 @@ export interface DispatchSdk {
     messages(input: { path: SdkPath; query?: SdkMessagesQuery }): Promise<SdkResult<ReadonlyArray<SdkMessageWithParts>>>
     status(input: { query?: SdkQuery }): Promise<SdkResult<Readonly<Record<string, SdkSessionStatus>>>>
   }
+}
+
+/**
+ * One pending permission ask as returned by a host permission surface. Field
+ * names stay aligned with the plugin's own vocabulary; adapters normalize the
+ * host's V1/V2 field names (`type`/`pattern`, `action`/`resources`) into this
+ * shape.
+ */
+export interface SdkPendingPermission {
+  readonly id: string
+  readonly sessionID: string
+  readonly permission: string
+  readonly patterns: ReadonlyArray<string>
+  readonly metadata?: Readonly<Record<string, unknown>>
+  readonly createdAt?: number
+}
+
+/**
+ * Normalized permission surface the permission-ask layer consumes. A host
+ * may expose the V2 permission client, the V1 session reply endpoint, or the
+ * raw HeyAPI transport; `permission-ask.ts`'s `resolvePermissionSdk` adapts
+ * all of them to this interface (and returns undefined when none is
+ * mounted).
+ */
+export interface DispatchPermissionSdk {
+  list(input: { query?: SdkQuery }): Promise<SdkResult<ReadonlyArray<SdkPendingPermission>>>
+  listForSession?(input: {
+    path: { readonly sessionID: string }
+    query?: SdkQuery
+  }): Promise<SdkResult<ReadonlyArray<SdkPendingPermission>>>
+  reply(input: {
+    path: { readonly requestID: string; readonly sessionID: string }
+    body: { readonly reply: PermissionReplyDecision; readonly message?: string }
+    query?: SdkQuery
+  }): Promise<SdkResult<boolean>>
 }
 
 export interface Clock {

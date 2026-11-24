@@ -105,6 +105,7 @@ function makeConfig(): JanusPluginConfig {
     author_reviewer_agent: "author-reviewer",
     author_reviewer_enabled: true,
     writer_docs_roots: ["userdoc"],
+    subagent_steps: 200,
   }
 }
 

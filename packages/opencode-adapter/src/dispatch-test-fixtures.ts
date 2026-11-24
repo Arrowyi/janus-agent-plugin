@@ -4,6 +4,8 @@ import {
   type AttemptReservation,
   type CancelIntent,
   type Clock,
+  type SdkPendingPermission,
+  type SdkResult,
   type DispatchCancelledEnvelope,
   type DispatchCompletedEnvelope,
   type DispatchEnvelope,
@@ -16,6 +18,11 @@ import {
   type SdkSessionStatus,
   type SdkTextPart,
 } from "./dispatch-contract.ts"
+import {
+  createPendingAsksProbe,
+  type PendingAsksProbe,
+  type PermissionAskRegistry,
+} from "./permission-ask.ts"
 
 export const FAKE_PARENT_ID = "ses_parent"
 export const FAKE_JOB_ID = "ses_job"
@@ -138,9 +145,65 @@ export function makeCompletedEnvelope(overrides: Partial<DispatchCompletedEnvelo
   }
 }
 
+export type FakePermissionResult = SdkResult<ReadonlyArray<SdkPendingPermission>>
+export interface FakePermissionCall {
+  readonly method: "list" | "listForSession" | "reply"
+  readonly input: unknown
+}
+
+export interface FakePermissionSurface {
+  readonly calls: ReadonlyArray<FakePermissionCall>
+  seedAsks(asks: ReadonlyArray<SdkPendingPermission>): void
+  setListResult(result: FakePermissionResult): void
+  setListForSessionResult(result: FakePermissionResult): void
+  setReplyResult(result: { readonly data?: boolean; readonly error?: unknown }): void
+  list(input?: { readonly directory?: string }): Promise<FakePermissionResult>
+  reply(input: {
+    readonly requestID: string
+    readonly directory?: string
+    readonly reply: string
+    readonly message?: string
+  }): Promise<{ readonly data?: boolean; readonly error?: unknown }>
+}
+
+export interface FakeSessionPermissionSurface {
+  readonly calls: ReadonlyArray<FakePermissionCall>
+  seedAsks(asks: ReadonlyArray<SdkPendingPermission>): void
+  setListResult(result: FakePermissionResult): void
+  setReplyResult(result: { readonly data?: boolean; readonly error?: unknown }): void
+  list(input: { readonly sessionID: string }): Promise<{ readonly data?: { readonly data: ReadonlyArray<SdkPendingPermission> }; readonly error?: unknown }>
+  reply(input: {
+    readonly sessionID: string
+    readonly requestID: string
+    readonly reply: string
+    readonly message?: string
+  }): Promise<{ readonly data?: boolean; readonly error?: unknown }>
+}
+
+export interface FakeSdkOptions {
+  /** Seed a V2-style permission surface (`permission` + `v2.session.permission`). */
+  readonly seedPermission?: boolean
+  /** Seed session roots (lineage/parentID chains) before use. */
+  readonly sessions?: ReadonlyArray<SdkSession>
+  /** Seed message lists keyed by session id. */
+  readonly messages?: Readonly<Record<string, ReadonlyArray<SdkMessageWithParts>>>
+  /**
+   * Observe every `session.get` input. Lets a test assert the exact query
+   * shape (e.g. that a bootstrap read never sends a session id as a
+   * directory) rather than trusting the call-trace copy.
+   */
+  readonly onSessionGet?: (input: {
+    readonly path: { readonly id: string }
+    readonly query?: { readonly directory?: string }
+  }) => void
+}
+
 export interface FakeSdk extends DispatchSdk {
   readonly calls: ReadonlyArray<unknown>
+  readonly permission?: FakePermissionSurface
+  readonly v2?: { readonly session: { readonly permission: FakeSessionPermissionSurface } }
   seedMessages(sessionID: string, msgs: ReadonlyArray<SdkMessageWithParts>): void
+  seedSession(session: SdkSession): void
   setPromptAsyncResult(result: { readonly data?: void | undefined; readonly error?: unknown }): void
   setPromptAsyncError(error: unknown): void
   setPromptAsyncRejection(error: unknown): void
@@ -149,12 +212,87 @@ export interface FakeSdk extends DispatchSdk {
   setChildrenResult(result: { readonly data?: ReadonlyArray<SdkSession>; readonly error?: unknown }): void
 }
 
+function createFakePermissionSurface(
+  calls: FakePermissionCall[],
+  method: "list" | "reply",
+): FakePermissionSurface {
+  let asks: ReadonlyArray<SdkPendingPermission> = []
+  let listResult: FakePermissionResult | undefined
+  let listForSessionResult: FakePermissionResult | undefined
+  let replyResult: { readonly data?: boolean; readonly error?: unknown } = { data: true }
+  const surface: FakePermissionSurface = {
+    get calls() {
+      return calls
+    },
+    seedAsks(next) {
+      asks = next
+    },
+    setListResult(result) {
+      listResult = result
+    },
+    setListForSessionResult(result) {
+      listForSessionResult = result
+    },
+    setReplyResult(result) {
+      replyResult = result
+    },
+    async list(input) {
+      calls.push({ method: "list", input })
+      if (listResult !== undefined) return listResult
+      return { data: asks }
+    },
+    async reply(input) {
+      calls.push({ method: "reply", input })
+      return replyResult
+    },
+  }
+  // The `method` argument is only used to make the intent explicit at the
+  // call site; listForSession is provided by the session surface wrapper.
+  void method
+  void listForSessionResult
+  return surface
+}
+
+function createFakeSessionPermissionSurface(calls: FakePermissionCall[]): FakeSessionPermissionSurface {
+  let asks: ReadonlyArray<SdkPendingPermission> = []
+  let listResult: FakePermissionResult | undefined
+  let replyResult: { readonly data?: boolean; readonly error?: unknown } = { data: undefined }
+  return {
+    get calls() {
+      return calls
+    },
+    seedAsks(next) {
+      asks = next
+    },
+    setListResult(result) {
+      listResult = result
+    },
+    setReplyResult(result) {
+      replyResult = result
+    },
+    async list(input) {
+      calls.push({ method: "listForSession", input })
+      if (listResult !== undefined) {
+        if (listResult.error !== undefined) return { error: listResult.error }
+        return { data: { data: listResult.data ?? [] } }
+      }
+      return { data: { data: asks } }
+    },
+    async reply(input) {
+      calls.push({ method: "reply", input })
+      return replyResult
+    },
+  }
+}
+
 /**
  * In-memory SDK fake. Records every call so tests can assert the lifecycle
  * never issues real network requests. Supports create/prompt/promptAsync/abort/get/children/messages/status
  * and configurable failure injection / message seeding for lifecycle tests.
+ * The permission surface is opt-in (`seedPermission`), so existing call-trace
+ * tests see no extra surface.
  */
-export function createFakeSdk(): FakeSdk {
+export function createFakeSdk(options: FakeSdkOptions = {}): FakeSdk {
   const sessions = new Map<string, SdkSession>()
   const messages = new Map<string, SdkMessageWithParts[]>()
   const calls: unknown[] = []
@@ -170,7 +308,12 @@ export function createFakeSdk(): FakeSdk {
     calls.push({ method, input })
   }
 
-  return {
+  for (const session of options.sessions ?? []) sessions.set(session.id, session)
+  for (const [sessionID, seeded] of Object.entries(options.messages ?? {})) {
+    messages.set(sessionID, [...seeded])
+  }
+
+  const sdk: FakeSdk = {
     get calls() {
       return calls
     },
@@ -178,6 +321,9 @@ export function createFakeSdk(): FakeSdk {
       const list = messages.get(sessionID) ?? []
       list.push(...msgs)
       messages.set(sessionID, list)
+    },
+    seedSession(session) {
+      sessions.set(session.id, session)
     },
     setPromptAsyncResult(result) {
       promptAsyncResult = result
@@ -257,6 +403,7 @@ export function createFakeSdk(): FakeSdk {
       },
       get: async (input) => {
         record("get", input)
+        options.onSessionGet?.(input)
         if (getResult !== undefined) return getResult
         const session = sessions.get(input.path.id)
         return { data: session }
@@ -277,6 +424,17 @@ export function createFakeSdk(): FakeSdk {
       },
     },
   }
+
+  if (options.seedPermission === true) {
+    const permission = createFakePermissionSurface(calls as FakePermissionCall[], "list")
+    const sessionPermission = createFakeSessionPermissionSurface(calls as FakePermissionCall[])
+    ;(sdk as { permission?: FakePermissionSurface }).permission = permission
+    ;(sdk as { v2?: { session: { permission: FakeSessionPermissionSurface } } }).v2 = {
+      session: { permission: sessionPermission },
+    }
+  }
+
+  return sdk
 }
 
 /**
@@ -368,3 +526,63 @@ export const adversarialRecords: ReadonlyArray<unknown> = [
  */
 export { DISPATCH_ROLES }
 export type { SdkTextPart }
+
+/**
+ * Bind the M1 production pending-asks probe over a `FakeSdk` so observer and
+ * cancel tests exercise the real lineage walk + pull + sanitization path. Seed
+ * the fake's permission surface (`seedPermission: true`) and session roots as
+ * the test needs.
+ */
+export function createFakePendingAsksProbe(
+  fake: FakeSdk,
+  registry: PermissionAskRegistry,
+  clock: Clock,
+): PendingAsksProbe {
+  return createPendingAsksProbe(fake, registry, clock)
+}
+
+export interface SeedPermissionAskInput {
+  readonly requestID: string
+  readonly sessionID: string
+  readonly permission: string
+  readonly patterns: ReadonlyArray<string>
+  readonly directory?: string
+}
+
+/** Record an ask in the registry (the escalation gate + wake latch source). */
+export function seedPermissionAsk(registry: PermissionAskRegistry, ask: SeedPermissionAskInput, now: number): void {
+  registry.onAsked(
+    {
+      requestID: ask.requestID,
+      sessionID: ask.sessionID,
+      directory: ask.directory ?? FAKE_DIRECTORY,
+      permission: ask.permission,
+      patterns: ask.patterns,
+    },
+    now,
+  )
+}
+
+/**
+ * Seed one live ask both in the registry and on the fake permission surface so
+ * a probe observes it through the pull as well as the push feed.
+ */
+export function seedLivePermissionAsk(
+  fake: FakeSdk,
+  registry: PermissionAskRegistry,
+  ask: SdkPendingPermission,
+  now: number,
+): void {
+  seedPermissionAsk(
+    registry,
+    {
+      requestID: ask.id,
+      sessionID: ask.sessionID,
+      permission: ask.permission,
+      patterns: ask.patterns,
+      directory: FAKE_DIRECTORY,
+    },
+    now,
+  )
+  fake.permission?.seedAsks([ask])
+}

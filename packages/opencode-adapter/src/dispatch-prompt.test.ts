@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test"
+import { afterAll, describe, expect, it } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -21,6 +21,7 @@ import {
   registerCoderReviewer,
   registerSimple,
   resolveAuthorStateDir,
+  resolveDesignStateDir,
 } from "./agent-registration.ts"
 import { resolveAsset } from "./asset-paths.ts"
 import type { JanusPluginConfig } from "./plugin-config.ts"
@@ -59,7 +60,17 @@ const pluginConfig = {
   author_reviewer_agent: "author-reviewer",
   author_reviewer_enabled: true,
   writer_docs_roots: ["userdoc"],
+  subagent_steps: 200,
 } satisfies JanusPluginConfig
+
+// registerAuthorReviewer mkdirs the author and design state dirs; a shared
+// temp HOME keeps them off the real HOME and lets the expected bindings be
+// computed from the same resolved dirs the registration used.
+const reviewerTempParent = mkdtempSync(join(tmpdir(), "reviewer-prompt-"))
+const reviewerEnv = { HOME: reviewerTempParent } as NodeJS.ProcessEnv
+afterAll(() => {
+  rmSync(reviewerTempParent, { recursive: true, force: true })
+})
 
 // Each read-only role runs a default model that resolves a shipped
 // model-prompt block, keyed by the normalized model key (provider-agnostic).
@@ -103,18 +114,18 @@ const roles = [
     asset: "author-reviewer.md",
     name: "author-reviewer",
     block: "kimik31pro.md",
-    // registerAuthorReviewer mkdirs the author and design state dirs; wrap it
-    // with a temp HOME so nothing lands under the real HOME.
-    register: (config: { agent?: Record<string, unknown> }, pluginConfig: JanusPluginConfig) => {
-      const parent = mkdtempSync(join(tmpdir(), "reviewer-prompt-"))
-      try {
-        return registerAuthorReviewer(config, pluginConfig, { HOME: parent } as NodeJS.ProcessEnv)
-      } finally {
-        rmSync(parent, { recursive: true, force: true })
-      }
-    },
+    // registerAuthorReviewer mkdirs the author and design state dirs; the
+    // shared temp-HOME env keeps them off the real HOME and lets the expected
+    // bindings resolve to the same dirs the registration used.
+    register: (config: { agent?: Record<string, unknown> }, pluginConfig: JanusPluginConfig) =>
+      registerAuthorReviewer(config, pluginConfig, reviewerEnv),
     extras: ["principles/user-facing-style.md"],
-    bindings: buildAuthorReviewerRuntimeBindings,
+    bindings: (pluginConfig: JanusPluginConfig) =>
+      buildAuthorReviewerRuntimeBindings(
+        pluginConfig,
+        resolveAuthorStateDir(reviewerEnv),
+        resolveDesignStateDir(reviewerEnv),
+      ),
   },
 ] as const
 

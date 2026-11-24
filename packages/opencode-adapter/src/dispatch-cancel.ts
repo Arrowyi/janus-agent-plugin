@@ -1,7 +1,8 @@
-import { serializeOutcome, type CancelIntent, type Clock, type DispatchOutcome, type DispatchRole, type DispatchSdk, type KeyedMutex } from "./dispatch-contract.ts"
+import { serializeOutcome, type CancelIntent, type Clock, type DispatchOutcome, type DispatchPermissionSdk, type DispatchRole, type DispatchSdk, type KeyedMutex } from "./dispatch-contract.ts"
 import { makeEnvelope, observationToOutcome } from "./dispatch-helpers.ts"
 import { appendRecord, loadJob, type LoadedJob } from "./dispatch-journal.ts"
 import { observeDispatch, STARTUP_GRACE_MS, type ObservationOutcome } from "./dispatch-observer.ts"
+import { walkParentLineage, type PendingAsksProbe, type PermissionAskRegistry } from "./permission-ask.ts"
 
 export interface CancelInput {
   readonly jobID: string
@@ -14,6 +15,12 @@ export interface CreateDispatchCancelInput {
   readonly sdk: DispatchSdk
   readonly clock?: Clock
   readonly mutex: KeyedMutex
+  /** Shared ask registry; absent in tests and no-dependency constructions. */
+  readonly askRegistry?: PermissionAskRegistry
+  /** Per-observation pending-ask probe for the cancellation snapshot. */
+  readonly pendingAsksProbe?: PendingAsksProbe
+  /** Host permission surface used by the cancel-time ask cleanup (T2). */
+  readonly permissionSdk?: DispatchPermissionSdk
 }
 
 export interface ActiveAttempt {
@@ -73,6 +80,12 @@ export interface CancelReconciliation {
   readonly active: ActiveAttempt
   /** Caller's startup grace; the snapshot decays it by the attempt's durable age. */
   readonly startupGraceMs?: number
+  /** Shared ask registry (cancel epoch + ask eviction). */
+  readonly askRegistry?: PermissionAskRegistry
+  /** Pending-ask probe wired into the cancellation snapshot. */
+  readonly pendingAsksProbe?: PendingAsksProbe
+  /** Host permission surface used to reject live asks at cancel time. */
+  readonly permissionSdk?: DispatchPermissionSdk
 }
 
 /**
@@ -105,6 +118,8 @@ export interface ReconcileObservationInput {
   readonly attempt: { readonly index: number; readonly model: string | null; readonly sessionID: string }
   readonly cancelIntents: ReadonlyArray<CancelIntent>
   readonly waitedMs: number
+  /** Consumes the coordinator-turn-ended marker on a completed construction. */
+  readonly askRegistry?: PermissionAskRegistry
 }
 
 /**
@@ -139,7 +154,7 @@ export async function reconcileObservationOutcome(
       }
     }
   }
-  return observationToOutcome(observation, input.jobID, input.role, input.attempt, input.waitedMs)
+  return observationToOutcome(observation, input.jobID, input.role, input.attempt, input.waitedMs, input.askRegistry)
 }
 
 function hostStoppedCancelled(
@@ -168,12 +183,80 @@ function snapshot(input: CancelReconciliation): Promise<ObservationOutcome> {
   const elapsedMs = reservation === undefined ? 0 : Math.max(0, input.clock.now() - reservation.reserved_at)
   const effectiveGraceMs = Math.max(0, (input.startupGraceMs ?? STARTUP_GRACE_MS) - elapsedMs)
   const directory = input.loaded.spec.directory
+  const { askRegistry, pendingAsksProbe } = input
+  const askFields = pendingAsksProbe === undefined
+    ? {}
+    : {
+        parentID: input.loaded.spec.parent_id,
+        pendingAsks: () => {
+          if (askRegistry !== undefined && askRegistry.getActive(directory).length === 0) {
+            return Promise.resolve(undefined)
+          }
+          return pendingAsksProbe({
+            jobID: input.loaded.jobID,
+            childSessionID: input.active.sessionID,
+            parentID: input.loaded.spec.parent_id,
+            role: input.loaded.spec.role,
+          })
+        },
+        ...(askRegistry !== undefined
+          ? {
+              getAskVersion: () => askRegistry.getVersion(directory),
+              waitForAskWake: (seenVersion: number, signal?: AbortSignal) =>
+                askRegistry.waitForAskWake(directory, seenVersion, signal),
+            }
+          : {}),
+      }
   return observeDispatch({
     sdk: input.sdk, clock: input.clock, jobID: input.loaded.jobID,
     childSessionID: input.active.sessionID, requestMessageID: input.active.requestMessageID,
     directory, waitBudgetMs: 0, startupGraceMs: effectiveGraceMs,
     sessionStatus: createSessionStatusProbe(input.sdk, directory, input.active.sessionID),
+    // The cancellation snapshot wants terminal evidence; the coordinator
+    // terminal guard (which would override a completed coordinator) stays off.
+    ...askFields,
   })
+}
+
+/**
+ * Cancel-time ask cleanup (T2). After marking the cancel epoch, a fresh pull
+ * enumerates the live asks created at or before the epoch in the cancelled
+ * subtree and rejects each one, then evicts it from the registry. Best-effort:
+ * a pull or reply failure never blocks cancellation.
+ */
+async function rejectSubtreeAsks(input: CancelReconciliation, epoch: number): Promise<void> {
+  const { askRegistry, permissionSdk, loaded, active, sdk } = input
+  if (askRegistry === undefined || permissionSdk === undefined) return
+  const directory = loaded.spec.directory
+  let pulled
+  try {
+    const result = await permissionSdk.list({ query: { directory } })
+    if (result.error !== undefined || result.data === undefined) return
+    pulled = result.data
+  } catch {
+    return
+  }
+  for (const ask of pulled) {
+    const history = askRegistry.getHistory(ask.id)
+    const sessionID = history?.sessionID ?? ask.sessionID
+    const inSubtree =
+      sessionID === active.sessionID ||
+      sessionID === loaded.jobID ||
+      (await walkParentLineage(sdk, { startSessionID: sessionID, directory })).path.some((hop) => hop.id === loaded.jobID)
+    if (!inSubtree) continue
+    const firstSeenAt = history?.firstSeenAt ?? ask.createdAt ?? 0
+    if (firstSeenAt > epoch) continue
+    try {
+      await permissionSdk.reply({
+        path: { requestID: ask.id, sessionID },
+        body: { reply: "reject", message: "dispatch job cancelled" },
+        query: { directory },
+      })
+    } catch {
+      // Best-effort rejection: eviction still drops the ask from escalation.
+    }
+    askRegistry.evictActive(directory, ask.id)
+  }
 }
 
 // Caller holds the job mutex and has durably persisted cancel intent.
@@ -183,8 +266,14 @@ export async function abortAndReconcile(input: CancelReconciliation): Promise<Di
   const reconcile = (observation: ObservationOutcome, waitedMs: number) =>
     reconcileObservationOutcome(observation, {
       sdk, clock, jobID: loaded.jobID, directory: loaded.spec.directory, role: loaded.spec.role,
-      attempt: active, cancelIntents: loaded.cancelIntents, waitedMs,
+      attempt: active, cancelIntents: loaded.cancelIntents, waitedMs, askRegistry: input.askRegistry,
     })
+  // T2: an ask on the cancelled attempt (or its subtree) can never be answered
+  // once the attempt is aborted, so mark the epoch and reject what is live now.
+  const epoch = clock.now()
+  input.askRegistry?.markCancelEpoch(loaded.jobID, epoch)
+  input.askRegistry?.markCancelEpoch(active.sessionID, epoch)
+  await rejectSubtreeAsks(input, epoch)
   const before = await snapshot(input)
   switch (before.kind) {
     case "completed":
@@ -230,15 +319,20 @@ export function createDispatchCancel(input: CreateDispatchCancelInput): { readon
       const loaded = result.value
       const active = findActiveAttempt(loaded)
       const hostStopped = loaded.cancelIntents.some((intent) => intent.reason === "host-stopped")
+      const askWiring = {
+        ...(input.askRegistry !== undefined ? { askRegistry: input.askRegistry } : {}),
+        ...(input.pendingAsksProbe !== undefined ? { pendingAsksProbe: input.pendingAsksProbe } : {}),
+        ...(input.permissionSdk !== undefined ? { permissionSdk: input.permissionSdk } : {}),
+      }
       const reconcile = (observation: ObservationOutcome, waitedMs: number) =>
         reconcileObservationOutcome(observation, {
           sdk: input.sdk, clock, jobID: loaded.jobID, directory: loaded.spec.directory, role: loaded.spec.role,
           attempt: active ?? { index: loaded.reservations.at(-1)?.attempt_index ?? 0, model: loaded.reservations.at(-1)?.model ?? null, sessionID: loaded.jobID },
-          cancelIntents: loaded.cancelIntents, waitedMs,
+          cancelIntents: loaded.cancelIntents, waitedMs, ...(input.askRegistry !== undefined ? { askRegistry: input.askRegistry } : {}),
         })
       let evidence: ObservationOutcome | undefined
       if (active !== undefined) {
-        evidence = await snapshot({ sdk: input.sdk, clock, loaded, active })
+        evidence = await snapshot({ sdk: input.sdk, clock, loaded, active, ...askWiring })
         switch (evidence.kind) {
           case "completed":
           case "cancelled":
@@ -273,7 +367,7 @@ export function createDispatchCancel(input: CreateDispatchCancelInput): { readon
           { index: loaded.reservations.at(-1)?.attempt_index ?? 0, model: loaded.reservations.at(-1)?.model ?? null },
           loaded.jobID, 0, "cancel intent retained; awaiting attempt reconciliation"))
       }
-      return serializeOutcome(await abortAndReconcile({ sdk: input.sdk, clock, loaded, active }))
+      return serializeOutcome(await abortAndReconcile({ sdk: input.sdk, clock, loaded, active, ...askWiring }))
     }, request.signal).catch((error: unknown) => {
       if (error instanceof DOMException && error.name === "AbortError") {
         return serializeOutcome({ kind: "failure", reason: "cancel observation interrupted; existing intent retained" })

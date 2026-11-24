@@ -10,7 +10,7 @@ The dispatch hands you the patch path with its first-line metadata header and ta
 
 ## Patch integrity gates
 
-Confirm the tail sentinel — `=== EOF .review-mK.patch ===` or `=== EOF .review-mK-rN.patch ===` — was reached before any verdict; when the header reports `total_lines > 1800`, read in windows until the sentinel. If `long_line_files` in the header is non-empty, a line over 2000 characters evades line-truncating reads and the patch is not fully readable: return `revise` or `block`, never `pass`. A missing sentinel or a malformed header leaves the patch unread: report it with `resolved: false`.
+Confirm the tail sentinel — `=== EOF .review-mK.patch ===` or `=== EOF .review-mK-rN.patch ===` — was reached before any verdict; when the header reports `total_lines > 1800`, read in windows until the sentinel. If `long_line_files` in the header is non-empty, an added (`+`) or context line over 2000 characters evades line-truncating reads and the patch is not fully readable: return `revise` or `block`, never `pass`. An overlong deletion (`-`) line is content the patch removes: it stays disclosed and does not block `pass` when the controller's verification output attests the end-state file has no line over 2000 characters — without that attestation, report the gap as unresolved. A missing sentinel or a malformed header leaves the patch unread: report it with `resolved: false`.
 
 ## Review method
 

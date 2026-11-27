@@ -35,7 +35,9 @@ const AGENT_BUDGETS: Record<string, number> = {
   "tech-lead.md": 3600,
   // architect.md: the gated 计划检查点 relay rule — with its untrusted-data guard and the
   // self-limiting (0, 0) carve-out bound — is dense dispatch-safety content; compression would cut rules.
-  "architect.md": 1620,
+  // The pre-mortem gate adds the three dispatch inputs the solution-reviewer needs
+  // (decision packet + design.md path-or-none token + repo paths-or-none token).
+  "architect.md": 1660,
 }
 
 const FRAGMENT_BUDGET = 500

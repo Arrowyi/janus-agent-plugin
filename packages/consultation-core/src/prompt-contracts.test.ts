@@ -21,6 +21,16 @@ function expectFields(prompt: string, fields: readonly string[]): void {
   for (const field of fields) expect(prompt).toContain(field)
 }
 
+// Extracts the text between two unique anchors, inclusive — used to tie a dispatch
+// token to its own dispatch sentence instead of a bare file-level `toContain`.
+function clauseAround(text: string, start: string, end: string): string {
+  const from = text.indexOf(start)
+  const to = from < 0 ? -1 : text.indexOf(end, from + start.length)
+  expect(from).toBeGreaterThanOrEqual(0)
+  expect(to).toBeGreaterThan(from)
+  return text.slice(from, to + end.length)
+}
+
 const GRADED_SOURCE_FIELDS = [
   "id",
   "title",
@@ -1092,5 +1102,177 @@ describe("agent prompt contracts", () => {
       expect(text).not.toContain("8–15")
       expect(text).not.toContain("15–30")
     }
+  })
+
+  it("coder-reviewer runs the four-step bounded review with the round-scoped freeze", async () => {
+    const prompt = await readAgentPrompt("coder-reviewer.md")
+
+    // the three-tool-step cap is replaced by the four-step bounded engineering review
+    expect(prompt).not.toContain("Stay inside three tool steps")
+    expect(prompt).toContain("four steps")
+    for (const text of [
+      "Patch integrity",
+      "Align with the records",
+      "Round-scoped context and call-chain impact",
+      "Converge the verdict",
+      "AGENTS.md",
+      "code-graph or structural index tools",
+      "stale index",
+      "none (",
+      "unresolvedGaps",
+      "untouched since Round 1",
+      "unless a fix hunk itself broke an untouched caller or contract",
+    ]) {
+      expect(prompt).toContain(text)
+    }
+  })
+
+  it("the review-gate assets carry the fix-round, debt-reconciliation, and no-parent-root pins", async () => {
+    const techLead = await readAgentPrompt("tech-lead.md")
+    const card = await readFile(
+      new URL("../../../assets/protocols/code_plan_review.md", import.meta.url),
+      "utf8",
+    )
+    const solution = await readAgentPrompt("solution-reviewer.md")
+    const codeReviewer = await readAgentPrompt("coder-reviewer.md")
+
+    // tech-lead: the extended ledger phrasing and the extended arbitration trigger
+    expect(techLead).toContain("every non-empty `residualUncertainty`")
+    expect(techLead).toContain("not broken by the fix hunk")
+    // the card's gate (b) freezes ordinary correctness/call-chain demands too, not only [structural]
+    expect(card).toContain("never raising a new blocking finding")
+    expect(card).toContain("or an ordinary correctness or call-chain demand")
+    // solution-reviewer: the repair-round trace and the mechanical debt reconciliation
+    expect(solution).toContain("modified fix hunks only in repair rounds")
+    for (const text of ["debt: [...]", "missingTasks", "residualUncertainty"]) {
+      expect(solution).toContain(text)
+    }
+    // no reviewer or card review reads a parent data root
+    for (const text of ["$XDG_DATA_HOME/janus-agent", "<designStateDir>"]) {
+      for (const prompt of [card, solution, codeReviewer]) expect(prompt).toContain(text)
+    }
+    // the guard-file rule keeps its exact wording in the plan-review surfaces
+    const guardRule =
+      "rejecting any plan where a non-final milestone's verification depends on an `AGENTS.md`/`CLAUDE.md` edit reserved for the final milestone"
+    expect(card).toContain(guardRule)
+    expect(solution).toContain(guardRule)
+  })
+
+  it("the four review gates pin their dispatch-input tokens in exactly their own files", async () => {
+    const architect = await readAgentPrompt("architect.md")
+    const techLead = await readAgentPrompt("tech-lead.md")
+    const codeReviewer = await readAgentPrompt("coder-reviewer.md")
+    const solution = await readAgentPrompt("solution-reviewer.md")
+    const premortemCard = await readFile(
+      new URL("../../../assets/protocols/design_premortem.md", import.meta.url),
+      "utf8",
+    )
+    const card = await readFile(
+      new URL("../../../assets/protocols/code_plan_review.md", import.meta.url),
+      "utf8",
+    )
+    const designCore = await readFile(
+      new URL("../../../skill-src/consultation-design/core.md", import.meta.url),
+      "utf8",
+    )
+    const designSkill = await readSkill("consultation-design")
+
+    // Gate 1 — design_premortem: decision packet + design.md-or-none + repo-paths-or-none
+    for (const text of ["design.md", "none (", "repo_paths"]) {
+      for (const prompt of [architect, designCore, designSkill]) expect(prompt).toContain(text)
+    }
+    expect(premortemCard).toContain("unresolvedGaps")
+
+    // Gate 2 — Stage 1 (plan): plan + design paths, none tokens, the guard-file rejection
+    const guardRule =
+      "rejecting any plan where a non-final milestone's verification depends on an `AGENTS.md`/`CLAUDE.md` edit reserved for the final milestone"
+    for (const text of ["plan.md", "design.md", "none (", guardRule]) {
+      for (const prompt of [techLead, card, solution]) expect(prompt).toContain(text)
+    }
+    for (const prompt of [card, solution]) expect(prompt).toContain("unresolvedGaps")
+
+    // Gate 3 — single-milestone patch
+    for (const text of [
+      ".review-mK.patch",
+      "plan.md",
+      "design.md",
+      "none (",
+      "previous round's issue list",
+      "reviews_job_ids",
+      "unresolvedGaps",
+    ]) {
+      for (const prompt of [techLead, card, codeReviewer]) expect(prompt).toContain(text)
+    }
+
+    // Gate 4 — Stage 2 (final)
+    for (const text of [
+      ".review-final.patch",
+      "plan.md",
+      "design.md",
+      "none (",
+      "git status --porcelain --untracked-files=all",
+      "previous round's issue list",
+      "reviews_job_ids",
+      "unresolvedGaps",
+      "debt: [...]",
+    ]) {
+      for (const prompt of [techLead, card, solution]) expect(prompt).toContain(text)
+    }
+
+    // Negative parity — a single-gate file never carries another gate's tokens
+    for (const text of [
+      "previous round's issue list",
+      "reviews_job_ids",
+      "git status --porcelain --untracked-files=all",
+      ".review-mK.patch",
+      ".review-final.patch",
+    ]) {
+      for (const prompt of [architect, designCore, designSkill, premortemCard]) expect(prompt).not.toContain(text)
+    }
+    for (const text of [".review-final.patch", "git status --porcelain", "debt: [...]"]) {
+      expect(codeReviewer).not.toContain(text)
+    }
+    expect(solution).not.toContain(".review-mK.patch")
+
+    // Sentence-scoped compound pins — tech-lead.md legitimately hosts gates 2-4, so each
+    // gate token is tied to its own dispatch sentence rather than to the file as a whole
+    const stage1Clause = clauseAround(techLead, "Stage-1 review: dispatch", "A Stage-1 re-review")
+    const milestoneClause = clauseAround(techLead, "6. **Review.** Dispatch `coder-reviewer`", "never re-ask the reviewer.")
+    const stage2Clause = clauseAround(techLead, "then dispatch `solution-reviewer`", "a fresh controller session reads this block")
+    expect(stage1Clause).toContain("design.md: none (standalone plan; approved design-gate baseline in plan.md)")
+    expect(stage1Clause).not.toContain("previous round's issue list")
+    expect(stage1Clause).not.toContain("git status --porcelain --untracked-files=all")
+    expect(milestoneClause).toContain("previous round's issue list")
+    expect(milestoneClause).not.toContain("design.md: none (standalone plan")
+    expect(milestoneClause).not.toContain("git status --porcelain --untracked-files=all")
+    expect(stage2Clause).toContain("git status --porcelain --untracked-files=all")
+    expect(stage2Clause).not.toContain("design.md: none (standalone plan")
+
+    // M1-landed text pins
+    // the broadened Stage-2 freeze sentence (replaced the old "diff-only [structural]" parenthetical),
+    // inside the Stage-2 dispatch region
+    expect(stage2Clause).toContain(
+      "makes freeze verification mechanical for every late blocking demand on untouched code, structural or ordinary",
+    )
+    // the compound stat pin: the whole landed stat command — a bare
+    // `':(exclude)<generated_exclusion>'` substring proves nothing because the diff-body
+    // line already carries it; the stat line must carry the same filter into the patch
+    expect(techLead).toContain(
+      `git -C "$ROOT" diff --stat "$PRE_TREE" "$POST_TREE" -- . ':(exclude)<generated_exclusion>' >> .review-mK.patch`,
+    )
+    // the coder-reviewer step-2 Round-1 qualifier, inside the records-alignment step
+    const alignStep = clauseAround(codeReviewer, "2. **Align with the records.**", "3. **Round-scoped context and call-chain impact")
+    expect(alignStep).toContain(
+      "On Round 1, read the supplied `design.md` (when present) and `plan.md` from their exact supplied paths",
+    )
+    // one distinctive Hard-Rules substring per reviewer file, inside its Hard Rules section
+    const codeReviewerRules = clauseAround(codeReviewer, "## Hard Rules", "<!-- MODEL-PROMPT")
+    expect(codeReviewerRules).toContain(
+      "The fix-round freeze binds every verdict: no new blocking finding on code untouched since Round 1",
+    )
+    const solutionRules = clauseAround(solution, "## Hard Rules", "<!-- MODEL-PROMPT")
+    expect(solutionRules).toContain(
+      "A carried-forward `debt: [...]` entry never suppresses an independent Stage-2 correctness finding",
+    )
   })
 })
